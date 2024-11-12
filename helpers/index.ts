@@ -26,6 +26,7 @@ export * from "../tasks/misc/review-e-mode";
 export * from "../tasks/misc/review-rate-strategies";
 export * from "../tasks/misc/review-stable-borrow";
 export * from "../tasks/misc/review-supply-caps";
+export * from "../tasks/misc/review-borrow-caps";
 export * from "../tasks/misc/set-fallback-oracle";
 export * from "../tasks/misc/setup-debt-ceiling";
 export * from "../tasks/misc/setup-e-modes";

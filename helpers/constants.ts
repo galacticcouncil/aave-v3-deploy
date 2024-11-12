@@ -6,6 +6,7 @@ import {
   eEthereumNetwork,
   eFantomNetwork,
   eHarmonyNetwork,
+  eHydrationNetwork,
   eOptimismNetwork,
   ePolygonNetwork,
 } from "./types";
@@ -77,6 +78,8 @@ export const MOCK_CHAINLINK_AGGREGATORS_PRICES: { [key: string]: string } = {
   JEUR: parseUnits("1.126", 8).toString(),
   DPI: parseUnits("149", 8).toString(),
   CBETH: parseUnits("4000", 8).toString(),
+  DOT: parseUnits("10", 8).toString(),
+  VDOT: parseUnits("10", 8).toString(),
 };
 
 export const chainlinkAggregatorProxy: Record<string, string> = {
@@ -100,6 +103,8 @@ export const chainlinkAggregatorProxy: Record<string, string> = {
   goerli: "0x60E4B131f0F219c72b0346675283E73888e4AB24",
   [eArbitrumNetwork.goerliNitro]: "0xC09e69E79106861dF5d289dA88349f10e2dc6b5C",
   [eEthereumNetwork.sepolia]: "0x6c60d915c7a646860dba836ffcb7f112b6cfdc76",
+  [eHydrationNetwork.hydration]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
+  [eHydrationNetwork.nice]: "0xBd763043861CAF4E7e4E7Ffe951A03dF2Ea7E5AC",
 };
 
 export const chainlinkEthUsdAggregatorProxy: Record<string, string> = {
@@ -123,6 +128,8 @@ export const chainlinkEthUsdAggregatorProxy: Record<string, string> = {
   goerli: "0x60E4B131f0F219c72b0346675283E73888e4AB24",
   [eArbitrumNetwork.goerliNitro]: "0xC09e69E79106861dF5d289dA88349f10e2dc6b5C",
   [eEthereumNetwork.sepolia]: "0x6c60d915c7a646860dba836ffcb7f112b6cfdc76",
+  [eHydrationNetwork.hydration]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
+  [eHydrationNetwork.nice]: "0xBd763043861CAF4E7e4E7Ffe951A03dF2Ea7E5AC",
 };
 
 export const ETHEREUM_SHORT_EXECUTOR =
@@ -130,6 +137,10 @@ export const ETHEREUM_SHORT_EXECUTOR =
 
 export const EMPTY_STORAGE_SLOT =
   "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+// 7KATdGavcMe4RDheDsYyGqGZLDiGkCyvQ8s4sq8VMVsnVr7W
+export const HYDRATION_TEST_ADMIN =
+  "0x52341e77341788Ebda44C8BcB4C8BD1B1913B204";
 
 export const POOL_ADMIN: Record<string, string> = {
   [eArbitrumNetwork.arbitrum]: "0xbbd9f90699c1FA0D7A65870D241DD1f1217c96Eb",
@@ -142,6 +153,9 @@ export const POOL_ADMIN: Record<string, string> = {
   [eBaseNetwork.base]: "0xA9F30e6ED4098e9439B2ac8aEA2d3fc26BcEbb45",
   [eBaseNetwork.baseGoerli]: "0xA9F30e6ED4098e9439B2ac8aEA2d3fc26BcEbb45",
   [eEthereumNetwork.tenderly]: ETHEREUM_SHORT_EXECUTOR,
+  [eHydrationNetwork.hydration]: "0xaa7e0000000000000000000000000000000aa7e0",
+  [eHydrationNetwork.nice]: HYDRATION_TEST_ADMIN,
+  [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
 };
 
 export const EMERGENCY_ADMIN: Record<string, string> = {
@@ -152,6 +166,9 @@ export const EMERGENCY_ADMIN: Record<string, string> = {
   [eOptimismNetwork.main]: "0xE50c8C619d05ff98b22Adf991F17602C774F785c",
   [ePolygonNetwork.polygon]: "0x1450F2898D6bA2710C98BE9CAF3041330eD5ae58",
   [eEthereumNetwork.main]: ETHEREUM_SHORT_EXECUTOR,
+  [eHydrationNetwork.hydration]: "0xaa7e1000000000000000000000000000000aa7e1",
+  [eHydrationNetwork.nice]: "0xb847e0fd2a5e62d621a0382419bddb0a351a6d9c",
+  [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
 };
 
 export const DEFAULT_NAMED_ACCOUNTS = {
@@ -198,4 +215,7 @@ export const MULTISIG_ADDRESS: { [key: string]: string } = {
   [eOptimismNetwork.main]: "0xE50c8C619d05ff98b22Adf991F17602C774F785c",
   // Polygon Multisig
   [ePolygonNetwork.polygon]: "0x1450F2898D6bA2710C98BE9CAF3041330eD5ae58",
+  [eHydrationNetwork.hydration]: "0xaa7e1000000000000000000000000000000aa7e10",
+  [eHydrationNetwork.nice]: HYDRATION_TEST_ADMIN,
+  [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
 };

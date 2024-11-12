@@ -21,6 +21,7 @@ task(`print-deployments`).setAction(
       if (!key.includes("Mintable")) {
         formattedDeployments[key] = {
           address: allDeployments[key].address,
+          title: allDeployments[key].devdoc.title,
         };
       }
     });
@@ -36,5 +37,11 @@ task(`print-deployments`).setAction(
     });
     console.log("\nMintable Reserves and Rewards");
     console.table(mintableTokens);
+
+    const { deployer } = await getNamedAccounts();
+    const deployerNonce = await hre.ethers.provider.getTransactionCount(
+      deployer
+    );
+    console.log(`\nDeployer nonce: ${deployerNonce}`);
   }
 );

@@ -10,8 +10,9 @@ import {
   eHarmonyNetwork,
   eAvalancheNetwork,
   eFantomNetwork,
-  eOptimismNetwork,
   eBaseNetwork,
+  eHydrationNetwork,
+  eOptimismNetwork,
 } from "./types";
 
 require("dotenv").config();
@@ -98,6 +99,9 @@ export const NETWORKS_RPC_URL: iParamsPerNetwork<string> = {
   [eBaseNetwork.base]: `https://base-mainnet.g.alchemy.com/v2/${getAlchemyKey(
     eBaseNetwork.base
   )}`,
+  [eHydrationNetwork.nice]: "https://rpc.nice.hydration.cloud",
+  [eHydrationNetwork.hydration]: "https://rpc.hydradx.cloud",
+  [eHydrationNetwork.zombie]: "http://localhost:8645",
 };
 
 export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
@@ -108,6 +112,8 @@ export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
   [eAvalancheNetwork.avalanche]: true,
   [eFantomNetwork.main]: true,
   [eOptimismNetwork.main]: true,
+  [eHydrationNetwork.hydration]: true,
+  [eHydrationNetwork.nice]: true,
   [eBaseNetwork.base]: true,
 };
 
@@ -149,6 +155,7 @@ export const getCommonNetworkConfig = (
   blockGasLimit: DEFAULT_BLOCK_GAS_LIMIT,
   chainId,
   gasPrice: GAS_PRICE_PER_NET[networkName] || undefined,
+  accounts: [process.env.PRIV_KEY],
   ...((!!MNEMONICS[networkName] || !!MNEMONIC) && {
     accounts: {
       mnemonic: MNEMONICS[networkName] || MNEMONIC,
@@ -175,7 +182,7 @@ export const hardhatNetworkSettings = {
   blockGasLimit: DEFAULT_BLOCK_GAS_LIMIT,
   throwOnTransactionFailures: true,
   throwOnCallFailures: true,
-  chainId: 31337,
+  chainId: 222222,
   forking: buildForkConfig(),
   saveDeployments: true,
   allowUnlimitedContractSize: true,

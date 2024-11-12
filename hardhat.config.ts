@@ -12,6 +12,7 @@ import {
   eEthereumNetwork,
   eFantomNetwork,
   eHarmonyNetwork,
+  eHydrationNetwork,
   eOptimismNetwork,
   ePolygonNetwork,
   eBaseNetwork,
@@ -121,6 +122,19 @@ export default {
     [eArbitrumNetwork.goerliNitro]: getCommonNetworkConfig(
       eArbitrumNetwork.goerliNitro,
       421613
+    ),
+    [eHydrationNetwork.hydration]: getCommonNetworkConfig(
+      eHydrationNetwork.hydration,
+      222222
+    ),
+    [eHydrationNetwork.zombie]: getCommonNetworkConfig(
+      eHydrationNetwork.zombie,
+      // 1287
+      222222
+    ),
+    [eHydrationNetwork.nice]: getCommonNetworkConfig(
+      eHydrationNetwork.nice,
+      222222
     ),
     [eBaseNetwork.base]: getCommonNetworkConfig(eBaseNetwork.base, 8453),
     [eBaseNetwork.baseGoerli]: getCommonNetworkConfig(

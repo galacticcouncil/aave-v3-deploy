@@ -74,7 +74,7 @@ export const initReservesByHelper = async (
   )) as any as Pool;
 
   // CHUNK CONFIGURATION
-  const initChunks = 3;
+  const initChunks = 1;
 
   // Initialize variables for future reserves initialization
   let reserveTokens: string[] = [];
@@ -223,7 +223,9 @@ export const initReservesByHelper = async (
     chunkIndex++
   ) {
     const tx = await waitForTx(
-      await configurator.initReserves(chunkedInitInputParams[chunkIndex])
+      await configurator.initReserves(chunkedInitInputParams[chunkIndex], {
+        gasLimit: 12000000,
+      })
     );
 
     console.log(
@@ -381,7 +383,7 @@ export const configureReservesByHelper = async (
     );
 
     // Deploy init per chunks
-    const enableChunks = 20;
+    const enableChunks = 1;
     const chunkedSymbols = chunk(symbols, enableChunks);
     const chunkedInputParams = chunk(inputParams, enableChunks);
     const poolConfiguratorAddress = await addressProvider.getPoolConfigurator();
@@ -395,7 +397,8 @@ export const configureReservesByHelper = async (
       const tx = await waitForTx(
         await reservesSetupHelper.configureReserves(
           poolConfiguratorAddress,
-          chunkedInputParams[chunkIndex]
+          chunkedInputParams[chunkIndex],
+          { gasLimit: 10000000 }
         )
       );
       console.log(

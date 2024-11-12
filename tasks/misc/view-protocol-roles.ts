@@ -110,32 +110,6 @@ task(
     ).address,
     deployerSigner
   )) as AaveEcosystemReserveController;
-  let wrappedTokenGateway: WrappedTokenGatewayV3;
-  try {
-    wrappedTokenGateway = await getWrappedTokenGateway();
-  } catch (err) {
-    // load legacy contract of WrappedTokenGateway
-    wrappedTokenGateway = WrappedTokenGatewayV3__factory.connect(
-      await getAddressFromJson(networkId, "WETHGateway"),
-      await getFirstSigner()
-    );
-  }
-
-  const paraswapSwapAdapter = await getOwnableContract(
-    await (
-      await hre.deployments.get("ParaSwapLiquiditySwapAdapter")
-    ).address
-  );
-  const paraswapRepayAdapter = await getOwnableContract(
-    await (
-      await hre.deployments.get("ParaSwapRepayAdapter")
-    ).address
-  );
-  const paraswapWithdrawSwapAdapter = await getOwnableContract(
-    await (
-      await hre.deployments.get("ParaSwapWithdrawSwapAdapter")
-    ).address
-  );
 
   /** Output of results*/
   const result = [
@@ -181,11 +155,6 @@ task(
         hre.ethers.constants.HashZero,
         deployer
       )),
-    },
-    {
-      role: "WrappedTokenGateway owner",
-      address: await wrappedTokenGateway.owner(),
-      assert: (await wrappedTokenGateway.owner()) === desiredAdmin,
     },
     {
       role: "PoolAdmin is multisig",
@@ -241,21 +210,6 @@ task(
       assert:
         (await poolAddressesProvider.getAddress(incentivesControllerId)) ===
         rewardsController.address,
-    },
-    {
-      role: "ParaSwapRepayAdapter owner",
-      address: await paraswapRepayAdapter.owner(),
-      assert: (await paraswapRepayAdapter.owner()) == desiredAdmin,
-    },
-    {
-      role: "ParaSwapSwapAdapter owner",
-      address: await paraswapSwapAdapter.owner(),
-      assert: (await paraswapSwapAdapter.owner()) == desiredAdmin,
-    },
-    {
-      role: "ParaSwapWithdrawSwapAdapter owner",
-      address: await paraswapWithdrawSwapAdapter.owner(),
-      assert: (await paraswapWithdrawSwapAdapter.owner()) == desiredAdmin,
     },
   ];
 

@@ -20,6 +20,12 @@ const func: DeployFunction = async function ({
   const network = (
     process.env.FORK ? process.env.FORK : hre.network.name
   ) as eNetwork;
+
+  if (MARKET_NAME == ConfigNames.Hydration) {
+    console.log("Skipping WrappedTokenGateway deployment for Hydration Market");
+    return;
+  }
+
   const poolConfig = loadPoolConfig(MARKET_NAME as ConfigNames);
 
   let wrappedNativeTokenAddress;

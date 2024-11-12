@@ -15,8 +15,8 @@ import chalk from "chalk";
 import { exit } from "process";
 import { getAddress } from "ethers/lib/utils";
 
-// If the fix flag is present it will change the supply cap to the expected local market configuration
-task(`review-supply-caps`, ``)
+// If the fix flag is present it will change the borrow cap to the expected local market configuration
+task(`review-borrow-caps`, ``)
   // --fix
   .addFlag("fix")
   // Optional parameter to check only the desired tokens by symbol and separated by comma
@@ -73,27 +73,27 @@ task(`review-supply-caps`, ``)
           `, normalized symbol`,
           normalizedSymbol
         );
-        const expectedSupplyCap =
-          poolConfig.ReservesConfig[normalizedSymbol.toUpperCase()].supplyCap;
-        const onChainSupplyCap = (
+        const expectedBorrowCap =
+          poolConfig.ReservesConfig[normalizedSymbol.toUpperCase()].borrowCap;
+        const onChainBorrowCap = (
           await dataProvider.getReserveCaps(tokenAddress)
-        ).supplyCap.toString();
+        ).borrowCap.toString();
 
-        const delta = expectedSupplyCap !== onChainSupplyCap;
+        const delta = expectedBorrowCap !== onChainBorrowCap;
         if (delta) {
           console.log(
-            "- Found differences of the supply cap for ",
+            "- Found differences of the borrow cap for ",
             normalizedSymbol
           );
           console.log(
             "  - Expected:",
-            Number(expectedSupplyCap).toLocaleString(undefined, {
+            Number(expectedBorrowCap).toLocaleString(undefined, {
               currency: "usd",
             })
           );
           console.log(
             "  - Current :",
-            Number(onChainSupplyCap).toLocaleString(undefined, {
+            Number(onChainBorrowCap).toLocaleString(undefined, {
               currency: "usd",
             })
           );
@@ -101,29 +101,29 @@ task(`review-supply-caps`, ``)
           if (!fix) {
             continue;
           }
-          console.log("[FIX] Updating the supply cap for", normalizedSymbol);
+          console.log("[FIX] Updating the borrow cap for", normalizedSymbol);
           await waitForTx(
-            await poolConfigurator.setSupplyCap(
+            await poolConfigurator.setBorrowCap(
               tokenAddress,
-              expectedSupplyCap,
+              expectedBorrowCap,
               { gasLimit: 1000000 }
             )
           );
-          const newOnChainSupplyCap = (
+          const newOnChainBorrowCap = (
             await dataProvider.getReserveCaps(tokenAddress)
-          ).supplyCap.toString();
+          ).borrowCap.toString();
           console.log(
             "[FIX] Set ",
             normalizedSymbol,
-            "Supply cap to",
-            Number(newOnChainSupplyCap).toLocaleString(undefined, {
+            "Borrow cap to",
+            Number(newOnChainBorrowCap).toLocaleString(undefined, {
               currency: "usd",
             })
           );
         } else {
           console.log(
             chalk.green(
-              `  - Reserve ${normalizedSymbol} supply cap follows the expected configuration`
+              `  - Reserve ${normalizedSymbol} borrow cap follows the expected configuration`
             )
           );
           continue;
