@@ -1,0 +1,15 @@
+{
+  "PoolAddressesProviderRegistry": 1727440869,
+  "LogicLibraries": 1727451189,
+  "Treasury": 1727455064,
+  "PoolAddressesProvider:Hydration:aave-v3-core@1.19.3": 1727455135,
+  "PoolConfigurator": 1727461507,
+  "ACLManager:Hydration:aave-v3-core@1.19.3": 1727461998,
+  "Oracles:Hydration:aave-v3-core@1.19.3": 1727462011,
+  "InitOracles:Hydration:aave-v3-core@1.19.3": 1727465301,
+  "PoolInitalization:Hydration:aave-v3-core@1.19.3": 1727818047,
+  "Incentives:Hydration:aave-v3-periphery@2.5.2": 1727818190,
+  "TokenImplementations:Hydration:aave-v3-core@1.19.3": 1727818383,
+  "ReservesInit:Hydration:aave-v3-core@1.19.3": 1727819992,
+  "PeripheryInit:Hydration:aave-v3-periphery@2.5.2": 1727819992
+}

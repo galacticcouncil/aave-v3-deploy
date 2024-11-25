@@ -171,10 +171,13 @@ task(
       assert: !(await aclManager.isPoolAdmin(deployer)),
     },
     {
-      role: "EmergencyAdmin",
-      address: (await aclManager.isEmergencyAdmin(desiredEmergencyAdmin))
-        ? desiredEmergencyAdmin
-        : emergencyAdmin,
+      role: "EmergencyAdmin deployer",
+      address: emergencyAdmin,
+      assert: await aclManager.isEmergencyAdmin(emergencyAdmin),
+    },
+    {
+      role: "EmergencyAdmin desired",
+      address: desiredEmergencyAdmin,
       assert: await aclManager.isEmergencyAdmin(desiredEmergencyAdmin),
     },
     {

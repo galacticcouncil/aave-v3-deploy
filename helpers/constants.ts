@@ -166,7 +166,7 @@ export const EMERGENCY_ADMIN: Record<string, string> = {
   [eOptimismNetwork.main]: "0xE50c8C619d05ff98b22Adf991F17602C774F785c",
   [ePolygonNetwork.polygon]: "0x1450F2898D6bA2710C98BE9CAF3041330eD5ae58",
   [eEthereumNetwork.main]: ETHEREUM_SHORT_EXECUTOR,
-  [eHydrationNetwork.hydration]: "0xaa7e1000000000000000000000000000000aa7e1",
+  [eHydrationNetwork.hydration]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b", // 7J4KqjeRmGZPVEAogDgtxVenmsJcsvPBCySdDGxaKQ6Yyknj
   [eHydrationNetwork.nice]: "0xb847e0fd2a5e62d621a0382419bddb0a351a6d9c",
   [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
 };

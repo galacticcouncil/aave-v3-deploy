@@ -20,3 +20,4 @@ typechain
 types
 deployments/*
 !deployments/hydration
+!deployments/nice
