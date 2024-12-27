@@ -13,6 +13,7 @@ import {
   getPoolAddressesProvider,
   getPoolConfiguratorProxy,
   POOL_ADMIN,
+  ZERO_ADDRESS,
 } from "../../helpers";
 
 task(`vdot-prop`, ``).setAction(async function (_, hre) {
@@ -71,14 +72,19 @@ task(`vdot-prop`, ``).setAction(async function (_, hre) {
     addTransaction(tx);
   }
 
+  const aToken = (await hre.deployments.getOrNull("VDOT-AToken-Hydration"))
+    ?.address;
+  const registerTokens =
+    aToken !== ZERO_ADDRESS
+      ? [
+          {
+            asset: 1005,
+            symbol: "avDOT",
+            address: aToken,
+          },
+        ]
+      : [];
+
   console.log("proposal batch preimage:");
-  console.log(
-    await generateProposal(getBatch(), admin, [
-      {
-        asset: 1005,
-        symbol: "avDOT",
-        address: (await hre.deployments.get("VDOT-AToken-Hydration")).address,
-      },
-    ])
-  );
+  console.log(await generateProposal(getBatch(), admin, registerTokens));
 });

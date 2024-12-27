@@ -41,7 +41,7 @@ async function generateProposal(transactions, from, registerAssets = []) {
     from,
     to,
     data,
-    gas = "1000000",
+    gas = "100000",
     gasPrice = "600000000",
   }) =>
     evm.call(
@@ -59,7 +59,7 @@ async function generateProposal(transactions, from, registerAssets = []) {
     from,
     to,
     data,
-    gas = "1000000",
+    gas = "100000",
     gasPrice = "600000000",
   }) =>
     utility.dispatchAs(
@@ -84,6 +84,7 @@ async function generateProposal(transactions, from, registerAssets = []) {
     ...transactions.map((tx) =>
       rootEvmCall({
         ...tx,
+        gas: tx.gasLimit?.toString(),
         from: from ? padAddress(from) : padAddress(tx.from),
       })
     ),

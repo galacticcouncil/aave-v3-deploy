@@ -107,7 +107,7 @@ task(`review-stable-borrow`, ``)
               await poolConfigurator.setReserveStableRateBorrowing(
                 tokenAddress,
                 expectedStableRateEnabled,
-                { gasLimit: 1000000 }
+                { gasLimit: 100000 }
               )
             );
           }

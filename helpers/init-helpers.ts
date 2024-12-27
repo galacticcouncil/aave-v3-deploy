@@ -1,5 +1,6 @@
 import {
   eContractid,
+  eNetwork,
   IAaveConfiguration,
   iMultiPoolsAssets,
   IReserveParams,
@@ -37,7 +38,7 @@ import {
   isL2PoolSupported,
   loadPoolConfig,
 } from "./market-config-helpers";
-import { ZERO_ADDRESS } from "./constants";
+import { POOL_ADMIN, ZERO_ADDRESS } from "./constants";
 import { addTransaction } from "./transacation-batch";
 
 declare var hre: HardhatRuntimeEnvironment;
@@ -227,13 +228,13 @@ export const initReservesByHelper = async (
     if (batch) {
       const tx = await configurator.populateTransaction.initReserves(
         chunkedInitInputParams[chunkIndex],
-        { gasLimit: 12000000 }
+        { gasLimit: 10000000 }
       );
       addTransaction(tx);
     } else {
       const tx = await waitForTx(
         await configurator.initReserves(chunkedInitInputParams[chunkIndex], {
-          gasLimit: 12000000,
+          gasLimit: 10000000,
         })
       );
 
@@ -400,10 +401,12 @@ export const configureReservesByHelper = async (
       }
     }
     const reservesSetupHelperOwner = await reservesSetupHelper.owner();
+    const network = (process.env.FORK || hre.network.name) as eNetwork;
     console.log("ReservesSetupHelper owner: ", reservesSetupHelperOwner);
     if (
       !(await aclManager.isRiskAdmin(reservesSetupHelper.address)) &&
-      aclAdmin === reservesSetupHelperOwner.address
+      POOL_ADMIN[network].toLowerCase() ===
+        reservesSetupHelperOwner.toLowerCase()
     ) {
       console.log("Adding ReservesSetupHelper to risk admins");
       if (batch) {
@@ -439,7 +442,7 @@ export const configureReservesByHelper = async (
           await reservesSetupHelper.populateTransaction.configureReserves(
             poolConfiguratorAddress,
             chunkedInputParams[chunkIndex],
-            { gasLimit: 10000000 }
+            { gasLimit: 1000000 }
           );
         addTransaction(tx);
       } else {
@@ -447,7 +450,7 @@ export const configureReservesByHelper = async (
           await reservesSetupHelper.configureReserves(
             poolConfiguratorAddress,
             chunkedInputParams[chunkIndex],
-            { gasLimit: 10000000 }
+            { gasLimit: 1000000 }
           )
         );
         console.log(

@@ -106,7 +106,7 @@ task(`review-supply-caps`, ``)
             await poolConfigurator.setSupplyCap(
               tokenAddress,
               expectedSupplyCap,
-              { gasLimit: 1000000 }
+              { gasLimit: 100000 }
             )
           );
           const newOnChainSupplyCap = (

@@ -163,7 +163,7 @@ task(`review-rate-strategies`, ``)
                   await poolConfigurator.populateTransaction.setReserveInterestRateStrategyAddress(
                     tokenAddress,
                     newStrategyAddress,
-                    { gasLimit: 1000000 }
+                    { gasLimit: 100000 }
                   );
                 addTransaction(tx);
               } else {
@@ -171,7 +171,7 @@ task(`review-rate-strategies`, ``)
                   await poolConfigurator.setReserveInterestRateStrategyAddress(
                     tokenAddress,
                     newStrategyAddress,
-                    { gasLimit: 1000000 }
+                    { gasLimit: 100000 }
                   )
                 );
                 console.log(

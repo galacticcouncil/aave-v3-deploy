@@ -221,7 +221,10 @@ export default {
     ? DETERMINISTIC_FACTORIES
     : undefined,
   etherscan: {
-    apiKey: ETHERSCAN_KEY || { nice: "nice" },
+    apiKey: ETHERSCAN_KEY || {
+      [eHydrationNetwork.nice]: "nice",
+      [eHydrationNetwork.hydration]: "hydration",
+    },
     customChains: [
       {
         network: eBaseNetwork.base,
@@ -237,6 +240,14 @@ export default {
         urls: {
           apiURL: "https://blockscout.nice.hydration.cloud/api",
           browserURL: "https://blockscout.nice.hydration.cloud",
+        },
+      },
+      {
+        network: eHydrationNetwork.hydration,
+        chainId: 222222,
+        urls: {
+          apiURL: "https://blockscout.evm.hydration.cloud/api",
+          browserURL: "https://blockscout.evm.hydration.cloud",
         },
       },
     ],

@@ -103,7 +103,7 @@ task(`review-borrow-caps`, ``)
             const tx = await poolConfigurator.populateTransaction.setBorrowCap(
               tokenAddress,
               expectedBorrowCap,
-              { gasLimit: 1000000 }
+              { gasLimit: 100000 }
             );
             console.log("  - Transaction to fix:");
             console.log(tx);
@@ -114,7 +114,7 @@ task(`review-borrow-caps`, ``)
             await poolConfigurator.setBorrowCap(
               tokenAddress,
               expectedBorrowCap,
-              { gasLimit: 1000000 }
+              { gasLimit: 100000 }
             )
           );
           const newOnChainBorrowCap = (

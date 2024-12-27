@@ -29,7 +29,7 @@ task(
         await poolConfigurator.setBorrowableInIsolation(
           assetAddress,
           borrowableIsolation,
-          { gasLimit: 1000000 }
+          { gasLimit: 100000 }
         )
       );
       assetsWithBorrowableIsolationMode.push(asset);

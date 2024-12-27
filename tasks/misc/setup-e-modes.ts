@@ -36,7 +36,7 @@ task(`setup-e-modes`, `Setups e-modes from config`).setAction(
           eMode.liquidationBonus,
           oracle,
           eMode.label,
-          { gasLimit: 1000000 }
+          { gasLimit: 100000 }
         )
       );
 
