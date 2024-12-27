@@ -1,12 +1,12 @@
 import { eHydrationNetwork, IAaveConfiguration } from "./../../helpers/types";
 import AaveMarket from "../aave";
 import {
-  strategyUSDC,
-  strategyWETH,
-  strategyVDOT,
   strategyDOT,
-  strategyWBTC,
+  strategyUSDC,
   strategyUSDT,
+  strategyVDOT,
+  strategyWBTC,
+  strategyWETH,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -22,10 +22,10 @@ export const HydrationConfig: IAaveConfiguration = {
   ReservesConfig: {
     USDC: strategyUSDC,
     USDT: strategyUSDT,
-    // WETH: strategyWETH,
+    WETH: strategyWETH,
     WBTC: strategyWBTC,
     DOT: strategyDOT,
-    //VDOT: strategyVDOT,
+    VDOT: strategyVDOT,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -34,7 +34,7 @@ export const HydrationConfig: IAaveConfiguration = {
       // WETH: tokenAddress(20),
       WBTC: tokenAddress(19),
       DOT: tokenAddress(5),
-      //VDOT: tokenAddress(15),
+      VDOT: tokenAddress(15),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -42,7 +42,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WETH: tokenAddress(20),
       WBTC: tokenAddress(3),
       DOT: tokenAddress(5),
-      //VDOT: tokenAddress(15),
+      VDOT: tokenAddress(15),
     },
     [eHydrationNetwork.zombie]: {
       USDC: ZERO_ADDRESS,
@@ -68,7 +68,7 @@ export const HydrationConfig: IAaveConfiguration = {
       liquidationThreshold: "9000",
       liquidationBonus: "10350",
       label: "DOT",
-      assets: ["DOT" /*"VDOT"*/],
+      assets: ["DOT", "VDOT"],
     },
   },
   ChainlinkAggregator: {
@@ -78,7 +78,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WETH: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
       WBTC: "0xeDD9A7C47A9F91a0F2db93978A88844167B4a04f",
       DOT: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
-      //VDOT: ZERO_ADDRESS,
+      VDOT: "0xF89728554C61B7AA08bf94823D1017697047c0fE",
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -86,7 +86,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WETH: "0xBd763043861CAF4E7e4E7Ffe951A03dF2Ea7E5AC",
       WBTC: "0xC9cCBe99bdD9538871f9756Ca5Ea64C2267cb0a7",
       DOT: "0x422E745797EC0Ef399c17cE3E2348394F2944727",
-      //VDOT: ZERO_ADDRESS,
+      VDOT: "0x1B4A88Ce5A6c6878De2aC19694b2523e14E67eB6",
     },
   },
 };

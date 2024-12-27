@@ -9,13 +9,13 @@ import {
 import {
   eArbitrumNetwork,
   eAvalancheNetwork,
+  eBaseNetwork,
   eEthereumNetwork,
   eFantomNetwork,
   eHarmonyNetwork,
   eHydrationNetwork,
   eOptimismNetwork,
   ePolygonNetwork,
-  eBaseNetwork,
 } from "./helpers/types";
 import { DEFAULT_NAMED_ACCOUNTS } from "./helpers/constants";
 
@@ -221,7 +221,7 @@ export default {
     ? DETERMINISTIC_FACTORIES
     : undefined,
   etherscan: {
-    apiKey: ETHERSCAN_KEY,
+    apiKey: ETHERSCAN_KEY || { nice: "nice" },
     customChains: [
       {
         network: eBaseNetwork.base,
@@ -229,6 +229,14 @@ export default {
         urls: {
           apiURL: "https://api.basescan.org/api",
           browserURL: "https://basescan.org/",
+        },
+      },
+      {
+        network: eHydrationNetwork.nice,
+        chainId: 222222,
+        urls: {
+          apiURL: "https://blockscout.nice.hydration.cloud/api",
+          browserURL: "https://blockscout.nice.hydration.cloud",
         },
       },
     ],

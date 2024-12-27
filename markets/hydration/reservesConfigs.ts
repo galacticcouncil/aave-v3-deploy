@@ -1,15 +1,13 @@
-import {
-  rateStrategyStableOne,
-  rateStrategyVolatileOne,
-} from "./../aave/rateStrategies";
+import { rateStrategyVolatileOne } from "./../aave/rateStrategies";
 import { eContractid, IReserveParams } from "../../helpers/types";
+import { rateStrategyDOT, rateStrategyStables } from "./rateStrategies";
 
 const supplyCap = "2222222";
-const borrowCap = "666666";
+const borrowCap = "1111111";
 const debtCeiling = "0";
 
 export const strategyUSDC: IReserveParams = {
-  strategy: rateStrategyStableOne,
+  strategy: rateStrategyStables,
   baseLTVAsCollateral: "8000",
   liquidationThreshold: "9000",
   liquidationBonus: "10300",
@@ -48,13 +46,15 @@ export const strategyWETH: IReserveParams = {
 
 export const strategyWBTC = {
   ...strategyWETH,
+  baseLTVAsCollateral: "6000",
+  liquidationThreshold: "7000",
   supplyCap: "33",
   borrowCap: "10",
   reserveDecimals: "8",
 };
 
 export const strategyDOT: IReserveParams = {
-  strategy: rateStrategyVolatileOne,
+  strategy: rateStrategyDOT,
   baseLTVAsCollateral: "6500",
   liquidationThreshold: "7500",
   liquidationBonus: "10700",
@@ -72,7 +72,7 @@ export const strategyDOT: IReserveParams = {
 };
 
 export const strategyVDOT: IReserveParams = {
-  strategy: rateStrategyVolatileOne,
+  strategy: rateStrategyDOT,
   baseLTVAsCollateral: "6000",
   liquidationThreshold: "7000",
   liquidationBonus: "10800",
@@ -83,8 +83,8 @@ export const strategyVDOT: IReserveParams = {
   reserveDecimals: "10",
   aTokenImpl: eContractid.AToken,
   reserveFactor: "1000",
-  supplyCap,
-  borrowCap,
+  supplyCap: "333333",
+  borrowCap: "111111",
   debtCeiling,
   borrowableIsolation: false,
 };

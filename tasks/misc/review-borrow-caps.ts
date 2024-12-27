@@ -3,12 +3,13 @@ import {
   POOL_CONFIGURATOR_PROXY_ID,
   POOL_DATA_PROVIDER,
 } from "../../helpers/deploy-ids";
-import { getAddressFromJson } from "../../helpers/utilities/tx";
+import { getAddressFromJson, waitForTx } from "../../helpers/utilities/tx";
 import { loadPoolConfig } from "../../helpers/market-config-helpers";
-import { getPoolConfiguratorProxy } from "../../helpers/contract-getters";
+import {
+  getAaveProtocolDataProvider,
+  getPoolConfiguratorProxy,
+} from "../../helpers/contract-getters";
 import { task } from "hardhat/config";
-import { waitForTx } from "../../helpers/utilities/tx";
-import { getAaveProtocolDataProvider } from "../../helpers/contract-getters";
 import { MARKET_NAME } from "../../helpers/env";
 import { FORK } from "../../helpers/hardhat-config-helpers";
 import chalk from "chalk";
@@ -99,6 +100,13 @@ task(`review-borrow-caps`, ``)
           );
 
           if (!fix) {
+            const tx = await poolConfigurator.populateTransaction.setBorrowCap(
+              tokenAddress,
+              expectedBorrowCap,
+              { gasLimit: 1000000 }
+            );
+            console.log("  - Transaction to fix:");
+            console.log(tx);
             continue;
           }
           console.log("[FIX] Updating the borrow cap for", normalizedSymbol);
@@ -126,7 +134,6 @@ task(`review-borrow-caps`, ``)
               `  - Reserve ${normalizedSymbol} borrow cap follows the expected configuration`
             )
           );
-          continue;
         }
       }
     }
