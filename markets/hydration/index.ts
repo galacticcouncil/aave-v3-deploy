@@ -56,18 +56,18 @@ export const HydrationConfig: IAaveConfiguration = {
   EModes: {
     StableEMode: {
       id: "1",
-      ltv: "9300",
-      liquidationThreshold: "9500",
+      ltv: "9000",
+      liquidationThreshold: "9300",
       liquidationBonus: "10150",
       label: "Stablecoins",
       assets: ["USDC", "USDT"],
     },
     DotEMode: {
       id: "2",
-      ltv: "8800",
+      ltv: "8000",
       liquidationThreshold: "9000",
-      liquidationBonus: "10350",
-      label: "DOT",
+      liquidationBonus: "10450",
+      label: "DOT correlated",
       assets: ["DOT", "VDOT"],
     },
   },

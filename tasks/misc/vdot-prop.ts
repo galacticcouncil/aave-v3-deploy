@@ -6,7 +6,7 @@ import {
 import { generateProposal } from "../../helpers/hydration-proposal.js";
 import { MARKET_NAME } from "../../helpers/env";
 import { task } from "hardhat/config";
-import { addTransaction, getBatch } from "../../helpers/transacation-batch";
+import { addTransaction, getBatch } from "../../helpers/transaction-batch";
 import {
   FORK,
   getACLManager,
@@ -15,6 +15,7 @@ import {
   POOL_ADMIN,
   ZERO_ADDRESS,
 } from "../../helpers";
+import { network } from "hardhat";
 
 task(`vdot-prop`, ``).setAction(async function (_, hre) {
   const config = await loadPoolConfig(MARKET_NAME as ConfigNames);
@@ -47,43 +48,53 @@ task(`vdot-prop`, ``).setAction(async function (_, hre) {
     batch: true,
   });
 
+  console.log("update stables emode");
+  await hre.run("review-e-mode", {
+    name: "StableEMode",
+    fix: true,
+    batch: true,
+  });
+
+  console.log("update DOT emode");
+  await hre.run("review-e-mode", {
+    name: "DotEMode",
+    fix: true,
+    batch: true,
+  });
+
   console.log("add VDOT to DOT emode");
   {
-    const id = config.EModes["DotEMode"].id;
-    const assetAddress = await getReserveAddress(config, "VDOT");
     const tx = await poolConfigurator.populateTransaction.setAssetEModeCategory(
-      assetAddress,
-      id
+      await getReserveAddress(config, "VDOT"),
+      config.EModes["DotEMode"].id
     );
     addTransaction(tx);
   }
 
-  console.log("update WBTC reserve");
-  {
-    const assetAddress = await getReserveAddress(config, "WBTC");
-    const reserveConfig = config.ReservesConfig["WBTC"];
-    const tx =
-      await poolConfigurator.populateTransaction.configureReserveAsCollateral(
-        assetAddress,
-        reserveConfig.baseLTVAsCollateral,
-        reserveConfig.liquidationThreshold,
-        reserveConfig.liquidationBonus
-      );
-    addTransaction(tx);
-  }
+  console.log("update reserve configs");
+  await hre.run("review-reserve-configs", { fix: true, batch: true });
 
+  console.log("register tokens");
+  const registerTokens = [];
   const aToken = (await hre.deployments.getOrNull("VDOT-AToken-Hydration"))
     ?.address;
-  const registerTokens =
-    aToken !== ZERO_ADDRESS
-      ? [
-          {
-            asset: 1005,
-            symbol: "avDOT",
-            address: aToken,
-          },
-        ]
-      : [];
+  const reserveAddress = await getReserveAddress(config, "VDOT");
+  if (aToken) {
+    const underlying = new hre.ethers.Contract(
+      reserveAddress,
+      (await hre.deployments.getArtifact("AToken")).abi,
+      signer
+    );
+    const decimals = await underlying.callStatic.decimals();
+    const token = {
+      asset: 1005,
+      symbol: "avDOT",
+      address: aToken,
+      decimals: decimals,
+    };
+    console.log("adding", token);
+    registerTokens.push(token);
+  }
 
   console.log("proposal batch preimage:");
   console.log(await generateProposal(getBatch(), admin, registerTokens));

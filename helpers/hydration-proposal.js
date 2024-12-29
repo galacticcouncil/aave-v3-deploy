@@ -67,14 +67,14 @@ async function generateProposal(transactions, from, registerAssets = []) {
       evmCall({ from, to, data, gas, gasPrice })
     );
 
-  const registerAsset = ({ asset, address, symbol }) =>
+  const registerAsset = ({ asset, address, symbol, decimals }) =>
     assetRegistry.register(
       asset,
       symbol,
       "Erc20",
       0,
       symbol,
-      10,
+      decimals,
       location(address),
       null,
       true

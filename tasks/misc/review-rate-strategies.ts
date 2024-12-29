@@ -12,7 +12,7 @@ import { MARKET_NAME } from "../../helpers/env";
 import { diff, formatters } from "jsondiffpatch";
 import chalk from "chalk";
 import { DefaultReserveInterestRateStrategy } from "../../typechain";
-import { addTransaction } from "../../helpers/transacation-batch";
+import { addTransaction } from "../../helpers/transaction-batch";
 
 // This task will review the InterestRate strategy of each reserve from a Market passed by environment variable MARKET_NAME.
 // If the fix flag is present it will change the current strategy of the reserve to the desired strategy from market configuration.

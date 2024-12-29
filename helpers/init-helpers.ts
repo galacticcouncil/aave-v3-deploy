@@ -39,7 +39,7 @@ import {
   loadPoolConfig,
 } from "./market-config-helpers";
 import { POOL_ADMIN, ZERO_ADDRESS } from "./constants";
-import { addTransaction } from "./transacation-batch";
+import { addTransaction } from "./transaction-batch";
 
 declare var hre: HardhatRuntimeEnvironment;
 

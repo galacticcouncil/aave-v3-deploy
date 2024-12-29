@@ -24,7 +24,7 @@ import {
 } from "../../helpers/deploy-ids";
 import { MARKET_NAME } from "../../helpers/env";
 import { task } from "hardhat/config";
-import { addTransaction } from "../../helpers/transacation-batch";
+import { addTransaction } from "../../helpers/transaction-batch";
 
 task(`init-reserve`, ``)
   .addParam("symbol", "symbol of the reserve")

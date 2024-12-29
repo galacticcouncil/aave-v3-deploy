@@ -55,7 +55,7 @@ export const strategyWBTC = {
 
 export const strategyDOT: IReserveParams = {
   strategy: rateStrategyDOT,
-  baseLTVAsCollateral: "6500",
+  baseLTVAsCollateral: "7000",
   liquidationThreshold: "7500",
   liquidationBonus: "10700",
   liquidationProtocolFee: "1000",
@@ -83,7 +83,7 @@ export const strategyVDOT: IReserveParams = {
   reserveDecimals: "10",
   aTokenImpl: eContractid.AToken,
   reserveFactor: "1000",
-  supplyCap: "333333",
+  supplyCap: "222222",
   borrowCap: "111111",
   debtCeiling,
   borrowableIsolation: false,
