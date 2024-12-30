@@ -15,16 +15,25 @@ import { FORK } from "../../helpers/hardhat-config-helpers";
 import chalk from "chalk";
 import { exit } from "process";
 import { getAddress } from "ethers/lib/utils";
+import { addTransaction } from "../../helpers/transaction-batch";
 
 // If the fix flag is present it will change the borrow cap to the expected local market configuration
 task(`review-borrow-caps`, ``)
   // --fix
   .addFlag("fix")
+  .addFlag("batch")
   // Optional parameter to check only the desired tokens by symbol and separated by comma
   // --checkOnly DAI,USDC,ETH
   .addOptionalParam("checkOnly")
   .setAction(
-    async ({ fix, checkOnly }: { fix: boolean; checkOnly: string }, hre) => {
+    async (
+      {
+        fix,
+        checkOnly,
+        batch,
+      }: { fix: boolean; checkOnly: string; batch: boolean },
+      hre
+    ) => {
       const network = FORK ? FORK : (hre.network.name as eNetwork);
       const { poolAdmin } = await hre.getNamedAccounts();
       const checkOnlyReserves: string[] = checkOnly ? checkOnly.split(",") : [];
@@ -100,34 +109,30 @@ task(`review-borrow-caps`, ``)
           );
 
           if (!fix) {
-            const tx = await poolConfigurator.populateTransaction.setBorrowCap(
-              tokenAddress,
-              expectedBorrowCap,
-              { gasLimit: 100000 }
-            );
-            console.log("  - Transaction to fix:");
-            console.log(tx);
             continue;
           }
           console.log("[FIX] Updating the borrow cap for", normalizedSymbol);
-          await waitForTx(
-            await poolConfigurator.setBorrowCap(
-              tokenAddress,
-              expectedBorrowCap,
-              { gasLimit: 100000 }
-            )
+          const tx = await poolConfigurator.populateTransaction.setBorrowCap(
+            tokenAddress,
+            expectedBorrowCap,
+            { gasLimit: 100000 }
           );
-          const newOnChainBorrowCap = (
-            await dataProvider.getReserveCaps(tokenAddress)
-          ).borrowCap.toString();
-          console.log(
-            "[FIX] Set ",
-            normalizedSymbol,
-            "Borrow cap to",
-            Number(newOnChainBorrowCap).toLocaleString(undefined, {
-              currency: "usd",
-            })
-          );
+          if (batch) {
+            addTransaction(tx);
+          } else {
+            await waitForTx(await poolConfigurator.signer.sendTransaction(tx));
+            const newOnChainBorrowCap = (
+              await dataProvider.getReserveCaps(tokenAddress)
+            ).borrowCap.toString();
+            console.log(
+              "[FIX] Set ",
+              normalizedSymbol,
+              "Borrow cap to",
+              Number(newOnChainBorrowCap).toLocaleString(undefined, {
+                currency: "usd",
+              })
+            );
+          }
         } else {
           console.log(
             chalk.green(

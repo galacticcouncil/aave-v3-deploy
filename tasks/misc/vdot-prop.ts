@@ -74,6 +74,12 @@ task(`vdot-prop`, ``).setAction(async function (_, hre) {
   console.log("update reserve configs");
   await hre.run("review-reserve-configs", { fix: true, batch: true });
 
+  console.log("update supply caps");
+  await hre.run("review-supply-caps", { fix: true, batch: true });
+
+  console.log("update borrow caps");
+  await hre.run("review-borrow-caps", { fix: true, batch: true });
+
   console.log("register tokens");
   const registerTokens = [];
   const aToken = (await hre.deployments.getOrNull("VDOT-AToken-Hydration"))

@@ -14,6 +14,7 @@ import { FORK } from "../../helpers/hardhat-config-helpers";
 import chalk from "chalk";
 import { exit } from "process";
 import { getAddress } from "ethers/lib/utils";
+import { addTransaction } from "../../helpers/transaction-batch";
 
 // If the fix flag is present it will change the supply cap to the expected local market configuration
 task(`review-supply-caps`, ``)
@@ -22,8 +23,16 @@ task(`review-supply-caps`, ``)
   // Optional parameter to check only the desired tokens by symbol and separated by comma
   // --checkOnly DAI,USDC,ETH
   .addOptionalParam("checkOnly")
+  .addFlag("batch")
   .setAction(
-    async ({ fix, checkOnly }: { fix: boolean; checkOnly: string }, hre) => {
+    async (
+      {
+        fix,
+        checkOnly,
+        batch,
+      }: { fix: boolean; checkOnly: string; batch: boolean },
+      hre
+    ) => {
       const network = FORK ? FORK : (hre.network.name as eNetwork);
       const { poolAdmin } = await hre.getNamedAccounts();
       const checkOnlyReserves: string[] = checkOnly ? checkOnly.split(",") : [];
@@ -102,24 +111,27 @@ task(`review-supply-caps`, ``)
             continue;
           }
           console.log("[FIX] Updating the supply cap for", normalizedSymbol);
-          await waitForTx(
-            await poolConfigurator.setSupplyCap(
-              tokenAddress,
-              expectedSupplyCap,
-              { gasLimit: 100000 }
-            )
+          const tx = await poolConfigurator.populateTransaction.setSupplyCap(
+            tokenAddress,
+            expectedSupplyCap,
+            { gasLimit: 100000 }
           );
-          const newOnChainSupplyCap = (
-            await dataProvider.getReserveCaps(tokenAddress)
-          ).supplyCap.toString();
-          console.log(
-            "[FIX] Set ",
-            normalizedSymbol,
-            "Supply cap to",
-            Number(newOnChainSupplyCap).toLocaleString(undefined, {
-              currency: "usd",
-            })
-          );
+          if (batch) {
+            addTransaction(tx);
+          } else {
+            await waitForTx(await poolConfigurator.signer.sendTransaction(tx));
+            const newOnChainSupplyCap = (
+              await dataProvider.getReserveCaps(tokenAddress)
+            ).supplyCap.toString();
+            console.log(
+              "[FIX] Set ",
+              normalizedSymbol,
+              "Supply cap to",
+              Number(newOnChainSupplyCap).toLocaleString(undefined, {
+                currency: "usd",
+              })
+            );
+          }
         } else {
           console.log(
             chalk.green(
