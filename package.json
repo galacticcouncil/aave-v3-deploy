@@ -59,7 +59,8 @@
     "prepublish": "npm run clean && npm run compile && npm run build",
     "node": "npx hardhat node --no-deploy",
     "node:fork": "FORK=main npm run node --no-deploy",
-    "deploy": "if [ \"$SKIP_COMPILE\" = 'true' ]; then echo '[Warning] Skipping compilation'; else npm run compile; fi && npx hardhat deploy --no-compile",
+    "deploy": "if [ \"$SKIP_COMPILE\" = 'true' ]; then echo '[Warning] Skipping compilation'; else npm run compile; fi && npx hardhat deploy --no-compile --write true --gasprice 600000000",
+    "deploy:nowrite": "if [ \"$SKIP_COMPILE\" = 'true' ]; then echo '[Warning] Skipping compilation'; else npm run compile; fi && npx hardhat deploy --no-compile",
     "test": "npm run compile && npm run test:fork",
     "test:fork": "MARKET_NAME=Aave FORK=main npx hardhat test ./tests/__setup.spec.ts ./tests/fork/check-list.spec.ts",
     "deploy:market:aave:fork": "FORK=main MARKET_NAME=Aave npm run deploy",
@@ -78,6 +79,7 @@
     "url": "git://github.com/aave/aave-v3-deploy"
   },
   "dependencies": {
-    "@openzeppelin/defender-relay-client": "^1.54.1"
+    "@openzeppelin/defender-relay-client": "^1.54.1",
+    "@polkadot/api": "^15.0.2"
   }
 }

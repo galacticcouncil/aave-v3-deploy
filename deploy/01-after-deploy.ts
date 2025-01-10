@@ -19,6 +19,14 @@ const func: DeployFunction = async function ({
   console.log("=== Post deployment hook ===");
   const poolConfig = loadPoolConfig(MARKET_NAME);
 
+  if (!isTestnetMarket(poolConfig)) {
+    console.log("- Review borrow caps");
+    await hre.run("review-borrow-caps", { fix: true });
+
+    console.log("- Review supply caps");
+    await hre.run("review-supply-caps", { fix: true });
+  }
+
   console.log("- Enable stable borrow in selected assets");
   await hre.run("review-stable-borrow", { fix: true, vvv: true });
 
@@ -38,10 +46,6 @@ const func: DeployFunction = async function ({
   await hre.run("setup-liquidation-protocol-fee");
 
   if (isTestnetMarket(poolConfig)) {
-    // Disable faucet minting and borrowing of wrapped native token
-    await hre.run("disable-faucet-native-testnets");
-    console.log("- Minting and borrowing of wrapped native token disabled");
-
     // Unpause pool
     const poolConfigurator = await getPoolConfiguratorProxy();
     await waitForTx(await poolConfigurator.setPoolPause(false));

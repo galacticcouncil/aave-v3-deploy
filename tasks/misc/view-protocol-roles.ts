@@ -110,32 +110,6 @@ task(
     ).address,
     deployerSigner
   )) as AaveEcosystemReserveController;
-  let wrappedTokenGateway: WrappedTokenGatewayV3;
-  try {
-    wrappedTokenGateway = await getWrappedTokenGateway();
-  } catch (err) {
-    // load legacy contract of WrappedTokenGateway
-    wrappedTokenGateway = WrappedTokenGatewayV3__factory.connect(
-      await getAddressFromJson(networkId, "WETHGateway"),
-      await getFirstSigner()
-    );
-  }
-
-  const paraswapSwapAdapter = await getOwnableContract(
-    await (
-      await hre.deployments.get("ParaSwapLiquiditySwapAdapter")
-    ).address
-  );
-  const paraswapRepayAdapter = await getOwnableContract(
-    await (
-      await hre.deployments.get("ParaSwapRepayAdapter")
-    ).address
-  );
-  const paraswapWithdrawSwapAdapter = await getOwnableContract(
-    await (
-      await hre.deployments.get("ParaSwapWithdrawSwapAdapter")
-    ).address
-  );
 
   /** Output of results*/
   const result = [
@@ -183,11 +157,6 @@ task(
       )),
     },
     {
-      role: "WrappedTokenGateway owner",
-      address: await wrappedTokenGateway.owner(),
-      assert: (await wrappedTokenGateway.owner()) === desiredAdmin,
-    },
-    {
       role: "PoolAdmin is multisig",
       address: (await aclManager.isPoolAdmin(desiredAdmin))
         ? desiredAdmin
@@ -202,10 +171,13 @@ task(
       assert: !(await aclManager.isPoolAdmin(deployer)),
     },
     {
-      role: "EmergencyAdmin",
-      address: (await aclManager.isEmergencyAdmin(desiredEmergencyAdmin))
-        ? desiredEmergencyAdmin
-        : emergencyAdmin,
+      role: "EmergencyAdmin deployer",
+      address: emergencyAdmin,
+      assert: await aclManager.isEmergencyAdmin(emergencyAdmin),
+    },
+    {
+      role: "EmergencyAdmin desired",
+      address: desiredEmergencyAdmin,
       assert: await aclManager.isEmergencyAdmin(desiredEmergencyAdmin),
     },
     {
@@ -241,21 +213,6 @@ task(
       assert:
         (await poolAddressesProvider.getAddress(incentivesControllerId)) ===
         rewardsController.address,
-    },
-    {
-      role: "ParaSwapRepayAdapter owner",
-      address: await paraswapRepayAdapter.owner(),
-      assert: (await paraswapRepayAdapter.owner()) == desiredAdmin,
-    },
-    {
-      role: "ParaSwapSwapAdapter owner",
-      address: await paraswapSwapAdapter.owner(),
-      assert: (await paraswapSwapAdapter.owner()) == desiredAdmin,
-    },
-    {
-      role: "ParaSwapWithdrawSwapAdapter owner",
-      address: await paraswapWithdrawSwapAdapter.owner(),
-      assert: (await paraswapWithdrawSwapAdapter.owner()) == desiredAdmin,
     },
   ];
 

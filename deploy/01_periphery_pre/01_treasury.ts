@@ -124,7 +124,8 @@ const func: DeployFunction = async function ({
     await proxy["initialize(address,address,bytes)"](
       treasuryImplArtifact.address,
       treasuryOwner,
-      initializePayload
+      initializePayload,
+      { gasLimit: 1000000 }
     )
   );
 

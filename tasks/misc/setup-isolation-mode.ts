@@ -28,7 +28,8 @@ task(
       await waitForTx(
         await poolConfigurator.setBorrowableInIsolation(
           assetAddress,
-          borrowableIsolation
+          borrowableIsolation,
+          { gasLimit: 100000 }
         )
       );
       assetsWithBorrowableIsolationMode.push(asset);

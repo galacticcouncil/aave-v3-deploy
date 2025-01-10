@@ -31,7 +31,8 @@ task(
       await waitForTx(
         await poolConfigurator.setLiquidationProtocolFee(
           assetAddress,
-          liquidationProtocolFee
+          liquidationProtocolFee,
+          { gasLimit: 100000 }
         )
       );
       assetsWithProtocolFees.push(asset);
