@@ -44,7 +44,11 @@ import { loadTasks } from "./hardhat-config-helpers";
 
 /** Hardhat Plugin to export tasks in other projects. */
 
-const TASK_FOLDERS = ["../tasks/misc", "../tasks/market-registry"];
+const TASK_FOLDERS = [
+  "../tasks/misc",
+  "../tasks/market-registry",
+  "../tasks/proposals",
+];
 
 // Load all plugin tasks
 loadTasks(TASK_FOLDERS);

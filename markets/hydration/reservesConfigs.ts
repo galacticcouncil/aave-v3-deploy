@@ -5,6 +5,7 @@ import { rateStrategyDOT, rateStrategyStables } from "./rateStrategies";
 const supplyCap = "2222222";
 const borrowCap = "1111111";
 const debtCeiling = "0";
+const reserveFactor = "2000";
 
 export const strategyUSDC: IReserveParams = {
   strategy: rateStrategyStables,
@@ -17,7 +18,7 @@ export const strategyUSDC: IReserveParams = {
   flashLoanEnabled: false,
   reserveDecimals: "6",
   aTokenImpl: eContractid.AToken,
-  reserveFactor: "1000",
+  reserveFactor,
   supplyCap,
   borrowCap,
   debtCeiling,
@@ -37,7 +38,7 @@ export const strategyWETH: IReserveParams = {
   flashLoanEnabled: false,
   reserveDecimals: "18",
   aTokenImpl: eContractid.AToken,
-  reserveFactor: "1000",
+  reserveFactor,
   supplyCap: "850",
   borrowCap: "250",
   debtCeiling,
@@ -64,7 +65,7 @@ export const strategyDOT: IReserveParams = {
   flashLoanEnabled: false,
   reserveDecimals: "10",
   aTokenImpl: eContractid.AToken,
-  reserveFactor: "1000",
+  reserveFactor,
   supplyCap: "600000",
   borrowCap: "400000",
   debtCeiling,
@@ -82,7 +83,7 @@ export const strategyVDOT: IReserveParams = {
   flashLoanEnabled: false,
   reserveDecimals: "10",
   aTokenImpl: eContractid.AToken,
-  reserveFactor: "1000",
+  reserveFactor,
   supplyCap: "222222",
   borrowCap: "111111",
   debtCeiling,

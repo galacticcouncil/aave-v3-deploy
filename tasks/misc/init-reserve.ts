@@ -142,6 +142,12 @@ async function initReserve(
   console.log(`Configuring`, reserve);
   await configureReservesByHelper(ReservesConfig, reserve, batch);
 
+  console.log("set liquidation protocol fee");
+  await hre.run("setup-liquidation-protocol-fee", {
+    batch: true,
+    only: Object.keys(reserve).join(","),
+  });
+
   const dataProvider = await deployments.get(POOL_DATA_PROVIDER);
   await savePoolTokens(reserve, dataProvider.address);
 

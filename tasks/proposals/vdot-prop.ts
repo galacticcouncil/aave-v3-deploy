@@ -103,5 +103,7 @@ task(`vdot-prop`, ``).setAction(async function (_, hre) {
   }
 
   console.log("proposal batch preimage:");
-  console.log(await generateProposal(getBatch(), admin, registerTokens));
+  console.log(
+    (await generateProposal(getBatch(), admin, registerTokens)).toHex()
+  );
 });

@@ -92,7 +92,7 @@ async function generateProposal(transactions, from, registerAssets = []) {
   ];
 
   const extrinsic = utility.batchAll(batch);
-  const batchCallData = extrinsic.method.toHex();
+  const batchCallData = extrinsic.method;
 
   await api.disconnect();
   return batchCallData;
