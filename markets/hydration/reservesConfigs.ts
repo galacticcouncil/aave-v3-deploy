@@ -84,7 +84,7 @@ export const strategyVDOT: IReserveParams = {
   reserveDecimals: "10",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "222222",
+  supplyCap: "444444",
   borrowCap: "111111",
   debtCeiling,
   borrowableIsolation: false,
