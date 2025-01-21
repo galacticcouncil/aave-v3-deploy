@@ -37,6 +37,12 @@ task(`reserve-factor-prop`, ``).setAction(async function (_, hre) {
     batch: true,
   });
 
+  console.log("increase DOT correlated supply caps");
+  await hre.run("review-supply-caps", { fix: true, batch: true });
+
+  console.log("increase DOT TL & TVL");
+  await hre.run("review-reserve-configs", { fix: true, batch: true });
+
   console.log("proposal batch preimage:");
   const proposal = await generateProposal(getBatch(), admin);
   console.log(proposal.toHex());
