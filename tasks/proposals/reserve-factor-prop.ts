@@ -40,6 +40,9 @@ task(`reserve-factor-prop`, ``).setAction(async function (_, hre) {
   console.log("increase DOT correlated supply caps");
   await hre.run("review-supply-caps", { fix: true, batch: true });
 
+  console.log("increase DOT correlated borrow caps");
+  await hre.run("review-borrow-caps", { fix: true, batch: true });
+
   console.log("increase DOT TL & TVL");
   await hre.run("review-reserve-configs", { fix: true, batch: true });
 
