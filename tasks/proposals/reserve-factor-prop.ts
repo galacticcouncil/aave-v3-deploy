@@ -46,8 +46,10 @@ task(`reserve-factor-prop`, ``).setAction(async function (_, hre) {
   console.log("increase DOT TL & TVL");
   await hre.run("review-reserve-configs", { fix: true, batch: true });
 
-  console.log("proposal batch preimage:");
   const proposal = await generateProposal(getBatch(), admin);
+
+  console.log("proposal hash:", proposal.hash.toHex());
+  console.log("proposal batch preimage:");
   console.log(proposal.toHex());
 
   const decoder = new ProposalDecoder(hre);
