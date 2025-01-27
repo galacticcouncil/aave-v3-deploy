@@ -40,7 +40,8 @@ task(
   const desiredAdmin = POOL_ADMIN[networkId];
   if (!desiredAdmin) {
     console.error(
-      "The constant desired Multisig is undefined. Check missing admin address at MULTISIG_ADDRESS or GOVERNANCE_BRIDGE_EXECUTOR constant"
+      "The constant desired Multisig is undefined. Check missing admin address at MULTISIG_ADDRESS or GOVERNANCE_BRIDGE_EXECUTOR constant for the network",
+      networkId
     );
     exit(403);
   }
@@ -60,35 +61,17 @@ task(
   const poolAddressesProviderRegistry =
     await getPoolAddressesProviderRegistry();
 
-  const wrappedGateway = await getWrappedTokenGateway();
-
   const aclManager = (
     await getACLManager(await poolAddressesProvider.getACLManager())
   ).connect(aclSigner);
 
   const emissionManager = await getEmissionManager();
   const currentOwner = await poolAddressesProvider.owner();
-  const paraswapSwapAdapter = await getOwnableContract(
-    await (
-      await hre.deployments.get("ParaSwapLiquiditySwapAdapter")
-    ).address
-  );
-  const paraswapRepayAdapter = await getOwnableContract(
-    await (
-      await hre.deployments.get("ParaSwapRepayAdapter")
-    ).address
-  );
-  const paraswapWithdrawSwapAdapter = await getOwnableContract(
-    await (
-      await hre.deployments.get("ParaSwapWithdrawSwapAdapter")
-    ).address
-  );
 
   if (currentOwner === desiredAdmin) {
     console.log(
       "- This market already transferred the ownership to desired multisig"
     );
-    exit(0);
   }
   if (currentOwner !== poolAdmin) {
     console.log(
@@ -100,41 +83,25 @@ task(
     exit(403);
   }
 
-  /** Start of Paraswap Helpers Ownership */
-  const isDeployerAdminParaswapRepayAdapter =
-    (await paraswapRepayAdapter.owner()) == deployer;
-
-  if (isDeployerAdminParaswapRepayAdapter) {
-    await paraswapRepayAdapter.transferOwnership(desiredAdmin);
-    console.log("- Transferred ParaswapRepayAdapter ownership");
-  }
-
-  const isDeployerAdminParaswapSwapAdapter =
-    (await paraswapSwapAdapter.owner()) == deployer;
-
-  if (isDeployerAdminParaswapSwapAdapter) {
-    await paraswapSwapAdapter.transferOwnership(desiredAdmin);
-    console.log("- Transferred ParaswapSwapAdapter ownership");
-  }
-
-  const isDeployerAdminParaswapWithdrawSwapAdapter =
-    (await paraswapWithdrawSwapAdapter.owner()) == deployer;
-
-  if (isDeployerAdminParaswapWithdrawSwapAdapter) {
-    await paraswapWithdrawSwapAdapter.transferOwnership(desiredAdmin);
-    console.log("- Transferred ParaswapWithdrawSwapAdapter ownership");
-  }
-  /** End of Paraswap Helpers Ownership */
-
   /** Start of Emergency Admin transfer */
   const isDeployerEmergencyAdmin = await aclManager.isEmergencyAdmin(
     emergencyAdmin
   );
-  if (isDeployerEmergencyAdmin) {
-    await waitForTx(await aclManager.addEmergencyAdmin(desiredAdmin));
+  if (process.env.ENCODE_ONLY) {
+    const add = await aclManager.populateTransaction.addEmergencyAdmin(
+      desiredAdmin
+    );
+    const remove = await aclManager.populateTransaction.removeEmergencyAdmin(
+      emergencyAdmin
+    );
+    console.log({ add, remove });
+  } else {
+    if (isDeployerEmergencyAdmin) {
+      await waitForTx(await aclManager.addEmergencyAdmin(desiredAdmin));
 
-    await waitForTx(await aclManager.removeEmergencyAdmin(emergencyAdmin));
-    console.log("- Transferred the ownership of Emergency Admin");
+      await waitForTx(await aclManager.removeEmergencyAdmin(emergencyAdmin));
+      console.log("- Transferred the ownership of Emergency Admin");
+    }
   }
   /** End of Emergency Admin transfer */
 
@@ -176,14 +143,6 @@ task(
     console.log("- Transferred of Pool Addresses Provider Registry");
   }
   /** End of Pool Addresses Provider Registry transfer ownership */
-
-  /** Start of WrappedTokenGateway transfer ownership */
-  const isDeployerGatewayOwner = (await wrappedGateway.owner()) === poolAdmin;
-  if (isDeployerGatewayOwner) {
-    await waitForTx(await wrappedGateway.transferOwnership(desiredAdmin));
-    console.log("- Transferred WrappedTokenGateway ownership");
-  }
-  /** End of WrappedTokenGateway ownership */
 
   /** Start of EmissionManager transfer ownership */
   const isDeployerEmissionManagerOwner =
@@ -231,11 +190,6 @@ task(
       role: "PoolAddressesProvider owner",
       address: await poolAddressesProvider.owner(),
       assert: (await poolAddressesProvider.owner()) === desiredAdmin,
-    },
-    {
-      role: "WrappedTokenGateway owner",
-      address: await wrappedGateway.owner(),
-      assert: (await wrappedGateway.owner()) === desiredAdmin,
     },
     {
       role: "EmissionManager owner",

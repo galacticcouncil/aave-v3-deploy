@@ -18,4 +18,6 @@ coverage
 .coverage_contracts
 typechain
 types
-deployments
+deployments/*
+!deployments/hydration
+!deployments/nice

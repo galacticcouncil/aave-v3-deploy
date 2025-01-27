@@ -57,12 +57,13 @@ const func: DeployFunction = async function ({
 
   // Set Pool implementation to Addresses provider and save the proxy deployment artifact at disk
   if (isPoolProxyPending) {
+    console.log("Setting Pool implementation to Addresses Provider");
     const setPoolImplTx = await waitForTx(
       await addressesProviderInstance.setPoolImpl(poolImplDeployment.address)
     );
     const txPoolProxyAddress = await addressesProviderInstance.getPool();
     deployments.log(
-      `[Deployment] Attached Pool implementation and deployed proxy contract: `
+      `[Deployment] Attached Pool implementation and deployed proxy contract: ${txPoolProxyAddress}`
     );
     deployments.log("- Tx hash:", setPoolImplTx.transactionHash);
   }
@@ -115,15 +116,19 @@ const func: DeployFunction = async function ({
   );
 
   // Set total Flash Loan Premium
+  console.log("Setting Flash Loan Premiums");
   await waitForTx(
     await poolConfiguratorInstance.updateFlashloanPremiumTotal(
-      poolConfig.FlashLoanPremiums.total
+      poolConfig.FlashLoanPremiums.total,
+      { gasLimit: 500000 }
     )
   );
   // Set protocol Flash Loan Premium
+  console.log("Setting Flash Loan Premiums to Protocol");
   await waitForTx(
     await poolConfiguratorInstance.updateFlashloanPremiumToProtocol(
-      poolConfig.FlashLoanPremiums.protocol
+      poolConfig.FlashLoanPremiums.protocol,
+      { gasLimit: 500000 }
     )
   );
 

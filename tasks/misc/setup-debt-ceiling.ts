@@ -28,9 +28,24 @@ task(
     const assetAddress = await getReserveAddress(config, asset);
 
     if (debtCeiling.gt("0")) {
-      await waitForTx(
-        await poolConfigurator.setDebtCeiling(assetAddress, debtCeiling)
-      );
+      if (process.env.ENCODE_ONLY) {
+        const tx = await poolConfigurator.populateTransaction.setDebtCeiling(
+          assetAddress,
+          debtCeiling
+        );
+        console.log(tx);
+      } else {
+        try {
+          await waitForTx(
+            await poolConfigurator.setDebtCeiling(assetAddress, debtCeiling, {
+              gasLimit: 1000000,
+            })
+          );
+        } catch (e) {
+          console.error("Error setting debt ceiling for", asset);
+          continue;
+        }
+      }
       console.log(
         "- Updated debt ceiling of",
         asset,

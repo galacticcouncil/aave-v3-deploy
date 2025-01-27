@@ -1,5 +1,6 @@
 import {
   eContractid,
+  eNetwork,
   IAaveConfiguration,
   iMultiPoolsAssets,
   IReserveParams,
@@ -37,7 +38,8 @@ import {
   isL2PoolSupported,
   loadPoolConfig,
 } from "./market-config-helpers";
-import { ZERO_ADDRESS } from "./constants";
+import { POOL_ADMIN, ZERO_ADDRESS } from "./constants";
+import { addTransaction } from "./transaction-batch";
 
 declare var hre: HardhatRuntimeEnvironment;
 
@@ -50,7 +52,8 @@ export const initReservesByHelper = async (
   symbolPrefix: string,
   admin: tEthereumAddress,
   treasuryAddress: tEthereumAddress,
-  incentivesController: tEthereumAddress
+  incentivesController: tEthereumAddress,
+  batch: boolean = false
 ) => {
   const poolConfig = (await loadPoolConfig(
     MARKET_NAME as ConfigNames
@@ -74,7 +77,7 @@ export const initReservesByHelper = async (
   )) as any as Pool;
 
   // CHUNK CONFIGURATION
-  const initChunks = 3;
+  const initChunks = 1;
 
   // Initialize variables for future reserves initialization
   let reserveTokens: string[] = [];
@@ -104,9 +107,9 @@ export const initReservesByHelper = async (
   let strategyAddressPerAsset: Record<string, string> = {};
   let aTokenType: Record<string, string> = {};
   let delegationAwareATokenImplementationAddress = "";
-  let aTokenImplementationAddress = "";
-  let stableDebtTokenImplementationAddress = "";
-  let variableDebtTokenImplementationAddress = "";
+  let aTokenImplementationAddress: string;
+  let stableDebtTokenImplementationAddress: string;
+  let variableDebtTokenImplementationAddress: string;
 
   stableDebtTokenImplementationAddress = (
     await hre.deployments.get(STABLE_DEBT_TOKEN_IMPL_ID)
@@ -222,14 +225,24 @@ export const initReservesByHelper = async (
     chunkIndex < chunkedInitInputParams.length;
     chunkIndex++
   ) {
-    const tx = await waitForTx(
-      await configurator.initReserves(chunkedInitInputParams[chunkIndex])
-    );
+    if (batch) {
+      const tx = await configurator.populateTransaction.initReserves(
+        chunkedInitInputParams[chunkIndex],
+        { gasLimit: 10000000 }
+      );
+      addTransaction(tx);
+    } else {
+      const tx = await waitForTx(
+        await configurator.initReserves(chunkedInitInputParams[chunkIndex], {
+          gasLimit: 10000000,
+        })
+      );
 
-    console.log(
-      `  - Reserve ready for: ${chunkedSymbols[chunkIndex].join(", ")}`,
-      `\n    - Tx hash: ${tx.transactionHash}`
-    );
+      console.log(
+        `  - Reserve ready for: ${chunkedSymbols[chunkIndex].join(", ")}`,
+        `\n    - Tx hash: ${tx.transactionHash}`
+      );
+    }
   }
 };
 
@@ -263,7 +276,8 @@ export const getPairsTokenAggregator = (
 
 export const configureReservesByHelper = async (
   reservesParams: iMultiPoolsAssets<IReserveParams>,
-  tokenAddresses: { [symbol: string]: tEthereumAddress }
+  tokenAddresses: { [symbol: string]: tEthereumAddress },
+  batch: boolean = false
 ) => {
   const { deployer } = await hre.getNamedAccounts();
   const addressProviderArtifact = await hre.deployments.get(
@@ -370,45 +384,81 @@ export const configureReservesByHelper = async (
     symbols.push(assetSymbol);
   }
   if (tokens.length) {
-    // Set aTokenAndRatesDeployer as temporal admin
     const aclAdmin = await hre.ethers.getSigner(
       await addressProvider.getACLAdmin()
     );
-    await waitForTx(
-      await aclManager
-        .connect(aclAdmin)
-        .addRiskAdmin(reservesSetupHelper.address)
-    );
+    {
+      const reservesSetupHelperOwner = await reservesSetupHelper.owner();
+      if (reservesSetupHelperOwner !== aclAdmin.address) {
+        console.log(
+          "Transferring ownership of ReservesSetupHelper to ACL admin"
+        );
+        await waitForTx(
+          await reservesSetupHelper
+            .connect(await hre.ethers.getSigner(deployer))
+            .transferOwnership(aclAdmin.address)
+        );
+      }
+    }
+    const reservesSetupHelperOwner = await reservesSetupHelper.owner();
+    const network = (process.env.FORK || hre.network.name) as eNetwork;
+    console.log("ReservesSetupHelper owner: ", reservesSetupHelperOwner);
+    if (
+      !(await aclManager.isRiskAdmin(reservesSetupHelper.address)) &&
+      POOL_ADMIN[network].toLowerCase() ===
+        reservesSetupHelperOwner.toLowerCase()
+    ) {
+      console.log("Adding ReservesSetupHelper to risk admins");
+      if (batch) {
+        const tx = await aclManager.populateTransaction.addRiskAdmin(
+          reservesSetupHelper.address
+        );
+        addTransaction(tx);
+      } else {
+        await waitForTx(
+          await aclManager
+            .connect(aclAdmin)
+            .addRiskAdmin(reservesSetupHelper.address)
+        );
+      }
+    }
 
     // Deploy init per chunks
-    const enableChunks = 20;
+    const enableChunks = 1;
     const chunkedSymbols = chunk(symbols, enableChunks);
     const chunkedInputParams = chunk(inputParams, enableChunks);
     const poolConfiguratorAddress = await addressProvider.getPoolConfigurator();
 
-    console.log(`- Configure reserves in ${chunkedInputParams.length} txs`);
+    console.log(
+      `- Configure reserves in ${chunkedInputParams.length} txs ${chunkedSymbols}`
+    );
     for (
       let chunkIndex = 0;
       chunkIndex < chunkedInputParams.length;
       chunkIndex++
     ) {
-      const tx = await waitForTx(
-        await reservesSetupHelper.configureReserves(
-          poolConfiguratorAddress,
-          chunkedInputParams[chunkIndex]
-        )
-      );
-      console.log(
-        `  - Init for: ${chunkedSymbols[chunkIndex].join(", ")}`,
-        `\n    - Tx hash: ${tx.transactionHash}`
-      );
+      if (batch) {
+        const tx =
+          await reservesSetupHelper.populateTransaction.configureReserves(
+            poolConfiguratorAddress,
+            chunkedInputParams[chunkIndex],
+            { gasLimit: 1000000 }
+          );
+        addTransaction(tx);
+      } else {
+        const tx = await waitForTx(
+          await reservesSetupHelper.configureReserves(
+            poolConfiguratorAddress,
+            chunkedInputParams[chunkIndex],
+            { gasLimit: 1000000 }
+          )
+        );
+        console.log(
+          `  - Init for: ${chunkedSymbols[chunkIndex].join(", ")}`,
+          `\n    - Tx hash: ${tx.transactionHash}`
+        );
+      }
     }
-    // Remove ReservesSetupHelper from risk admins
-    await waitForTx(
-      await aclManager
-        .connect(aclAdmin)
-        .removeRiskAdmin(reservesSetupHelper.address)
-    );
   }
 };
 
