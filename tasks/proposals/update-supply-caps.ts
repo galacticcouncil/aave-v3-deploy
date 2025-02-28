@@ -10,12 +10,8 @@ task(`update-supply-caps`, ``).setAction(async function (_, hre) {
   console.log("update supply caps");
   await hre.run("review-supply-caps", { fix: true, batch: true });
 
-  const { preimages, whitelist, proposal, extrinsic } = await generateProposal(
-    getBatch(),
-    admin,
-    [],
-    true
-  );
+  const { preimages, whitelist, proposal, whitelistedCall } =
+    await generateProposal(getBatch(), admin, [], true);
 
   const decoder = new ProposalDecoder(hre);
   await decoder.init();
@@ -23,9 +19,9 @@ task(`update-supply-caps`, ``).setAction(async function (_, hre) {
   console.log(preimages.toHex());
   decoder.printTree(decoder.transformCall(preimages.toHuman()));
   console.log("call:");
-  console.log(extrinsic.toHex());
-  decoder.printTree(decoder.transformCall(extrinsic.toHuman()));
-  console.log("whitelist call hash:", extrinsic.hash.toHex());
+  console.log(whitelistedCall.toHex());
+  decoder.printTree(decoder.transformCall(whitelistedCall.toHuman()));
+  console.log("whitelist call hash:", whitelistedCall.hash.toHex());
   console.log(whitelist.toHex());
   decoder.printTree(decoder.transformCall(whitelist.toHuman()));
   console.log("whitelisted proposal:");

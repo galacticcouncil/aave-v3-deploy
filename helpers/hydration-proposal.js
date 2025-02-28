@@ -99,17 +99,19 @@ async function generateProposal(
   const extrinsic = utility.batchAll(batch);
 
   if (whitelist) {
+    const whitelistedCall = extrinsic.method;
     const whitelist = api.tx.whitelist.whitelistCall(
-      extrinsic.method.hash
+      whitelistedCall.hash
     ).method;
-    const proposal = api.tx.whitelist.dispatchWhitelistedCallWithPreimage(
-      extrinsic.method
-    ).method;
+    const proposal =
+      api.tx.whitelist.dispatchWhitelistedCallWithPreimage(
+        whitelistedCall
+      ).method;
     const preimages = utility.batchAll([
-      api.tx.preimage.notePreimage(extrinsic.toHex()),
+      api.tx.preimage.notePreimage(whitelistedCall.toHex()),
       api.tx.preimage.notePreimage(proposal.toHex()),
     ]).method;
-    return { extrinsic: extrinsic.method, preimages, whitelist, proposal };
+    return { whitelistedCall, preimages, whitelist, proposal };
   } else {
     return extrinsic.method;
   }
