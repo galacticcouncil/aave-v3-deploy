@@ -27,7 +27,12 @@ const location = (contract) => ({
   },
 });
 
-async function generateProposal(transactions, from, registerAssets = []) {
+async function generateProposal(
+  transactions,
+  from,
+  registerAssets = [],
+  whitelist = false
+) {
   const provider = new WsProvider(process.env.RPC || "wss://rpc.hydradx.cloud");
   const api = await ApiPromise.create({ provider, noInitWarn: true });
   const { utility, evm, assetRegistry } = api.tx;
@@ -92,10 +97,20 @@ async function generateProposal(transactions, from, registerAssets = []) {
   ];
 
   const extrinsic = utility.batchAll(batch);
-  const batchCallData = extrinsic.method;
 
-  await api.disconnect();
-  return batchCallData;
+  if (whitelist) {
+    const whitelist = api.tx.whitelist.whitelistCall(extrinsic.method.hash);
+    const proposal = api.tx.whitelist.dispatchWhitelistedCallWithPreimage(
+      extrinsic.method
+    );
+    const preimages = utility.batchAll([
+      api.tx.preimage.notePreimage(extrinsic.method.toHex()),
+      api.tx.preimage.notePreimage(proposal.toHex()),
+    ]);
+    return { extrinsic: extrinsic.method, preimages, whitelist, proposal };
+  } else {
+    return extrinsic.method;
+  }
 }
 
 module.exports = {
