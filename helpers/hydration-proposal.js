@@ -105,7 +105,7 @@ async function generateProposal(
     );
     const preimages = utility.batchAll([
       api.tx.preimage.notePreimage(extrinsic.method.toHex()),
-      api.tx.preimage.notePreimage(proposal.toHex()),
+      api.tx.preimage.notePreimage(proposal.method.toHex()),
     ]);
     return { extrinsic: extrinsic.method, preimages, whitelist, proposal };
   } else {

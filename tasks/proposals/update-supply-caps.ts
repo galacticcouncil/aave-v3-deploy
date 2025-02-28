@@ -24,4 +24,10 @@ task(`update-supply-caps`, ``).setAction(async function (_, hre) {
   console.log(whitelist.toHex());
   console.log("whitelisted proposal:");
   console.log(proposal.toHex());
+  console.log("whitelisted proposal hash:");
+  console.log(proposal.hash.toHex());
+
+  const decoder = new ProposalDecoder(hre);
+  await decoder.init();
+  decoder.printTree(decoder.transformCall(extrinsic.toHuman()));
 });
