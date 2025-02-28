@@ -16,18 +16,21 @@ task(`update-supply-caps`, ``).setAction(async function (_, hre) {
     [],
     true
   );
-  console.log("submit preimages:");
-  console.log(preimages.toHex());
-  console.log("call:");
-  console.log(extrinsic.toHex());
-  console.log("whitelist call hash:", extrinsic.hash.toHex());
-  console.log(whitelist.toHex());
-  console.log("whitelisted proposal:");
-  console.log(proposal.toHex());
-  console.log("whitelisted proposal hash:");
-  console.log(proposal.hash.toHex());
 
   const decoder = new ProposalDecoder(hre);
   await decoder.init();
+  console.log("submit preimages:");
+  console.log(preimages.toHex());
+  decoder.printTree(decoder.transformCall(preimages.toHuman()));
+  console.log("call:");
+  console.log(extrinsic.toHex());
   decoder.printTree(decoder.transformCall(extrinsic.toHuman()));
+  console.log("whitelist call hash:", extrinsic.hash.toHex());
+  console.log(whitelist.toHex());
+  decoder.printTree(decoder.transformCall(whitelist.toHuman()));
+  console.log("whitelisted proposal:");
+  console.log(proposal.toHex());
+  decoder.printTree(decoder.transformCall(proposal.toHuman()));
+  console.log("whitelisted proposal hash:");
+  console.log(proposal.hash.toHex());
 });
