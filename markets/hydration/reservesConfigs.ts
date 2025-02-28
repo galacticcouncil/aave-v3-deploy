@@ -66,7 +66,7 @@ export const strategyDOT: IReserveParams = {
   reserveDecimals: "10",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "800000",
+  supplyCap: "1200000",
   borrowCap: "500000",
   debtCeiling,
   borrowableIsolation: false,
