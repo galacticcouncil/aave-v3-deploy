@@ -18,7 +18,7 @@ task(`update-supply-caps`, ``).setAction(async function (_, hre) {
   console.log("submit preimages:");
   console.log(preimages.toHex());
   decoder.printTree(decoder.transformCall(preimages.toHuman()));
-  console.log("call:");
+  console.log("whitelisted call hash:", whitelistedCall.hash.toHex());
   console.log(whitelistedCall.toHex());
   decoder.printTree(decoder.transformCall(whitelistedCall.toHuman()));
   console.log("whitelist call hash:", whitelistedCall.hash.toHex());
