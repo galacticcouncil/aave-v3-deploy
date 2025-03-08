@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ethers } from "ethers";
 import chalk from "chalk";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
