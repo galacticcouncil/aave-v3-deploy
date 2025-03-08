@@ -1,0 +1,24 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "EmptyContract",
+  "sourceName": "contracts/EmptyContract.sol",
+  "abi": [
+    {
+      "inputs": [],
+      "name": "get",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x6080604052348015600f57600080fd5b50607780601d6000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c80636d4ce63c14602d575b600080fd5b600060405190815260200160405180910390f3fea2646970667358221220c2f8e63144d44ffa3d2d81f062b9c4e22b52da7d4f97f537ca0aba353600c4fd64736f6c634300080a0033",
+  "deployedBytecode": "0x6080604052348015600f57600080fd5b506004361060285760003560e01c80636d4ce63c14602d575b600080fd5b600060405190815260200160405180910390f3fea2646970667358221220c2f8e63144d44ffa3d2d81f062b9c4e22b52da7d4f97f537ca0aba353600c4fd64736f6c634300080a0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}
