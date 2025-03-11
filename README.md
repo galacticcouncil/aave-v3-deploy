@@ -25,6 +25,20 @@ This Node.js repository contains the configuration and deployment scripts for th
    npm run compile
    ```
 
+## How to generate governance proposal
+
+To generate governance proposal based on current mainnet state (to update supply caps according to configuration in this example):
+
+```shell
+MARKET_NAME=Hydration FORK=hydration HARDHAT_NETWORK=hydration npx hardhat update-supply-caps
+```
+
+To run it on forked mainnet state when you have your fork zombienet on `http://localhost:9944` for example:
+
+```shell
+MARKET_NAME=Hydration FORK=hydration HARDHAT_NETWORK=hydration RPC=http://localhost:9944 npx hardhat update-supply-caps
+```
+
 ## How to deploy Aave V3 in testnet network
 
 To deploy Aave V3 in a Testnet network, copy the `.env.example` into a `.env` file, and fill the environment variables `MNEMONIC`, and `ALCHEMY_KEY`.
