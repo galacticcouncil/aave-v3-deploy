@@ -7,6 +7,7 @@ import {
   strategyVDOT,
   strategyWBTC,
   strategyWETH,
+  strategyTBTC
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -26,6 +27,7 @@ export const HydrationConfig: IAaveConfiguration = {
     WBTC: strategyWBTC,
     DOT: strategyDOT,
     VDOT: strategyVDOT,
+    TBTC: strategyTBTC
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -35,6 +37,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: tokenAddress(19),
       DOT: tokenAddress(5),
       VDOT: tokenAddress(15),
+      TBTC: tokenAddress(1000765)
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -43,6 +46,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: tokenAddress(3),
       DOT: tokenAddress(5),
       VDOT: tokenAddress(15),
+      //TBTC: ZERO_ADDRESS
     },
     [eHydrationNetwork.zombie]: {
       USDC: ZERO_ADDRESS,
@@ -51,6 +55,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: ZERO_ADDRESS,
       DOT: ZERO_ADDRESS,
       //VDOT: ZERO_ADDRESS,
+      //TBTC: ZERO_ADDRESS,
     },
   },
   EModes: {
@@ -79,6 +84,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: "0xeDD9A7C47A9F91a0F2db93978A88844167B4a04f",
       DOT: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
       VDOT: "0xF89728554C61B7AA08bf94823D1017697047c0fE",
+      TBTC: "0x48ae7803cd09c48434e3fc5629f15fb76f0b5ce5",
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -87,6 +93,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: "0xC9cCBe99bdD9538871f9756Ca5Ea64C2267cb0a7",
       DOT: "0x422E745797EC0Ef399c17cE3E2348394F2944727",
       VDOT: "0x1B4A88Ce5A6c6878De2aC19694b2523e14E67eB6",
+      TBTC: "0x5d8320f3ced9575d8e25b6f437e610fc6a03bf52",
     },
   },
 };

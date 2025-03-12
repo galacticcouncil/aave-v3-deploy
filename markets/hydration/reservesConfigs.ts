@@ -89,3 +89,21 @@ export const strategyVDOT: IReserveParams = {
   debtCeiling,
   borrowableIsolation: false,
 };
+
+export const strategyTBTC: IReserveParams = {
+  strategy: rateStrategyVolatileOne,
+  baseLTVAsCollateral: "7000",
+  liquidationThreshold: "8000",
+  liquidationBonus: "10500",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: true,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "18",
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "33",
+  borrowCap: "10",
+  debtCeiling,
+  borrowableIsolation: false,
+};
