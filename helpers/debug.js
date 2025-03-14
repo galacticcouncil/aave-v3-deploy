@@ -7,6 +7,9 @@ const provider = new ethers.providers.JsonRpcProvider('http://localhost:9999');
 const contractAddress = '0x112b087b60C1a166130d59266363C45F8aa99db0';
 const assetAddress = '0xf3ba4d1b50f78301bdd7eaea9b67822a15fca691';
 
+//Rename thus to assetAddress so it is used
+const tbtcAddress = '0x69003a65189f6Ed993D3bD3E2B74f1Db39F405ce';
+
 // This is a minimal ABI with just the function we're trying to call
 // You might need to adjust the function name/signature based on the actual contract
 const minimumABI = [
@@ -19,6 +22,19 @@ const minimumABI = [
 ];
 
 async function debugPoolCall() {
+  const ethers = require('ethers');
+
+  const functionSignatures = [
+    "getPool(address)",
+    "getReserveData(address)",
+    "getAssetData(address)",
+    "getLendingPool(address)"
+  ];
+  
+  functionSignatures.forEach(signature => {
+    const selector = ethers.utils.id(signature).slice(0, 10);
+    console.log(`${signature}: ${selector}`);
+  });
   console.log('Starting debug...');
   console.log(`Contract: ${contractAddress}`);
   console.log(`Asset: ${assetAddress}`);

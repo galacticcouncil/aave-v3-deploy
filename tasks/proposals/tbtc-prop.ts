@@ -59,6 +59,12 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
     batch: true,
   });
 
+  console.log("review reserve factors");
+  await hre.run("review-reserve-factors", {
+    fix: true,
+    batch: true,
+  });
+
 
   console.log("update reserve configs");
   await hre.run("review-reserve-configs", { fix: true, batch: true });
@@ -68,6 +74,12 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
 
   console.log("update borrow caps");
   await hre.run("review-borrow-caps", { fix: true, batch: true });
+
+ /* console.log("set liquidation protocol fees for TBTC");
+  await hre.run("setup-liquidation-protocol-fee", {
+    only: "TBTC",
+    batch: true,
+  });*/
 
   console.log("register tokens");
   const registerTokens = [];
@@ -110,6 +122,9 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
     console.log("ATOKEN DOESNT EXIST")
     return Error("AToken should be there at this point")
   }
+
+    //TODO: register as fee payment asset 
+
 
   console.log("proposal batch preimage:");
   let preimages =  (await generateProposal(getBatch(), admin, registerTokens));
