@@ -24,6 +24,8 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
   const signer = await hre.ethers.getSigner(poolAdmin);
   const poolConfigurator = (await getPoolConfiguratorProxy()).connect(signer);
   const poolAddressesProvider = await getPoolAddressesProvider();
+  const { utils } = hre.ethers;
+
   const aclManager = (
     await getACLManager(await poolAddressesProvider.getACLManager())
   ).connect(signer);
@@ -48,16 +50,7 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
     fix: true,
     batch: true,
   });
-
-
-  //We dont need to update any emode?!
-  /*
-  console.log("update stables emode");
-  await hre.run("review-e-mode", {
-    name: "StableEMode",
-    fix: true,
-    batch: true,
-  });
+  
 
   console.log("update DOT emode");
   await hre.run("review-e-mode", {
@@ -66,14 +59,6 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
     batch: true,
   });
 
-  console.log("add VDOT to DOT emode");
-  {
-    const tx = await poolConfigurator.populateTransaction.setAssetEModeCategory(
-      await getReserveAddress(config, "VDOT"),
-      config.EModes["DotEMode"].id
-    );
-    addTransaction(tx);
-  }*/
 
   console.log("update reserve configs");
   await hre.run("review-reserve-configs", { fix: true, batch: true });
@@ -86,16 +71,33 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
 
   console.log("register tokens");
   const registerTokens = [];
-  const aToken = (await hre.deployments.getOrNull("TBTC-AToken-Hydration"))//TODO: this gotta be deployed
-    ?.address;
+
+
+  let deployer;
+  try {
+    deployer = config.ATokensAndRatesHelper || 
+      (await hre.deployments.get("ATokensAndRatesHelper")).address;
+  } catch (error) {
+    // If not found, use the PoolConfigurator
+    deployer = await poolAddressesProvider.getPoolConfigurator();
+  }
+  console.log("Deployer Address:", deployer);
+
+  const nonce = await hre.ethers.provider.getTransactionCount(deployer);
+
+
+  const aToken = utils.getContractAddress({
+    from: deployer,
+    nonce: nonce
+  });
+  console.log("aToken", aToken);
+
+
   const reserveAddress = await getReserveAddress(config, "TBTC");
+  console.log("reserveAddress", reserveAddress);
+
   if (aToken) {
-    const underlying = new hre.ethers.Contract(
-      reserveAddress,
-      (await hre.deployments.getArtifact("AToken")).abi,
-      signer
-    );
-    const decimals = await underlying.callStatic.decimals();
+    const decimals = 18;
     const token = {
       asset: 1006,
       symbol: "atBTC",
@@ -104,6 +106,9 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
     };
     console.log("adding", token);
     registerTokens.push(token);
+  } else {
+    console.log("ATOKEN DOESNT EXIST")
+    return Error("AToken should be there at this point")
   }
 
   console.log("proposal batch preimage:");

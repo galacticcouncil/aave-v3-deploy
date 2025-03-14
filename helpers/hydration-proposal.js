@@ -33,7 +33,9 @@ async function generateProposal(
   registerAssets = [],
   whitelist = false
 ) {
-  const provider = new WsProvider(process.env.RPC || "wss://rpc.hydradx.cloud");
+  const provider = new WsProvider(process.env.RPC 
+    ? process.env.RPC.replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://')
+    : "wss://rpc.hydradx.cloud");
   const api = await ApiPromise.create({ provider, noInitWarn: true });
   const { utility, evm, assetRegistry } = api.tx;
 
