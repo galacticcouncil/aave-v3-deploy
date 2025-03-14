@@ -17,8 +17,17 @@ import {
 } from "../../helpers";
 import { network } from "hardhat";
 import ProposalDecoder from "../../helpers/proposal-decoder";
+import { ReverseContext } from "jsondiffpatch";
 
 task(`tbtc-prop`, ``).setAction(async function (_, hre) {
+
+  continue
+  check if there is revert. I should not see any reverts
+  i should see 5 evm tx succeeded.
+
+
+  maybe initialize succesduly, but didnt confure it
+
   const config = await loadPoolConfig(MARKET_NAME as ConfigNames);
   const { poolAdmin } = await hre.getNamedAccounts();
   const signer = await hre.ethers.getSigner(poolAdmin);
