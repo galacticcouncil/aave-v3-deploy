@@ -21,6 +21,7 @@ import {
   INCENTIVES_PROXY_ID,
 } from "../../helpers/deploy-ids";
 
+import { exit } from "process";
 task(`setup-incentives`, `Updates incentives program or starts new one if incentives doesn't exists.`).setAction(async function (_, hre) {
   const admin = await requirePoolAdmin(hre);
   const incentives = await getIncentivesV2();
@@ -40,21 +41,21 @@ task(`setup-incentives`, `Updates incentives program or starts new one if incent
   const emissionAdmin = await emissionManager.getEmissionAdmin("0x0000000000000000000000000000000100000005")
 
   //2 lines bellow worked
-  //let tx = await emissionManager.populateTransaction.setEmissionAdmin("0x0000000000000000000000000000000100000005", admin, {gasLimit: 100000});
-  //const emissionOwner = await emissionManager.owner(); //signed as this account
-  //const fromAcc = emissionOwner;
+  let tx = await emissionManager.populateTransaction.setEmissionAdmin("0x0000000000000000000000000000000100000005", admin, {gasLimit: 100000});
+  const emissionOwner = await emissionManager.owner(); //signed as this account
+  const fromAcc = emissionOwner;
 
 
-  let tx = await emissionManager.populateTransaction.configureAssets([{
-    emissionPerSecond: ethers.utils.parseEther("0.1"),
-    totalSupply: "1000_000_000_000_000_000_000".replaceAll("_", ""),
-    distributionEnd: time + + 1000 * 60 * 60,
-    asset: "0x02639ec01313c8775Fae74F2dad1118c8A8a86dA", //aDot
-    reward: "0x0000000000000000000000000000000100000005", //Dot
-    transferStrategy: pullRewStrategy.address,
-    rewardOracle: "0xfbca0a6dc5b74c042df23025d99ef0f1fcac6702",
-  }], { gasLimit: 1000000 });
-  const fromAcc = emissionAdmin;
+  //let tx = await emissionManager.populateTransaction.configureAssets([{
+  //  emissionPerSecond: ethers.utils.parseEther("0.1"),
+  //  totalSupply: "1000_000_000_000_000_000_000".replaceAll("_", ""),
+  //  distributionEnd: time + + 1000 * 60 * 60,
+  //  asset: "0x02639ec01313c8775Fae74F2dad1118c8A8a86dA", //aDot
+  //  reward: "0x0000000000000000000000000000000100000005", //Dot
+  //  transferStrategy: pullRewStrategy.address,
+  //  rewardOracle: "0xfbca0a6dc5b74c042df23025d99ef0f1fcac6702",
+  //}], { gasLimit: 1000000 });
+  //const fromAcc = emissionAdmin;
   if (emissionAdmin == ZERO_ADDRESS) {
     throw new Error("emission admin is not set");
   }

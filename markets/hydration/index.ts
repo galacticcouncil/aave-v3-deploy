@@ -1,4 +1,4 @@
-import { eHydrationNetwork, IAaveConfiguration } from "./../../helpers/types";
+import { eHydrationNetwork, IAaveConfiguration, AssetType, TransferStrategy } from "./../../helpers/types";
 import AaveMarket from "../aave";
 import {
   strategyDOT,
@@ -8,6 +8,9 @@ import {
   strategyWBTC,
   strategyWETH,
 } from "./reservesConfigs";
+
+import { incentivesConf } from "./incentives"
+
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
 
@@ -89,6 +92,13 @@ export const HydrationConfig: IAaveConfiguration = {
       VDOT: "0x1B4A88Ce5A6c6878De2aC19694b2523e14E67eB6",
     },
   },
+  //NOTE: our tasks doesn't support `rewardsOracle` option from `IncentivesConfig` 
+  IncentivesConfig: {
+    enabled: incentivesConf.enabled,
+    rewards: incentivesConf.rewards,
+    rewardsOracle: {},
+    incentivesInput: incentivesConf.incentivesInput,
+  }
 };
 
 export default HydrationConfig;
