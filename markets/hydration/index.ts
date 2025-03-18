@@ -9,6 +9,9 @@ import {
   strategyWETH,
 } from "./reservesConfigs";
 
+
+import { incentivesADOT } from "./incentives";
+
 import { incentivesConf } from "./incentives"
 
 import { tokenAddress } from "./helpers";
@@ -92,12 +95,10 @@ export const HydrationConfig: IAaveConfiguration = {
       VDOT: "0x1B4A88Ce5A6c6878De2aC19694b2523e14E67eB6",
     },
   },
-  //NOTE: our tasks doesn't support `rewardsOracle` option from `IncentivesConfig` 
   IncentivesConfig: {
-    enabled: incentivesConf.enabled,
-    rewards: incentivesConf.rewards,
-    rewardsOracle: {},
-    incentivesInput: incentivesConf.incentivesInput,
+    [eHydrationNetwork.hydration] : {
+      aDOT: incentivesADOT
+    }
   }
 };
 

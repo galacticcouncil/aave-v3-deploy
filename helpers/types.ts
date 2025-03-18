@@ -609,6 +609,7 @@ export interface RewardsConfigInput {
   rewardOracle: string;
   transferStrategy: TransferStrategy;
   transferStrategyParams: string;
+  emissionAdmin: tEthereumAddress;
 }
 
 export interface IncentivesConfig {
