@@ -1,69 +1,85 @@
-import { generateProposal } from "../../helpers/hydration-proposal.js";
 import { task } from "hardhat/config";
-import { getBatch } from "../../helpers/transaction-batch";
-import requirePoolAdmin from "../../helpers/utilities/require-pool-admin";
-import ProposalDecoder from "../../helpers/proposal-decoder";
-import { addTransaction, getBatch } from "../../helpers/transaction-batch";
-import { ZERO_ADDRESS } from "./../../helpers/constants";
-
-import { getEmissionManager, getIncentivesV2  } from "../../helpers/contract-getters";
-import { getAddress } from "ethers/lib/utils";
-
-
-import {
-  getPoolAddressesProvider,
-} from "../../helpers/contract-getters";
-import { POOL_ADDRESSES_PROVIDER_ID } from "../../helpers/deploy-ids";
-import { getAddressFromJson, getBlockTimestamp } from "../../helpers/utilities/tx";
-import { getAaveProtocolDataProvider, getPullRewardsStrategy } from "../../helpers/contract-getters";
-import { FORK } from "../../helpers/hardhat-config-helpers";
-import {
-  INCENTIVES_PROXY_ID,
-} from "../../helpers/deploy-ids";
-
 import { exit } from "process";
+import { loadPoolConfig } from "../../helpers/market-config-helpers";
+import { MARKET_NAME } from "../../helpers/env";
+import { ZERO_ADDRESS } from "./../../helpers/constants";
+import { FORK } from "../../helpers/hardhat-config-helpers";
+import { addTransaction, getBatch } from "../../helpers/transaction-batch";
+import { ProposalDecoder } from "../../helpers/proposal-decoder";
+import { getEmissionManager } from "../../helpers/contract-getters";
+import { TransferStrategy } from "./../../helpers/types";
+import { generateProposal } from "../../helpers/hydration-proposal.js";
+import { getPullRewardsStrategy } from "../../helpers/contract-getters";
+
 task(`setup-incentives`, `Updates incentives program or starts new one if incentives doesn't exists.`).setAction(async function (_, hre) {
-  const admin = await requirePoolAdmin(hre);
-  const incentives = await getIncentivesV2();
+  const network = FORK ? FORK : (hre.network.name as eNetwork);
 
+  const poolConfig = await loadPoolConfig(MARKET_NAME);
+  const chainlinkConf = poolConfig.ChainlinkAggregator[network];
+  const incentivesConf = poolConfig.IncentivesConfig[network];
+  const em = await getEmissionManager();
 
-  const time = await getBlockTimestamp();
-  
-  const { address: rewardsProxyAddress } = await hre.deployments.get(
-    INCENTIVES_PROXY_ID
-  );
-
-  const { deployer, incentivesRewardsVault, incentivesEmissionManager } = await hre.getNamedAccounts();
-
-  const pullRewStrategy = await getPullRewardsStrategy();
-
-  const emissionManager = await getEmissionManager()
-  const emissionAdmin = await emissionManager.getEmissionAdmin("0x0000000000000000000000000000000100000005")
-
-  //2 lines bellow worked
-  let tx = await emissionManager.populateTransaction.setEmissionAdmin("0x0000000000000000000000000000000100000005", admin, {gasLimit: 100000});
-  const emissionOwner = await emissionManager.owner(); //signed as this account
-  const fromAcc = emissionOwner;
-
-
-  //let tx = await emissionManager.populateTransaction.configureAssets([{
-  //  emissionPerSecond: ethers.utils.parseEther("0.1"),
-  //  totalSupply: "1000_000_000_000_000_000_000".replaceAll("_", ""),
-  //  distributionEnd: time + + 1000 * 60 * 60,
-  //  asset: "0x02639ec01313c8775Fae74F2dad1118c8A8a86dA", //aDot
-  //  reward: "0x0000000000000000000000000000000100000005", //Dot
-  //  transferStrategy: pullRewStrategy.address,
-  //  rewardOracle: "0xfbca0a6dc5b74c042df23025d99ef0f1fcac6702",
-  //}], { gasLimit: 1000000 });
-  //const fromAcc = emissionAdmin;
-  if (emissionAdmin == ZERO_ADDRESS) {
-    throw new Error("emission admin is not set");
+  if (!chainlinkConf) {
+    console.log(chalk.red(`chainlink configuration for ${network} network not found`));
+    exit(1);
   }
-  //TODO: check RewardsStrategy was deployed
 
+  const incentivizedTkns = Object.keys(incentivesConf);
+  const assetsConf = [];
+  const transferStrat = await getPullRewardsStrategy();
+  var emissionAdmin;
+  for (let i = 0; i < incentivizedTkns.length; i++ ) {
+    const incTkn = incentivizedTkns[i];
+    const cfg = incentivesConf[incTkn];
 
+    if (!cfg.asset || cfg.asset == ZERO_ADDRESS) {
+      console.log(chalk.red(`${incTkn}: invalid incentive config`));
+      exit(1);
+    }
+
+    if (cfg.transferStrategy != TransferStrategy.PullRewardsStrategy) {
+      console.log(chalk.red(`${incTkn}: invalid transfer strategy. Only PullRewardsStrategy is supported`));
+      exit(1);
+    }
+
+    if (!cfg.reward || cfg.reward == ZERO_ADDRESS) {
+      console.log(chalk.red(`${incTkn}: invalid reward value: ${cfg.reward}`));
+      exit(1);
+    }
+    const emAdmin = await em.getEmissionAdmin(cfg.reward);
+    if (!emAdmin || emAdmin != cfg.emissionAdmin || emAdmin == ZERO_ADDRESS) {
+      console.log(chalk.red(`${incTkn}: invalid emission admin for reward asset: ${cfg.reward}. onchain admin: ${emAdmin}, configured admin: ${cfg.emissionAdmin}`));
+      exit(1);
+    }
+
+    if (!emissionAdmin) {
+      emissionAdmin = emAdmin;
+    }
+
+    if (emissionAdmin != emAdmin) {
+      console.log(chalk.red(`${incTkn}: all incentives doesn't have same emission admin. Transactions can't be batched`));
+      exit(1);
+    }
+
+    const time = await getBlockTimestamp();
+    assetsConf.push({
+      emissionPerSecond: cfg.emissionPerSecond,
+      distributionEnd: time + cfg.duration,
+      asset: cfg.asset,
+      reward: cfg.reward,
+      transferStrategy: transferStrat.address,
+      rewardOracle: cfg.rewardOracle,
+    })
+  }
+
+  if (assetsConf.length == 0) {
+    console.log("nothing to setup/update")
+    return;
+  }
+
+  let tx = await emissionManager.populateTransaction.configureAssets(assetsConf, { gasLimit: 1000000 });
   const { preimages, whitelist, proposal, whitelistedCall } =
-     await generateProposal([tx], fromAcc, [], true);
+     await generateProposal([tx], emissionAdmin, [], true);
 
    const decoder = new ProposalDecoder(hre);
    await decoder.init();
