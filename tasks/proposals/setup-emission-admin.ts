@@ -12,8 +12,7 @@ import { generateProposal } from "../../helpers/hydration-proposal.js";
 import ProposalDecoder from "../../helpers/proposal-decoder";
 
 task(`setup-emission-admins`, `Setup emission admin for`)
-  .addFlag("batch")
-  .setAction(async function ({ batch }: { batch: boolean }, hre) {
+  .setAction(async function (_, hre) {
   const network = FORK ? FORK : (hre.network.name as eNetwork);
 
   const poolConfig = await loadPoolConfig(MARKET_NAME);
@@ -66,24 +65,22 @@ task(`setup-emission-admins`, `Setup emission admin for`)
     exit(1);
   }
 
-  if (!batch) {
-    const { preimages, whitelist, proposal, whitelistedCall } = await generateProposal(txs, signer, [], true);
+  const { preimages, whitelist, proposal, whitelistedCall } = await generateProposal(txs, signer, [], true);
 
-    const decoder = new ProposalDecoder(hre);
-    await decoder.init();
-    console.log("submit preimages:");
-    console.log(preimages.toHex());
-    decoder.printTree(decoder.transformCall(preimages.toHuman()));
-    console.log("whitelisted call hash:", whitelistedCall.hash.toHex());
-    console.log(whitelistedCall.toHex());
-    decoder.printTree(decoder.transformCall(whitelistedCall.toHuman()));
-    console.log("whitelist call hash:", whitelistedCall.hash.toHex());
-    console.log(whitelist.toHex());
-    decoder.printTree(decoder.transformCall(whitelist.toHuman()));
-    console.log("whitelisted proposal:");
-    console.log(proposal.toHex());
-    decoder.printTree(decoder.transformCall(proposal.toHuman()));
-    console.log("whitelisted proposal hash:");
-    console.log(proposal.hash.toHex());
-  } 
+  const decoder = new ProposalDecoder(hre);
+  await decoder.init();
+  console.log("submit preimages:");
+  console.log(preimages.toHex());
+  decoder.printTree(decoder.transformCall(preimages.toHuman()));
+  console.log("whitelisted call hash:", whitelistedCall.hash.toHex());
+  console.log(whitelistedCall.toHex());
+  decoder.printTree(decoder.transformCall(whitelistedCall.toHuman()));
+  console.log("whitelist call hash:", whitelistedCall.hash.toHex());
+  console.log(whitelist.toHex());
+  decoder.printTree(decoder.transformCall(whitelist.toHuman()));
+  console.log("whitelisted proposal:");
+  console.log(proposal.toHex());
+  decoder.printTree(decoder.transformCall(proposal.toHuman()));
+  console.log("whitelisted proposal hash:");
+  console.log(proposal.hash.toHex());
 });
