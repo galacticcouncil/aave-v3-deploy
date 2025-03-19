@@ -62,12 +62,6 @@ task(`vdot-prop`, ``).setAction(async function (_, hre) {
     batch: true,
   });
 
-  console.log("review reserve factors");
-  await hre.run("review-reserve-factors", {
-    fix: true,
-    batch: true,
-  });
-
   console.log("add VDOT to DOT emode");
   {
     const tx = await poolConfigurator.populateTransaction.setAssetEModeCategory(
