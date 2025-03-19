@@ -3,6 +3,8 @@ import {
   getReserveAddress,
   loadPoolConfig,
 } from "../../helpers/market-config-helpers";
+
+
 import { generateProposal } from "../../helpers/hydration-proposal.js";
 import { MARKET_NAME } from "../../helpers/env";
 import { task } from "hardhat/config";
@@ -10,6 +12,7 @@ import { addTransaction, getBatch } from "../../helpers/transaction-batch";
 import {
   FORK,
   getACLManager,
+  getAToken,
   getPoolAddressesProvider,
   getPoolConfiguratorProxy,
   POOL_ADMIN,
@@ -20,14 +23,6 @@ import ProposalDecoder from "../../helpers/proposal-decoder";
 import { ReverseContext } from "jsondiffpatch";
 
 task(`tbtc-prop`, ``).setAction(async function (_, hre) {
-
-  continue
-  check if there is revert. I should not see any reverts
-  i should see 5 evm tx succeeded.
-
-
-  maybe initialize succesduly, but didnt confure it
-
   const config = await loadPoolConfig(MARKET_NAME as ConfigNames);
   const { poolAdmin } = await hre.getNamedAccounts();
   const signer = await hre.ethers.getSigner(poolAdmin);
@@ -61,13 +56,6 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
   });
   
 
-  console.log("update DOT emode");
-  await hre.run("review-e-mode", {
-    name: "DotEMode",
-    fix: true,
-    batch: true,
-  });
-
   console.log("review reserve factors");
   await hre.run("review-reserve-factors", {
     fix: true,
@@ -83,12 +71,6 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
 
   console.log("update borrow caps");
   await hre.run("review-borrow-caps", { fix: true, batch: true });
-
- /* console.log("set liquidation protocol fees for TBTC");
-  await hre.run("setup-liquidation-protocol-fee", {
-    only: "TBTC",
-    batch: true,
-  });*/
 
   console.log("register tokens");
   const registerTokens = [];
@@ -117,10 +99,12 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
   const reserveAddress = await getReserveAddress(config, "TBTC");
   console.log("reserveAddress", reserveAddress);
 
+  let tbtcTokenId = 1000765;
+  let tokenIdOnHydration = 1006;
   if (aToken) {
     const decimals = 18;
     const token = {
-      asset: 1006,
+      asset: tokenIdOnHydration,
       symbol: "atBTC",
       address: aToken,
       decimals: decimals,
@@ -132,11 +116,15 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
     return Error("AToken should be there at this point")
   }
 
-    //TODO: register as fee payment asset 
+  const newFeePaymentToken = []; 
+  newFeePaymentToken.push({asset: tokenIdOnHydration, price: "92283439104248400"});
 
+  const transfers = []; 
+  let treasuryId = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
+  transfers.push({source: treasuryId, dest: account(aToken), id: tbtcTokenId, amount:  "5000000000000000000"});
 
   console.log("proposal batch preimage:");
-  let preimages =  (await generateProposal(getBatch(), admin, registerTokens));
+  let preimages =  (await generateProposal(getBatch(), admin, registerTokens, false, newFeePaymentToken, transfers));
 
   const decoder = new ProposalDecoder(hre);
   await decoder.init();
@@ -144,3 +132,11 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
   console.log(preimages.toHex());
   decoder.printTree(decoder.transformCall(preimages.toHuman()));
 });
+
+function account(address: any) {
+  const prefix = Buffer.from("ETH\0");
+  const addressBuffer = Buffer.from(address.replace("0x", ""), "hex");
+  const remainingBytes = 32 - prefix.length - addressBuffer.length;
+  const padding = Buffer.alloc(remainingBytes);
+  return "0x" + Buffer.concat([prefix, addressBuffer, padding]).toString("hex");
+}
