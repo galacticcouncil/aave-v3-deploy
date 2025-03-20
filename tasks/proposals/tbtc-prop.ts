@@ -119,12 +119,19 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
   const newFeePaymentToken = []; 
   newFeePaymentToken.push({asset: tokenIdOnHydration, price: "92283439104248400"});
 
-  const transfers = []; 
+  const dispatchSells = []; 
+
   let treasuryId = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
-  transfers.push({source: treasuryId, dest: account(aToken), id: tbtcTokenId, amount:  "5000000000000000000"});
+  dispatchSells.push({asOrigin: treasuryId, assetIn: 1000765, assetOut: 1006, amount: "5000000000000000000", route: [    
+    {
+        pool: { AAVE: null }, 
+        asset_in: 1000765,    
+        asset_out: 1006    
+    }
+], });
 
   console.log("proposal batch preimage:");
-  let preimages =  (await generateProposal(getBatch(), admin, registerTokens, false, newFeePaymentToken, transfers));
+  let preimages =  (await generateProposal(getBatch(), admin, registerTokens, false, newFeePaymentToken, dispatchSells));
 
   const decoder = new ProposalDecoder(hre);
   await decoder.init();
