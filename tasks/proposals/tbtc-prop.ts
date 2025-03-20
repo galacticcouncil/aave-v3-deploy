@@ -117,7 +117,7 @@ task(`tbtc-prop`, ``).setAction(async function (_, hre) {
   }
 
   const newFeePaymentToken = []; 
-  newFeePaymentToken.push({asset: tokenIdOnHydration, price: "92283439104248400"});
+  newFeePaymentToken.push({asset: tokenIdOnHydration, price: "10701726019645100"});
 
   const dispatchSells = []; 
 
