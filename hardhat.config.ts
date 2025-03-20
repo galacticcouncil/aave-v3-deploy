@@ -27,7 +27,7 @@ import "@nomicfoundation/hardhat-chai-matchers";
 import "@nomiclabs/hardhat-etherscan";
 
 const SKIP_LOAD = process.env.SKIP_LOAD === "true";
-const TASK_FOLDERS = ["misc", "market-registry"];
+const TASK_FOLDERS = ["misc", "market-registry", "proposals"];
 
 // Prevent to load tasks before compilation and typechain
 if (!SKIP_LOAD) {
