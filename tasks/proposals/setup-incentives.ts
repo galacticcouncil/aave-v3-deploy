@@ -5,11 +5,13 @@ import { MARKET_NAME } from "../../helpers/env";
 import { ZERO_ADDRESS } from "./../../helpers/constants";
 import { FORK } from "../../helpers/hardhat-config-helpers";
 import { addTransaction, getBatch } from "../../helpers/transaction-batch";
-import { ProposalDecoder } from "../../helpers/proposal-decoder";
+import ProposalDecoder from "../../helpers/proposal-decoder";
 import { getEmissionManager } from "../../helpers/contract-getters";
 import { TransferStrategy } from "./../../helpers/types";
 import { generateProposal } from "../../helpers/hydration-proposal.js";
 import { getPullRewardsStrategy } from "../../helpers/contract-getters";
+import { getBlockTimestamp } from "../../helpers/utilities/tx";
+import chalk from "chalk";
 
 task(`setup-incentives`, `Updates incentives program or starts new one if incentives doesn't exists.`).setAction(async function (_, hre) {
   const network = FORK ? FORK : (hre.network.name as eNetwork);
@@ -47,7 +49,7 @@ task(`setup-incentives`, `Updates incentives program or starts new one if incent
       exit(1);
     }
     const emAdmin = await em.getEmissionAdmin(cfg.reward);
-    if (!emAdmin || emAdmin != cfg.emissionAdmin || emAdmin == ZERO_ADDRESS) {
+    if (!emAdmin || emAdmin.toLowerCase() != cfg.emissionAdmin.toLowerCase() || emAdmin == ZERO_ADDRESS) {
       console.log(chalk.red(`${incTkn}: invalid emission admin for reward asset: ${cfg.reward}. onchain admin: ${emAdmin}, configured admin: ${cfg.emissionAdmin}`));
       exit(1);
     }
@@ -56,7 +58,7 @@ task(`setup-incentives`, `Updates incentives program or starts new one if incent
       emissionAdmin = emAdmin;
     }
 
-    if (emissionAdmin != emAdmin) {
+    if (emissionAdmin.toLowerCase() != emAdmin.toLowerCase()) {
       console.log(chalk.red(`${incTkn}: all incentives doesn't have same emission admin. Transactions can't be batched`));
       exit(1);
     }
@@ -69,6 +71,7 @@ task(`setup-incentives`, `Updates incentives program or starts new one if incent
       reward: cfg.reward,
       transferStrategy: transferStrat.address,
       rewardOracle: cfg.rewardOracle,
+      totalSupply: "0",
     })
   }
 
@@ -77,7 +80,7 @@ task(`setup-incentives`, `Updates incentives program or starts new one if incent
     return;
   }
 
-  let tx = await emissionManager.populateTransaction.configureAssets(assetsConf, { gasLimit: 1000000 });
+  let tx = await em.populateTransaction.configureAssets(assetsConf, { gasLimit: 1000000 });
   const { preimages, whitelist, proposal, whitelistedCall } =
      await generateProposal([tx], emissionAdmin, [], true);
 

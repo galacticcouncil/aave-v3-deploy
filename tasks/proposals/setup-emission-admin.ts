@@ -11,7 +11,7 @@ import { getBatch } from "../../helpers/transaction-batch";
 import { generateProposal } from "../../helpers/hydration-proposal.js";
 import ProposalDecoder from "../../helpers/proposal-decoder";
 
-task(`setup-emission-admins`, `Setup emission admin for`)
+task(`setup-emission-admin`, `Setup emission admin for all assets in IncnetiveConfig`)
   .setAction(async function (_, hre) {
   const network = FORK ? FORK : (hre.network.name as eNetwork);
 
