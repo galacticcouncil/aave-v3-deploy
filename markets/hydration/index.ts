@@ -108,7 +108,7 @@ export const HydrationConfig: IAaveConfiguration = {
         asset: "0xFfa8e3273367E16312736b4112dE625FD39c4568",
         reward: tokenAddress(15), //vDOT
         rewardOracle: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191",
-        transferStrategy: TransferStrategy.PullRewardsStrategy,
+        transferStrategy: TransferStrategy.PotRewardsStrategy,
         emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice]
       }
     }

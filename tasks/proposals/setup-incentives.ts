@@ -9,7 +9,7 @@ import ProposalDecoder from "../../helpers/proposal-decoder";
 import { getEmissionManager } from "../../helpers/contract-getters";
 import { TransferStrategy } from "./../../helpers/types";
 import { generateProposal } from "../../helpers/hydration-proposal.js";
-import { getPullRewardsStrategy } from "../../helpers/contract-getters";
+import { getPotRewardsStrategy } from "../../helpers/contract-getters";
 import { getBlockTimestamp } from "../../helpers/utilities/tx";
 import chalk from "chalk";
 
@@ -28,8 +28,9 @@ task(`setup-incentives`, `Updates incentives program or starts new one if incent
 
   const incentivizedTkns = Object.keys(incentivesConf);
   const assetsConf = [];
-  const transferStrat = await getPullRewardsStrategy();
+  const transferStrat = await getPotRewardsStrategy();
   var emissionAdmin;
+
   for (let i = 0; i < incentivizedTkns.length; i++ ) {
     const incTkn = incentivizedTkns[i];
     const cfg = incentivesConf[incTkn];
@@ -39,8 +40,8 @@ task(`setup-incentives`, `Updates incentives program or starts new one if incent
       exit(1);
     }
 
-    if (cfg.transferStrategy != TransferStrategy.PullRewardsStrategy) {
-      console.log(chalk.red(`${incTkn}: invalid transfer strategy. Only PullRewardsStrategy is supported`));
+    if (cfg.transferStrategy != TransferStrategy.PotRewardsStrategy) {
+      console.log(chalk.red(`${incTkn}: invalid transfer strategy. Only PotRewardsStrategy is supported`));
       exit(1);
     }
 

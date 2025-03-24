@@ -596,6 +596,7 @@ export enum AssetType {
 }
 
 export enum TransferStrategy {
+  PotRewardsStrategy,
   PullRewardsStrategy,
   StakedRewardsStrategy,
 }
