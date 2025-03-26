@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { generateProposal } from "../../helpers/hydration-proposal.js";
 import { task } from "hardhat/config";
 import { getBatch } from "../../helpers/transaction-batch";

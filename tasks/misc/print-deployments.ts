@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { formatUnits } from "ethers/lib/utils";
 import { task } from "hardhat/config";
 import { hrtime } from "process";

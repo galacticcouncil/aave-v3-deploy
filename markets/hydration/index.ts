@@ -1,6 +1,4 @@
-import { eHydrationNetwork, IAaveConfiguration, AssetType, TransferStrategy } from "./../../helpers/types";
-import { BigNumber } from "ethers";
-import {POOL_ADMIN} from "./../../helpers/constants";
+import { eHydrationNetwork, IAaveConfiguration } from "./../../helpers/types";
 import AaveMarket from "../aave";
 import {
   strategyDOT,
@@ -9,8 +7,8 @@ import {
   strategyVDOT,
   strategyWBTC,
   strategyWETH,
+  strategyTBTC
 } from "./reservesConfigs";
-
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
 
@@ -29,6 +27,7 @@ export const HydrationConfig: IAaveConfiguration = {
     WBTC: strategyWBTC,
     DOT: strategyDOT,
     VDOT: strategyVDOT,
+    TBTC: strategyTBTC
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -38,6 +37,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: tokenAddress(19),
       DOT: tokenAddress(5),
       VDOT: tokenAddress(15),
+      TBTC: tokenAddress(1000765)
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -46,6 +46,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: tokenAddress(3),
       DOT: tokenAddress(5),
       VDOT: tokenAddress(15),
+      //TBTC: ZERO_ADDRESS
     },
     [eHydrationNetwork.zombie]: {
       USDC: ZERO_ADDRESS,
@@ -54,6 +55,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: ZERO_ADDRESS,
       DOT: ZERO_ADDRESS,
       //VDOT: ZERO_ADDRESS,
+      //TBTC: ZERO_ADDRESS,
     },
   },
   EModes: {
@@ -82,6 +84,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: "0xeDD9A7C47A9F91a0F2db93978A88844167B4a04f",
       DOT: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
       VDOT: "0xF89728554C61B7AA08bf94823D1017697047c0fE",
+      TBTC: "0xe5AcDfB0d5EC5cE34F7448B41ef4a97c4e83D9c1",
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -90,6 +93,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: "0xC9cCBe99bdD9538871f9756Ca5Ea64C2267cb0a7",
       DOT: "0x422E745797EC0Ef399c17cE3E2348394F2944727",
       VDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191",
+      //TBTC: "0x5d8320f3ced9575d8e25b6f437e610fc6a03bf52",
     },
   },
   IncentivesConfig: {

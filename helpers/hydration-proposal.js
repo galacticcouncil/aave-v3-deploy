@@ -1,5 +1,7 @@
 const { ApiPromise, WsProvider } = require("@polkadot/api");
+const { map } = require("bluebird");
 const ethers = require("ethers");
+const { getAddress } = require("ethers/lib/utils");
 
 function account(address) {
   const prefix = Buffer.from("ETH\0");
@@ -31,11 +33,15 @@ async function generateProposal(
   transactions,
   from,
   registerAssets = [],
-  whitelist = false
+  whitelist = false,
+  newFeePaymentAssets = [],
+  dispatchAsSell = []
 ) {
-  const provider = new WsProvider(process.env.RPC || "wss://rpc.hydradx.cloud");
+  const provider = new WsProvider(process.env.RPC 
+    ? process.env.RPC.replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://')
+    : "wss://rpc.hydradx.cloud");
   const api = await ApiPromise.create({ provider, noInitWarn: true });
-  const { utility, evm, assetRegistry } = api.tx;
+  const { utility, evm, assetRegistry, multiTransactionPayment, tokens, router } = api.tx;
 
   const evmAddress = (account) =>
     ethers.utils.hexlify(
@@ -85,6 +91,20 @@ async function generateProposal(
       true
     );
 
+    const addFeePaymentAsset = ({ asset, price }) =>
+      multiTransactionPayment.addCurrency(asset, price);
+
+    const forceTransfer = ({ source, dest, id, amount }) =>
+      tokens.forceTransfer(source,dest, id, amount)
+
+
+
+    const dispatchSell = ({asOrigin, assetIn, assetOut, amount, route}) => 
+      utility.dispatchAs(
+        { system: { signed: asOrigin} },
+        router.sell(assetIn, assetOut, amount, 0, route)
+      )
+
   const batch = [
     ...transactions.map((tx) =>
       rootEvmCall({
@@ -94,6 +114,9 @@ async function generateProposal(
       })
     ),
     ...registerAssets.map(registerAsset),
+    ...newFeePaymentAssets.map(addFeePaymentAsset),
+    ...dispatchAsSell.map(dispatchSell)
+
   ];
 
   const extrinsic = utility.batchAll(batch);

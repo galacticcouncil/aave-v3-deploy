@@ -1,6 +1,6 @@
 {
-  "name": "@aave/deploy-v3",
-  "version": "1.56.2",
+  "name": "@galacticcouncil/aave-deploy-v3",
+  "version": "1.56.3",
   "files": [
     "dist",
     "helpers",
@@ -10,13 +10,6 @@
     "node": ">=16.0.0"
   },
   "types": "dist/types/helpers/index.d.ts",
-  "author": "Aave",
-  "contributors": [
-    "David Racero <david.k@aave.com>",
-    "Miguel Martinez <miguel@aave.com>",
-    "Steven Valeri <steven@aave.com>",
-    "Emilio Frangella <emilio@aave.com>"
-  ],
   "main": "dist/helpers/index.js",
   "devDependencies": {
     "@aave/aave-token": "^1.0.4",
@@ -76,7 +69,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/aave/aave-v3-deploy"
+    "url": "git://github.com/galacticcouncil/aave-v3-deploy"
   },
   "dependencies": {
     "@openzeppelin/defender-relay-client": "^1.54.1",

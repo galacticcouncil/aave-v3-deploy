@@ -100,7 +100,7 @@ export const NETWORKS_RPC_URL: iParamsPerNetwork<string> = {
     eBaseNetwork.base
   )}`,
   [eHydrationNetwork.nice]: "https://rpc.nice.hydration.cloud",
-  [eHydrationNetwork.hydration]: "https://rpc.hydradx.cloud",
+  [eHydrationNetwork.hydration]: process.env.RPC || "https://rpc.hydradx.cloud",
   [eHydrationNetwork.zombie]: "http://localhost:8645",
 };
 
