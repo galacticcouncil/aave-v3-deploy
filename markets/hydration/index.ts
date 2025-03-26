@@ -11,11 +11,6 @@ import {
   strategyWETH,
 } from "./reservesConfigs";
 
-
-import { incentivesADOT } from "./incentives";
-
-import { incentivesConf } from "./incentives"
-
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
 
@@ -94,20 +89,19 @@ export const HydrationConfig: IAaveConfiguration = {
       WETH: "0xBd763043861CAF4E7e4E7Ffe951A03dF2Ea7E5AC",
       WBTC: "0xC9cCBe99bdD9538871f9756Ca5Ea64C2267cb0a7",
       DOT: "0x422E745797EC0Ef399c17cE3E2348394F2944727",
-      VDOT: "0x1B4A88Ce5A6c6878De2aC19694b2523e14E67eB6",
+      VDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191",
     },
   },
   IncentivesConfig: {
-    [eHydrationNetwork.hydration] : {
-      aDOT: incentivesADOT
-    },
+    [eHydrationNetwork.hydration] : {},
     [eHydrationNetwork.nice] : {
-      aDOT: {
+      DOT: {
         emissionPerSecond: BigNumber.from("413359788"),
         duration: 1209600,
-        asset: "0xFfa8e3273367E16312736b4112dE625FD39c4568",
-        reward: tokenAddress(15), //vDOT
-        rewardOracle: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191",
+        asset: "DOT",
+        assetType: AssetType.AToken,
+        reward: tokenAddress(15),
+        rewardOracle: "VDOT",
         transferStrategy: TransferStrategy.PotRewardsStrategy,
         emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice]
       }

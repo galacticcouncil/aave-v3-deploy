@@ -2,13 +2,15 @@
 import { eHydrationNetwork, AssetType, TransferStrategy, RewardsConfigInput } from "./../../helpers/types";
 import {POOL_ADMIN} from "./../../helpers/constants";
 import { tokenAddress } from "./helpers";
+import { BigNumber } from "ethers";
 
-export const incentivesADOT : RewardsConfigInput  = {
-  emissionPerSecond: 10000000000,
+export const incentivesDOT : RewardsConfigInput  = {
+  emissionPerSecond: BigNumber.from("10000000000000000"),
   duration: 604800,
-  asset: "0x02639ec01313c8775Fae74F2dad1118c8A8a86dA",
+  asset: "DOT",
+  assetType: AssetType.AToken,
   reward: tokenAddress(5),
-  rewardOracle: "0xfbca0a6dc5b74c042df23025d99ef0f1fcac6702",
+  rewardOracle: "DOT",
   transferStrategy: TransferStrategy.PotRewardsStrategy,
   emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration]
 }

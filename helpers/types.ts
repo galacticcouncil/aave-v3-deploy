@@ -604,9 +604,10 @@ export enum TransferStrategy {
 export interface RewardsConfigInput {
   emissionPerSecond: BigNumberish;
   duration: number;
-  asset: tEthereumAddress;
+  asset: string;
+  AssetType: AssetType;
   reward: tEthereumAddress;
-  rewardOracle: tEthereumAddress;
+  rewardOracle: string;
   transferStrategy: TransferStrategy;
   emissionAdmin: tEthereumAddress;
 }
