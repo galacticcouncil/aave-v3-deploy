@@ -66,36 +66,8 @@ task(`review-emission-admin`, ``)
 
   if (batch) {
     return
-  }
-
-  const txs = getBatch();
-  if (txs.length == 0) {
-    console.log(chalk.green(`'${network}.${reserve}': no emission admin to update`));
-    return
-  }
-
-  const signer = await em.owner();
-  if (signer == ZERO_ADDRESS) {
-    console.log(chalk.red(`emissionManager's owner can't be zero address`));
+  } else {
+    console.log(chalk.red(`'${network}.${reserve}': direct sending transaction is not supported`));
     exit(1);
   }
-
-  const { preimages, whitelist, proposal, whitelistedCall } = await generateProposal(txs, signer, [], true);
-
-  const decoder = new ProposalDecoder(hre);
-  await decoder.init();
-  console.log("submit preimages:");
-  console.log(preimages.toHex());
-  decoder.printTree(decoder.transformCall(preimages.toHuman()));
-  console.log("whitelisted call hash:", whitelistedCall.hash.toHex());
-  console.log(whitelistedCall.toHex());
-  decoder.printTree(decoder.transformCall(whitelistedCall.toHuman()));
-  console.log("whitelist call hash:", whitelistedCall.hash.toHex());
-  console.log(whitelist.toHex());
-  decoder.printTree(decoder.transformCall(whitelist.toHuman()));
-  console.log("whitelisted proposal:");
-  console.log(proposal.toHex());
-  decoder.printTree(decoder.transformCall(proposal.toHuman()));
-  console.log("whitelisted proposal hash:");
-  console.log(proposal.hash.toHex());
 });

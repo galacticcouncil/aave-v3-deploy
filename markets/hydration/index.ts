@@ -104,8 +104,8 @@ export const HydrationConfig: IAaveConfiguration = {
       DOT: [{
         emissionPerSecond: BigNumber.from("413359788"),
         duration: 1209600,
-        asset: "DOT",
-        assetType: AssetType.AToken,
+        reserve: "DOT",
+        incentivizedToken: AssetType.AToken,
         reward: tokenAddress(15),
         rewardOracle: "VDOT",
         transferStrategy: TransferStrategy.PotRewardsStrategy,

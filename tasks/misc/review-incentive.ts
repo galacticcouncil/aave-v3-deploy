@@ -65,7 +65,7 @@ task(`review-incentive`, ``)
   for (let i = 0; i < incentiveConf.length; i++) {
     const cfg = incentiveConf[i];
   
-    const reserveAddr = reserveTokens.find((el) => el.symbol == cfg.asset)?.tokenAddress;
+    const reserveAddr = reserveTokens.find((el) => el.symbol == cfg.reserve)?.tokenAddress;
     if (!reserveAddr || reserveAddr == ZERO_ADDRESS) {
       console.log(chalk.red(`'${network}.${reserve}[${i}]': reserve asset not found`));
       exit(1);
@@ -107,7 +107,7 @@ task(`review-incentive`, ``)
 
     let activeInc;
     let asset;
-    switch (cfg.assetType) {
+    switch (cfg.incentivizedToken) {
       case AssetType.AToken:
         activeInc = onChainInc.aIncentiveData.rewardsTokenInformation.find(el => el.rewardTokenAddress == cfg.reward );
         asset = aTokenAddress;
@@ -121,7 +121,7 @@ task(`review-incentive`, ``)
         asset = stableDebtTokenAddress;
         break;
       default:
-        console.log(chalk.red(`'${network}.${reserve}[${i}]': unknown assetType option: ${cfg.assetType}`));
+        console.log(chalk.red(`'${network}.${reserve}[${i}]': unknown incentivizedToken option: ${cfg.incentivizedToken}`));
         exit(1);
     }
 
@@ -152,32 +152,11 @@ task(`review-incentive`, ``)
 
   if (batch) {
     return
+  } else {
+    console.log(chalk.red(`'${network}.${reserve}': direct sending transaction is not supported`));
+    exit(1);
   }
 
-  const txs = getBatch();
-  if (txs.length == 0) {
-    console.log(chalk.green(`'${network}.${reserve}': no incentive to update`));
-    return
-  }
-
-  const { preimages, whitelist, proposal, whitelistedCall } = await generateProposal(txs, admin, [], true);
-
-  const decoder = new ProposalDecoder(hre);
-  await decoder.init();
-  console.log("submit preimages:");
-  console.log(preimages.toHex());
-  decoder.printTree(decoder.transformCall(preimages.toHuman()));
-  console.log("whitelisted call hash:", whitelistedCall.hash.toHex());
-  console.log(whitelistedCall.toHex());
-  decoder.printTree(decoder.transformCall(whitelistedCall.toHuman()));
-  console.log("whitelist call hash:", whitelistedCall.hash.toHex());
-  console.log(whitelist.toHex());
-  decoder.printTree(decoder.transformCall(whitelist.toHuman()));
-  console.log("whitelisted proposal:");
-  console.log(proposal.toHex());
-  decoder.printTree(decoder.transformCall(proposal.toHuman()));
-  console.log("whitelisted proposal hash:");
-  console.log(proposal.hash.toHex());
 });
 
 
