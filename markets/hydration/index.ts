@@ -1,4 +1,11 @@
-import { eHydrationNetwork, IAaveConfiguration } from "./../../helpers/types";
+import {
+  eHydrationNetwork,
+  IAaveConfiguration,
+  AssetType,
+  TransferStrategy,
+} from "./../../helpers/types";
+import { POOL_ADMIN } from "./../../helpers/constants";
+import { BigNumber } from "ethers";
 import AaveMarket from "../aave";
 import {
   strategyDOT,
@@ -7,7 +14,7 @@ import {
   strategyVDOT,
   strategyWBTC,
   strategyWETH,
-  strategyTBTC
+  strategyTBTC,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -27,7 +34,7 @@ export const HydrationConfig: IAaveConfiguration = {
     WBTC: strategyWBTC,
     DOT: strategyDOT,
     VDOT: strategyVDOT,
-    TBTC: strategyTBTC
+    TBTC: strategyTBTC,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -37,7 +44,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: tokenAddress(19),
       DOT: tokenAddress(5),
       VDOT: tokenAddress(15),
-      TBTC: tokenAddress(1000765)
+      TBTC: tokenAddress(1000765),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -92,8 +99,25 @@ export const HydrationConfig: IAaveConfiguration = {
       WETH: "0xBd763043861CAF4E7e4E7Ffe951A03dF2Ea7E5AC",
       WBTC: "0xC9cCBe99bdD9538871f9756Ca5Ea64C2267cb0a7",
       DOT: "0x422E745797EC0Ef399c17cE3E2348394F2944727",
-      VDOT: "0x1B4A88Ce5A6c6878De2aC19694b2523e14E67eB6",
+      VDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191",
       //TBTC: "0x5d8320f3ced9575d8e25b6f437e610fc6a03bf52",
+    },
+  },
+  IncentivesConfig: {
+    [eHydrationNetwork.hydration]: {},
+    [eHydrationNetwork.nice]: {
+      DOT: [
+        {
+          emissionPerSecond: BigNumber.from("413359788"),
+          duration: 1209600,
+          reserve: "DOT",
+          incentivizedToken: AssetType.AToken,
+          reward: tokenAddress(15),
+          rewardOracle: "VDOT",
+          transferStrategy: TransferStrategy.PotRewardsStrategy,
+          emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
+        },
+      ],
     },
   },
 };

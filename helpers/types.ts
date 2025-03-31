@@ -596,6 +596,7 @@ export enum AssetType {
 }
 
 export enum TransferStrategy {
+  PotRewardsStrategy,
   PullRewardsStrategy,
   StakedRewardsStrategy,
 }
@@ -603,12 +604,12 @@ export enum TransferStrategy {
 export interface RewardsConfigInput {
   emissionPerSecond: BigNumberish;
   duration: number;
-  asset: string;
-  assetType: AssetType;
-  reward: string;
+  reserve: string;
+  incentivizedToken: AssetType;
+  reward: tEthereumAddress;
   rewardOracle: string;
   transferStrategy: TransferStrategy;
-  transferStrategyParams: string;
+  emissionAdmin: tEthereumAddress;
 }
 
 export interface IncentivesConfig {
