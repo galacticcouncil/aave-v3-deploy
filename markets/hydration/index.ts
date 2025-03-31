@@ -1,5 +1,10 @@
-import { eHydrationNetwork, IAaveConfiguration, AssetType, TransferStrategy } from "./../../helpers/types";
-import {POOL_ADMIN} from "./../../helpers/constants";
+import {
+  eHydrationNetwork,
+  IAaveConfiguration,
+  AssetType,
+  TransferStrategy,
+} from "./../../helpers/types";
+import { POOL_ADMIN } from "./../../helpers/constants";
 import { BigNumber } from "ethers";
 import AaveMarket from "../aave";
 import {
@@ -9,7 +14,7 @@ import {
   strategyVDOT,
   strategyWBTC,
   strategyWETH,
-  strategyTBTC
+  strategyTBTC,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -29,7 +34,7 @@ export const HydrationConfig: IAaveConfiguration = {
     WBTC: strategyWBTC,
     DOT: strategyDOT,
     VDOT: strategyVDOT,
-    TBTC: strategyTBTC
+    TBTC: strategyTBTC,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -39,7 +44,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: tokenAddress(19),
       DOT: tokenAddress(5),
       VDOT: tokenAddress(15),
-      TBTC: tokenAddress(1000765)
+      TBTC: tokenAddress(1000765),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -99,20 +104,22 @@ export const HydrationConfig: IAaveConfiguration = {
     },
   },
   IncentivesConfig: {
-    [eHydrationNetwork.hydration] : {},
-    [eHydrationNetwork.nice] : {
-      DOT: [{
-        emissionPerSecond: BigNumber.from("413359788"),
-        duration: 1209600,
-        reserve: "DOT",
-        incentivizedToken: AssetType.AToken,
-        reward: tokenAddress(15),
-        rewardOracle: "VDOT",
-        transferStrategy: TransferStrategy.PotRewardsStrategy,
-        emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice]
-      }]
-    }
-  }
+    [eHydrationNetwork.hydration]: {},
+    [eHydrationNetwork.nice]: {
+      DOT: [
+        {
+          emissionPerSecond: BigNumber.from("413359788"),
+          duration: 1209600,
+          reserve: "DOT",
+          incentivizedToken: AssetType.AToken,
+          reward: tokenAddress(15),
+          rewardOracle: "VDOT",
+          transferStrategy: TransferStrategy.PotRewardsStrategy,
+          emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
+        },
+      ],
+    },
+  },
 };
 
 export default HydrationConfig;
