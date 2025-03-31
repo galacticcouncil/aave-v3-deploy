@@ -148,19 +148,22 @@ task(`review-incentive`, ``)
         switch (cfg.incentivizedToken) {
           case AssetType.AToken:
             activeInc = onChainInc.aIncentiveData.rewardsTokenInformation.find(
-              (el) => el.rewardTokenAddress == cfg.reward
+              (el) =>
+                el.rewardTokenAddress.toLowerCase() == cfg.reward.toLowerCase()
             );
             asset = aTokenAddress;
             break;
           case AssetType.VariableDebtToken:
             activeInc = onChainInc.vIncentiveData.rewardsTokenInformation.find(
-              (el) => el.rewardTokenAddress == cfg.reward
+              (el) =>
+                el.rewardTokenAddress.toLowerCase() == cfg.reward.toLowerCase()
             );
             asset = variableDebtTokenAddress;
             break;
           case AssetType.StableDebtToken:
             activeInc = onChainInc.sIncentiveData.rewardsTokenInformation.find(
-              (el) => el.rewardTokenAddress == cfg.reward
+              (el) =>
+                el.rewardTokenAddress.toLowerCase() == cfg.reward.toLowerCase()
             );
             asset = stableDebtTokenAddress;
             break;
