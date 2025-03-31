@@ -1,4 +1,6 @@
-import { eHydrationNetwork, IAaveConfiguration } from "./../../helpers/types";
+import { eHydrationNetwork, IAaveConfiguration, AssetType, TransferStrategy } from "./../../helpers/types";
+import {POOL_ADMIN} from "./../../helpers/constants";
+import { BigNumber } from "ethers";
 import AaveMarket from "../aave";
 import {
   strategyDOT,
@@ -99,7 +101,7 @@ export const HydrationConfig: IAaveConfiguration = {
   IncentivesConfig: {
     [eHydrationNetwork.hydration] : {},
     [eHydrationNetwork.nice] : {
-      DOT: {
+      DOT: [{
         emissionPerSecond: BigNumber.from("413359788"),
         duration: 1209600,
         asset: "DOT",
@@ -108,7 +110,7 @@ export const HydrationConfig: IAaveConfiguration = {
         rewardOracle: "VDOT",
         transferStrategy: TransferStrategy.PotRewardsStrategy,
         emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice]
-      }
+      }]
     }
   }
 };
