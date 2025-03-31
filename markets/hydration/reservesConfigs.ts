@@ -107,3 +107,21 @@ export const strategyTBTC: IReserveParams = {
   debtCeiling,
   borrowableIsolation: false,
 };
+
+export const strategyGIGADOT: IReserveParams = {
+  strategy: rateStrategyDOT,
+  baseLTVAsCollateral: "6900",
+  liquidationThreshold: "7500",
+  liquidationBonus: "10750",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: false,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "10",
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "2222222",
+  borrowCap: "0",
+  debtCeiling,
+  borrowableIsolation: false,
+};
