@@ -1,6 +1,6 @@
 import { getFirstSigner } from "./utilities/signer";
 import { StakedTokenTransferStrategy } from "./../typechain";
-import { PullRewardsTransferStrategy } from "./../typechain";
+import { PullRewardsTransferStrategy, PotRewardsTransferStrategy } from "./../typechain";
 import {
   AaveOracle,
   ACLManager,
@@ -55,6 +55,7 @@ import {
   STAKE_AAVE_IMPL_V3,
   L2_ENCODER,
   FAUCET_OWNABLE_ID,
+  INCENTIVES_POT_REWARDS_STRATEGY_ID,
 } from "./deploy-ids";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { RewardsController } from "../typechain";
@@ -354,3 +355,12 @@ export const getOwnableContract = async (address: string) => {
     await getFirstSigner()
   );
 };
+
+export const getPotRewardsStrategy = async (
+  address?: string
+): Promise<PotRewardsTransferStrategy> =>
+  getContract(
+    "PotRewardsTransferStrategy",
+    address ||
+      (await hre.deployments.get(INCENTIVES_POT_REWARDS_STRATEGY_ID)).address
+  );
