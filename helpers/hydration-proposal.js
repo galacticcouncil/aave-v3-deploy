@@ -78,15 +78,15 @@ async function generateProposal(
       evmCall({ from, to, data, gas, gasPrice })
     );
 
-  const registerAsset = ({ asset, address, symbol, decimals }) =>
+  const registerAsset = ({ asset, address, symbol, decimals, name, assetType, existentialDeposit }) =>
     assetRegistry.register(
       asset,
-      symbol,
-      "Erc20",
-      0,
+      name ? name: symbol,
+      assetType ? assetType: "Erc20",
+      existentialDeposit ? existentialDeposit : 0,
       symbol,
       decimals,
-      location(address),
+      address ? location(address) : null,
       null,
       true
     );
@@ -106,6 +106,7 @@ async function generateProposal(
       )
 
   const batch = [
+    ...registerAssets.map(registerAsset),
     ...transactions.map((tx) =>
       rootEvmCall({
         ...tx,
@@ -113,7 +114,6 @@ async function generateProposal(
         from: from ? padAddress(from) : padAddress(tx.from),
       })
     ),
-    ...registerAssets.map(registerAsset),
     ...newFeePaymentAssets.map(addFeePaymentAsset),
     ...dispatchAsSell.map(dispatchSell)
 

@@ -108,7 +108,7 @@ export const strategyTBTC: IReserveParams = {
   borrowableIsolation: false,
 };
 
-export const strategyGIGADOT: IReserveParams = {
+export const strategyGDOT: IReserveParams = {
   strategy: rateStrategyDOT,
   baseLTVAsCollateral: "6900",
   liquidationThreshold: "7500",

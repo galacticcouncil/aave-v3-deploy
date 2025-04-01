@@ -18,7 +18,7 @@ import {
 } from "../../helpers";
 import { network } from "hardhat";
 
-task(`gigadot-prop`, ``).setAction(async function (_, hre) {
+task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   const { utils } = hre.ethers;
   const config = await loadPoolConfig(MARKET_NAME as ConfigNames);
   const { poolAdmin } = await hre.getNamedAccounts();
@@ -32,6 +32,7 @@ task(`gigadot-prop`, ``).setAction(async function (_, hre) {
   const networkId = FORK ? FORK : hre.network.name;
   const admin = POOL_ADMIN[networkId];
   const isPoolAdmin = await aclManager.isPoolAdmin(admin);
+
   if (!isPoolAdmin) {
     console.error("not pool admin " + admin);
     return;
@@ -39,7 +40,7 @@ task(`gigadot-prop`, ``).setAction(async function (_, hre) {
 
   console.log("init GIGADOT reserve");
   await hre.run("init-reserve", {
-    symbol: "GIGADOT",
+    symbol: "GDOT",
     batch: true,
   });
 
@@ -62,9 +63,27 @@ task(`gigadot-prop`, ``).setAction(async function (_, hre) {
   console.log("register tokens");
   const registerTokens = [];
 
+  const hydrationGDOT = 69;
+
+  //register gigadot
+  registerTokens.push({
+    asset: hydrationGDOT,
+    name: "gigaDOT",
+    symbol: "GDOT",
+    assetType: "StableSwap",
+    existentialDeposit: 1, //TODO:
+    address: null, //TODO:
+    decimals: 18,
+  });
+
+  //set gigadot as fee payment asset
+  const newFeePaymentToken = [];
+  newFeePaymentToken.push({ asset: hydrationGDOT, price: "10000000000" }); //TODO: price
+
   let deployer;
   try {
-    deployer = config.ATokensAndRatesHelper || 
+    deployer =
+      config.ATokensAndRatesHelper ||
       (await hre.deployments.get("ATokensAndRatesHelper")).address;
   } catch (error) {
     // If not found, use the PoolConfigurator
@@ -76,36 +95,43 @@ task(`gigadot-prop`, ``).setAction(async function (_, hre) {
 
   let aToken = utils.getContractAddress({
     from: deployer,
-    nonce: nonce
+    nonce: nonce,
   });
   console.log("aToken", aToken);
 
-  const reserveAddress = await getReserveAddress(config, "GIGADOT");
-  console.log("reserve", reserveAddress)
+  const reserveAddress = await getReserveAddress(config, "GDOT");
+  console.log("reserve", reserveAddress);
   if (aToken) {
     const underlying = new hre.ethers.Contract(
       reserveAddress,
       (await hre.deployments.getArtifact("AToken")).abi,
       signer
     );
-    const decimals = await underlying.callStatic.decimals();
     const token = {
       asset: 1007,
-      symbol: "agigaDOT",
+      symbol: "agDOT",
       address: aToken,
-      decimals: 10,
+      decimals: 18,
     };
     console.log("adding", token);
     registerTokens.push(token);
   } else {
-    console.log("ATOKEN DOESNT EXIST")
-    return Error("AToken should be there at this point")
+    console.log("ATOKEN DOESNT EXIST");
+    return Error("AToken should be there at this point");
   }
 
   //TODO: incentives setup
 
   console.log("proposal batch preimage:");
   console.log(
-    (await generateProposal(getBatch(), admin, registerTokens)).toHex()
+    (
+      await generateProposal(
+        getBatch(),
+        admin,
+        registerTokens,
+        // false,
+        newFeePaymentToken
+      )
+    ).toHex()
   );
 });
