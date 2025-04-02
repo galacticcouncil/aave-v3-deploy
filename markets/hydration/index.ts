@@ -47,7 +47,7 @@ export const HydrationConfig: IAaveConfiguration = {
       DOT: tokenAddress(5),
       VDOT: tokenAddress(15),
       TBTC: tokenAddress(1000765),
-      GDOT: tokenAddress(69),
+      GDOT: tokenAddress(690),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -56,6 +56,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: tokenAddress(3),
       DOT: tokenAddress(5),
       VDOT: tokenAddress(15),
+      GDOT: tokenAddress(69),
       //TBTC: ZERO_ADDRESS
     },
     [eHydrationNetwork.zombie]: {
@@ -105,10 +106,25 @@ export const HydrationConfig: IAaveConfiguration = {
       DOT: "0x422E745797EC0Ef399c17cE3E2348394F2944727",
       VDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191",
       //TBTC: "0x5d8320f3ced9575d8e25b6f437e610fc6a03bf52",
+      GDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191", //TODO: this is vDOT's oracle
     },
   },
   IncentivesConfig: {
-    [eHydrationNetwork.hydration]: {},
+    [eHydrationNetwork.hydration]: {
+      GDOT: [
+        {
+          //9k*10^18/(13w*7*86400)
+          emissionPerSecond: BigNumber.from("1144688644688644"),
+          duration: 7862400,
+          reserve: "GDOT",
+          incentivizedToken: AssetType.AToken,
+          reward: tokenAddress(69),
+          rewardOracle: "GDOT",
+          transferStrategy: TransferStrategy.PotRewardsStrategy,
+          emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
+        },
+      ],
+    },
     [eHydrationNetwork.nice]: {
       DOT: [
         {
@@ -118,6 +134,19 @@ export const HydrationConfig: IAaveConfiguration = {
           incentivizedToken: AssetType.AToken,
           reward: tokenAddress(15),
           rewardOracle: "VDOT",
+          transferStrategy: TransferStrategy.PotRewardsStrategy,
+          emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
+        },
+      ],
+      GDOT: [
+        {
+          //9k*10^18/(13w*7*86400)
+          emissionPerSecond: BigNumber.from("1144688644688644"),
+          duration: 7862400,
+          reserve: "GDOT",
+          incentivizedToken: AssetType.AToken,
+          reward: tokenAddress(690),
+          rewardOracle: "GDOT",
           transferStrategy: TransferStrategy.PotRewardsStrategy,
           emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
         },

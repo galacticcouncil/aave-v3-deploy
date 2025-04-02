@@ -117,7 +117,7 @@ export const strategyGDOT: IReserveParams = {
   borrowingEnabled: false,
   stableBorrowRateEnabled: false,
   flashLoanEnabled: false,
-  reserveDecimals: "10",
+  reserveDecimals: "18",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
   supplyCap: "2222222",

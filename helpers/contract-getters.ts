@@ -1,6 +1,9 @@
 import { getFirstSigner } from "./utilities/signer";
 import { StakedTokenTransferStrategy } from "./../typechain";
-import { PullRewardsTransferStrategy, PotRewardsTransferStrategy } from "./../typechain";
+import {
+  PullRewardsTransferStrategy,
+  PotRewardsTransferStrategy,
+} from "./../typechain";
 import {
   AaveOracle,
   ACLManager,

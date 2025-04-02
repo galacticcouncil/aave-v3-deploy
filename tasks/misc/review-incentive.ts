@@ -30,7 +30,13 @@ task(`review-incentive`, ``)
         batch,
         reserve,
         update,
-      }: { batch: boolean; reserve: string; update: boolean },
+        reserveAddress,
+      }: {
+        batch: boolean;
+        reserve: string;
+        update: boolean;
+        reserveAddress: string;
+      },
       hre
     ) => {
       const network = FORK ? FORK : (hre.network.name as eNetwork);
@@ -79,14 +85,19 @@ task(`review-incentive`, ``)
       for (let i = 0; i < incentiveConf.length; i++) {
         const cfg = incentiveConf[i];
 
-        const reserveAddr = reserveTokens.find(
+        let reserveAddr = reserveTokens.find(
           (el) => el.symbol == cfg.reserve
         )?.tokenAddress;
         if (!reserveAddr || reserveAddr == ZERO_ADDRESS) {
-          console.log(
-            chalk.red(`'${network}.${reserve}[${i}]': reserve asset not found`)
-          );
-          exit(1);
+          if (!reserveAddress) {
+            console.log(
+              chalk.red(
+                `'${network}.${reserve}[${i}]': reserve asset not found`
+              )
+            );
+            exit(1);
+          }
+          reserveAddr = reserveAddress;
         }
 
         const oracleAddr = chainlinkConf[cfg.rewardOracle];
@@ -127,15 +138,6 @@ task(`review-incentive`, ``)
         const onChainInc = onChainIncentives.find(
           (el) => el.underlyingAsset == reserveAddr
         );
-        if (!onChainInc) {
-          //NOTE: onChainInc should always exists even if incentives were never deployed
-          console.log(
-            chalk.red(
-              `'${network}.${reserve}[${i}]': unexpected error. No incentives data found onchain.`
-            )
-          );
-          exit(1);
-        }
 
         const {
           aTokenAddress,
@@ -147,25 +149,32 @@ task(`review-incentive`, ``)
         let asset;
         switch (cfg.incentivizedToken) {
           case AssetType.AToken:
-            activeInc = onChainInc.aIncentiveData.rewardsTokenInformation.find(
+            activeInc = onChainInc?.aIncentiveData.rewardsTokenInformation.find(
               (el) =>
                 el.rewardTokenAddress.toLowerCase() == cfg.reward.toLowerCase()
             );
-            asset = aTokenAddress;
+            asset =
+              aTokenAddress != ZERO_ADDRESS ? aTokenAddress : reserveAddress;
             break;
           case AssetType.VariableDebtToken:
-            activeInc = onChainInc.vIncentiveData.rewardsTokenInformation.find(
+            activeInc = onChainInc?.vIncentiveData.rewardsTokenInformation.find(
               (el) =>
                 el.rewardTokenAddress.toLowerCase() == cfg.reward.toLowerCase()
             );
-            asset = variableDebtTokenAddress;
+            asset =
+              variableDebtTokenAddress != ZERO_ADDRESS
+                ? variableDebtTokenAddress
+                : reserveAddress;
             break;
           case AssetType.StableDebtToken:
-            activeInc = onChainInc.sIncentiveData.rewardsTokenInformation.find(
+            activeInc = onChainInc?.sIncentiveData.rewardsTokenInformation.find(
               (el) =>
                 el.rewardTokenAddress.toLowerCase() == cfg.reward.toLowerCase()
             );
-            asset = stableDebtTokenAddress;
+            asset =
+              stableDebtTokenAddress != ZERO_ADDRESS
+                ? stableDebtTokenAddress
+                : reserveAddress;
             break;
           default:
             console.log(
@@ -188,6 +197,15 @@ task(`review-incentive`, ``)
             )
           );
           continue;
+        }
+
+        if (!asset || asset == ZERO_ADDRESS) {
+          console.log(
+            chalk.red(
+              `'${network}.${reserve}[${i}]': invalid incentivized asset`
+            )
+          );
+          exit(1);
         }
 
         //start or update incentives

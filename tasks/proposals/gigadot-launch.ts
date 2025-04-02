@@ -17,6 +17,7 @@ import {
   ZERO_ADDRESS,
 } from "../../helpers";
 import { network } from "hardhat";
+import ProposalDecoder from "../../helpers/proposal-decoder";
 
 task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   const { utils } = hre.ethers;
@@ -52,33 +53,16 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   });
 
   console.log("update reserve configs");
-  await hre.run("review-reserve-configs", { fix: true, batch: true });
+  await hre.run("review-reserve-configs", { fix: false, batch: true });
 
   console.log("update supply caps");
-  await hre.run("review-supply-caps", { fix: true, batch: true });
+  await hre.run("review-supply-caps", { fix: false, batch: true });
 
   console.log("update borrow caps");
-  await hre.run("review-borrow-caps", { fix: true, batch: true });
+  await hre.run("review-borrow-caps", { fix: false, batch: true });
 
   console.log("register tokens");
   const registerTokens = [];
-
-  const hydrationGDOT = 69;
-
-  //register gigadot
-  registerTokens.push({
-    asset: hydrationGDOT,
-    name: "gigaDOT",
-    symbol: "GDOT",
-    assetType: "StableSwap",
-    existentialDeposit: 1, //TODO:
-    address: null, //TODO:
-    decimals: 18,
-  });
-
-  //set gigadot as fee payment asset
-  const newFeePaymentToken = [];
-  newFeePaymentToken.push({ asset: hydrationGDOT, price: "10000000000" }); //TODO: price
 
   let deployer;
   try {
@@ -101,6 +85,9 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
 
   const reserveAddress = await getReserveAddress(config, "GDOT");
   console.log("reserve", reserveAddress);
+
+  const gDOT = 69;
+  const gDOTs = 690;
   if (aToken) {
     const underlying = new hre.ethers.Contract(
       reserveAddress,
@@ -108,10 +95,12 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
       signer
     );
     const token = {
-      asset: 1007,
-      symbol: "agDOT",
+      asset: gDOT,
+      symbol: "GDOT",
       address: aToken,
       decimals: 18,
+      name: "gigaDOT",
+      existentialDeposit: 0,
     };
     console.log("adding", token);
     registerTokens.push(token);
@@ -120,18 +109,63 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
     return Error("AToken should be there at this point");
   }
 
-  //TODO: incentives setup
+  //incentives
+  await hre.run("review-emission-admin", { batch: true, reserve: "GDOT" });
+  await hre.run("review-incentive", {
+    batch: true,
+    reserve: "GDOT",
+    reserveAddress: aToken,
+  });
 
-  console.log("proposal batch preimage:");
-  console.log(
-    (
-      await generateProposal(
-        getBatch(),
-        admin,
-        registerTokens,
-        // false,
-        newFeePaymentToken
-      )
-    ).toHex()
+  //gigaDOT pool
+  registerTokens.push({
+    asset: gDOTs,
+    name: "gigaDOTs",
+    symbol: "GDOTs",
+    assetType: "StableSwap",
+    existentialDeposit: 1,
+    address: null,
+    decimals: 18,
+  });
+
+  const vDOT = 15;
+  const aDOT = 1001;
+
+  const createPoolWithPegs = [
+    {
+      shareAsset: gDOTs,
+      assets: [vDOT, aDOT],
+      amplification: 22,
+      fee: 690,
+      pegSource: [{ oracle: ["bifrosto", 0, 5] }, { value: [1, 1] }],
+      maxPegUpdate: 1000000,
+    },
+  ];
+  const addLiquidity = [
+    {
+      origin: "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh",
+      poolId: gDOTs,
+      assets: [
+        { assetId: vDOT, amount: "608191293362092" },
+        { assetId: aDOT, amount: "1000000000000000" },
+      ],
+    },
+  ];
+
+  let preimages = await generateProposal(
+    getBatch(),
+    admin,
+    registerTokens,
+    false,
+    [],
+    [],
+    createPoolWithPegs,
+    addLiquidity
   );
+
+  const decoder = new ProposalDecoder(hre);
+  await decoder.init();
+  console.log("submit preimages:");
+  console.log(preimages.toHex());
+  decoder.printTree(decoder.transformCall(preimages.toHuman()));
 });

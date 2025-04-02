@@ -35,13 +35,28 @@ async function generateProposal(
   registerAssets = [],
   whitelist = false,
   newFeePaymentAssets = [],
-  dispatchAsSell = []
+  dispatchAsSell = [],
+  createPoolsWithPegs = [],
+  stableswapAddLiquidityAs = []
 ) {
-  const provider = new WsProvider(process.env.RPC 
-    ? process.env.RPC.replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://')
-    : "wss://rpc.hydradx.cloud");
+  const provider = new WsProvider(
+    process.env.RPC
+      ? process.env.RPC.replace(/^http:\/\//, "ws://").replace(
+          /^https:\/\//,
+          "wss://"
+        )
+      : "wss://rpc.hydradx.cloud"
+  );
   const api = await ApiPromise.create({ provider, noInitWarn: true });
-  const { utility, evm, assetRegistry, multiTransactionPayment, tokens, router } = api.tx;
+  const {
+    utility,
+    evm,
+    assetRegistry,
+    multiTransactionPayment,
+    tokens,
+    router,
+    stableswap,
+  } = api.tx;
 
   const evmAddress = (account) =>
     ethers.utils.hexlify(
@@ -78,11 +93,19 @@ async function generateProposal(
       evmCall({ from, to, data, gas, gasPrice })
     );
 
-  const registerAsset = ({ asset, address, symbol, decimals, name, assetType, existentialDeposit }) =>
+  const registerAsset = ({
+    asset,
+    address,
+    symbol,
+    decimals,
+    name,
+    assetType,
+    existentialDeposit,
+  }) =>
     assetRegistry.register(
       asset,
-      name ? name: symbol,
-      assetType ? assetType: "Erc20",
+      name ? name : symbol,
+      assetType ? assetType : "Erc20",
       existentialDeposit ? existentialDeposit : 0,
       symbol,
       decimals,
@@ -91,19 +114,40 @@ async function generateProposal(
       true
     );
 
-    const addFeePaymentAsset = ({ asset, price }) =>
-      multiTransactionPayment.addCurrency(asset, price);
+  const addFeePaymentAsset = ({ asset, price }) =>
+    multiTransactionPayment.addCurrency(asset, price);
 
-    const forceTransfer = ({ source, dest, id, amount }) =>
-      tokens.forceTransfer(source,dest, id, amount)
+  const forceTransfer = ({ source, dest, id, amount }) =>
+    tokens.forceTransfer(source, dest, id, amount);
 
+  const dispatchSell = ({ asOrigin, assetIn, assetOut, amount, route }) =>
+    utility.dispatchAs(
+      { system: { signed: asOrigin } },
+      router.sell(assetIn, assetOut, amount, 0, route)
+    );
 
+  const createPoolWithPegs = ({
+    shareAsset,
+    assets,
+    amplification,
+    fee,
+    pegSource,
+    maxPegUpdate,
+  }) =>
+    stableswap.createPoolWithPegs(
+      shareAsset,
+      assets,
+      amplification,
+      fee,
+      pegSource,
+      maxPegUpdate
+    );
 
-    const dispatchSell = ({asOrigin, assetIn, assetOut, amount, route}) => 
-      utility.dispatchAs(
-        { system: { signed: asOrigin} },
-        router.sell(assetIn, assetOut, amount, 0, route)
-      )
+  const sswapAddLiquidityAs = ({ origin, poolId, assets }) =>
+    utility.dispatchAs(
+      { system: { signed: origin } },
+      stableswap.addLiquidity(poolId, assets)
+    );
 
   const batch = [
     ...registerAssets.map(registerAsset),
@@ -115,8 +159,9 @@ async function generateProposal(
       })
     ),
     ...newFeePaymentAssets.map(addFeePaymentAsset),
-    ...dispatchAsSell.map(dispatchSell)
-
+    ...dispatchAsSell.map(dispatchSell),
+    ...createPoolsWithPegs.map(createPoolWithPegs),
+    ...stableswapAddLiquidityAs.map(sswapAddLiquidityAs),
   ];
 
   const extrinsic = utility.batchAll(batch);
