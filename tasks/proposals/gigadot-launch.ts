@@ -120,8 +120,8 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   //gigaDOT pool
   registerTokens.push({
     asset: gDOTs,
-    name: "gigaDOTs",
-    symbol: "GDOTs",
+    name: "2-Pool-GDOT",
+    symbol: "2-Pool-GDOT",
     assetType: "StableSwap",
     existentialDeposit: 1,
     address: null,

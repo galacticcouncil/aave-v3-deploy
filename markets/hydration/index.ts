@@ -96,8 +96,8 @@ export const HydrationConfig: IAaveConfiguration = {
       DOT: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
       VDOT: "0xF89728554C61B7AA08bf94823D1017697047c0fE",
       TBTC: "0xe5AcDfB0d5EC5cE34F7448B41ef4a97c4e83D9c1",
-      GDOT: "0xe5AcDfB0d5EC5cE34F7448B41ef4a97c4e83D9c1", //TODO: this is wrong address
-    },
+      GDOT: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702", //TODO: this is wrong, DOT's oracle for testing
+     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
       USDT: "0xb4aC9f0E6E207D5d81B756F8aF6efe3fe7B0E72c",
