@@ -59,6 +59,7 @@ import {
   L2_ENCODER,
   FAUCET_OWNABLE_ID,
   INCENTIVES_POT_REWARDS_STRATEGY_ID,
+  USD_ORACLE_ADAPTER_ID,
 } from "./deploy-ids";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { RewardsController } from "../typechain";
@@ -366,4 +367,13 @@ export const getPotRewardsStrategy = async (
     "PotRewardsTransferStrategy",
     address ||
       (await hre.deployments.get(INCENTIVES_POT_REWARDS_STRATEGY_ID)).address
+  );
+
+export const getUSDOracleAdapter = async (
+  address?: string
+): Promise<USDOracleAdapter> =>
+  getContract(
+    "USDOracleAdapter",
+    address ||
+      (await hre.deployments.get(USD_ORACLE_ADAPTER_ID)).address
   );
