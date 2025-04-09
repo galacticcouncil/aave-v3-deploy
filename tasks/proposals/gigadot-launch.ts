@@ -221,7 +221,7 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   };
   clearBatch();
 
-  //add GDOT to mm
+  //add GDOTs to mm
   txs.push(await dispatchAs(threasury, hydrationTx.router.sellAll(
       ...Object.values({
       assetIn: gDOTs,

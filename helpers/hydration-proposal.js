@@ -35,9 +35,6 @@ async function generateProposal(
   registerAssets = [],
   whitelist = false,
   newFeePaymentAssets = [],
-  dispatchAsSell = [],
-  createPoolsWithPegs = [],
-  stableswapAddLiquidityAs = []
 ) {
   const provider = new WsProvider(
     process.env.RPC
@@ -55,7 +52,6 @@ async function generateProposal(
     multiTransactionPayment,
     tokens,
     router,
-    stableswap,
   } = api.tx;
 
   const evmAddress = (account) =>
@@ -126,29 +122,6 @@ async function generateProposal(
       router.sell(assetIn, assetOut, amount, 0, route)
     );
 
-  const createPoolWithPegs = ({
-    shareAsset,
-    assets,
-    amplification,
-    fee,
-    pegSource,
-    maxPegUpdate,
-  }) =>
-    stableswap.createPoolWithPegs(
-      shareAsset,
-      assets,
-      amplification,
-      fee,
-      pegSource,
-      maxPegUpdate
-    );
-
-  const sswapAddLiquidityAs = ({ origin, poolId, assets }) =>
-    utility.dispatchAs(
-      { system: { signed: origin } },
-      stableswap.addLiquidity(poolId, assets)
-    );
-
   const batch = [
     ...registerAssets.map(registerAsset),
     ...transactions.map((tx) =>
@@ -159,9 +132,6 @@ async function generateProposal(
       })
     ),
     ...newFeePaymentAssets.map(addFeePaymentAsset),
-    ...dispatchAsSell.map(dispatchSell),
-    ...createPoolsWithPegs.map(createPoolWithPegs),
-    ...stableswapAddLiquidityAs.map(sswapAddLiquidityAs),
   ];
 
   const extrinsic = utility.batchAll(batch);
