@@ -96,8 +96,7 @@ export const HydrationConfig: IAaveConfiguration = {
       DOT: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
       VDOT: "0xF89728554C61B7AA08bf94823D1017697047c0fE",
       TBTC: "0xe5AcDfB0d5EC5cE34F7448B41ef4a97c4e83D9c1",
-      // GDOT: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: oracle from testnet deployment
-      GDOT: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702", //TODO: DOT's oracle
+      GDOT: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: use real contract's address from prod. deployment
      },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -107,7 +106,7 @@ export const HydrationConfig: IAaveConfiguration = {
       DOT: "0x422E745797EC0Ef399c17cE3E2348394F2944727",
       VDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191",
       //TBTC: "0x5d8320f3ced9575d8e25b6f437e610fc6a03bf52",
-      GDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191", //TODO: this is vDOT's oracle
+      GDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191", //NOTE: this is vDOT's oracle
     },
   },
   IncentivesConfig: {
@@ -152,6 +151,14 @@ export const HydrationConfig: IAaveConfiguration = {
           emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
         },
       ],
+    },
+  },
+  USDOracleAdapter: {
+    [eHydrationNetwork.hydration]: {
+      GDOT: {
+        assetToX: "0x0000010200000000000000000000000500000045", //hydration's chainlink precompile, 10min. 5, 69,
+        xToUSD:  "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
+      },
     },
   },
 };
