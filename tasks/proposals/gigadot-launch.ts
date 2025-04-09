@@ -127,7 +127,7 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
     ...Object.values({
       poolId: gDOTs,
       assets: [
-        { assetId: vDOT, amount: "698191293362092" }, //this inclued 9k vDOT for incentives
+        { assetId: vDOT, amount: "608191293362092" },
         { assetId: aDOT, amount: "1000000000000000" },
       ],
     })
