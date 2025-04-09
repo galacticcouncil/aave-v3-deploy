@@ -210,7 +210,14 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   });
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(await rootEvmCall(el)) 
+    txs.push(hydrationTx.scheduler.scheduleAfter(
+      ...Object.values({
+        after: 2,
+        maybePeriodic: null,
+        priority: 0,
+        call: (await rootEvmCall(el))
+      })
+    ))
   };
   clearBatch();
 
@@ -226,6 +233,7 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
     }))
   ));
 
+  //send rewards to pot
   const rewardsPot = (await getPotRewardsStrategy())?.address;
   if (!rewardsPot || rewardsPot == ZERO_ADDRESS) {
     console.log(rewardsPot)
@@ -241,13 +249,31 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
     }))
   ));
 
-  let p = await generateProposalV2(
+  //allow 69 as fee payment asset
+  txs.push(hydrationTx.multiTransactionPayment.addCurrency(
+    ...Object.values({
+      asset: gDOT,
+      price: "302571428571429000000"
+    })
+  ));
+  
+  //allow 690 as fee payment asset
+  txs.push(hydrationTx.multiTransactionPayment.addCurrency(
+    ...Object.values({
+      asset: gDOTs,
+      price: "302571428571429000000"
+    })
+  ));
+
+
+
+  let preimage = await generateProposalV2(
     txs,
     false
   );
   const decoder = new ProposalDecoder(hre);
   await decoder.init();
   console.log("submit preimages:");
-  console.log(p.toHex());
-  decoder.printTree(decoder.transformCall(p.toHuman()));
+  console.log(preimage.toHex());
+  decoder.printTree(decoder.transformCall(preimage.toHuman()));
 });
