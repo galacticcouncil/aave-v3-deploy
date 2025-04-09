@@ -6,17 +6,15 @@ import {AggregatorInterface} from '@aave/core-v3/contracts/dependencies/chainlin
 contract  USDOracleAdapter {
     AggregatorInterface _assetToXOracle;
     AggregatorInterface _XToUsdOracle;
-    uint8 _decimals;
 
     error NotImplemented();
 
-    constructor(address assetToXOracle, address XToUsdOracle, uint8 decimals) {
+    constructor(address assetToXOracle, address XToUsdOracle) {
         _assetToXOracle = AggregatorInterface(assetToXOracle);
         _XToUsdOracle = AggregatorInterface(XToUsdOracle);
-        _decimals = decimals;
     }
     function latestAnswer() external view returns (int256) {
-        return int256((uint256(_assetToXOracle.getAnswer(0)) * uint256(_XToUsdOracle.latestAnswer())) /uint256(_decimals));
+        return int256((uint256(_assetToXOracle.latestAnswer()) * uint256(_XToUsdOracle.latestAnswer())) /uint256(10)**8);
     }
 
     function latestTimestamp() external view returns (uint256) {
@@ -28,7 +26,7 @@ contract  USDOracleAdapter {
     }
 
     function getAnswer(uint256 roundId) external view returns (int256) {
-        return int256((uint256(_assetToXOracle.getAnswer(0)) * uint256(_XToUsdOracle.latestAnswer())) /uint256(_decimals));
+        return int256((uint256(_assetToXOracle.latestAnswer()) * uint256(_XToUsdOracle.latestAnswer())) /uint256(10)**8);
     }
 
     function getTimestamp(uint256 roundId) external view returns (uint256) {
