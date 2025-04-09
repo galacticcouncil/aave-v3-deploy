@@ -4,7 +4,7 @@ import {
   getReserveAddress,
   loadPoolConfig,
 } from "../../helpers/market-config-helpers";
-import { generateProposal, getApi, location, generateProposalV2, dispatchAs, rootEvmCall } from "../../helpers/hydration-proposal.js";
+import { generateProposal, getApi, location, generateProposalV2, dispatchAs, rootEvmCall, padAddress } from "../../helpers/hydration-proposal.js";
 import { MARKET_NAME } from "../../helpers/env";
 import { task } from "hardhat/config";
 import { addTransaction, getBatch, clearBatch } from "../../helpers/transaction-batch";
@@ -19,6 +19,9 @@ import {
 import { network } from "hardhat";
 import ProposalDecoder from "../../helpers/proposal-decoder";
 import { exit } from "process";
+import { getPotRewardsStrategy } from "../../helpers/contract-getters";
+import chalk from "chalk";
+  
 
 task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   const { utils } = hre.ethers;
@@ -40,6 +43,7 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   const vDOT = 15;
   const aDOT = 1001;
   const DOT = 5;
+  const threasury = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
   const txs = [];
 
   if (!isPoolAdmin) {
@@ -119,12 +123,11 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   ));
 
 
-  const threasury = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
   txs.push(await dispatchAs(threasury, hydrationTx.stableswap.addLiquidity(
     ...Object.values({
       poolId: gDOTs,
       assets: [
-        { assetId: vDOT, amount: "608191293362092" },
+        { assetId: vDOT, amount: "698191293362092" }, //this inclued 9k vDOT for incentives
         { assetId: aDOT, amount: "1000000000000000" },
       ],
     })
@@ -182,26 +185,64 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   txs.push(hydrationTx.router.forceInsertRoute(
       ...Object.values({
       assetPair: {
-        assetIn: DOT,
+        assetIn: gDOTs,
         assetOut: gDOT,
       },
       newRoute: [
-        { pool: "Aave",  assetIn: DOT, assetOut: aDOT },
-        { pool: "Stableswap",  assetIn: aDOT, assetOut: gDOTs },
         { pool: "Aave",  assetIn: gDOTs, assetOut: gDOT },
       ]
     }))
   );
 
-  //TODO: send everything to pot at once
-  //TODO: add 9k vDOT to pool
+  //incentives
+  await hre.run("review-emission-admin", { batch: true, reserve: "GDOT" });
+  for await (const el of getBatch()) {
+    el.from = admin;
+    txs.push(await rootEvmCall(el)) 
+  };
+  clearBatch();
+  await hre.run("review-incentive", {
+    batch: true,
+    reserve: "GDOT",
+    reserveAddress: aToken,
+  });
+  for await (const el of getBatch()) {
+    el.from = admin;
+    txs.push(await rootEvmCall(el)) 
+  };
+  clearBatch();
+
+  //add GDOT to mm
+  txs.push(await dispatchAs(threasury, hydrationTx.router.sellAll(
+      ...Object.values({
+      assetIn: gDOTs,
+      assetOut: gDOT,
+      minAmountOut: 0,
+      route: [
+        { pool: "Aave",  assetIn: gDOTs, assetOut: gDOT },
+      ]
+    }))
+  ));
+
+  const rewardsPot = (await getPotRewardsStrategy())?.address;
+  if (!rewardsPot || rewardsPot == ZERO_ADDRESS) {
+    console.log(rewardsPot)
+    console.log(chalk.red(`failed to get rewrds pot address or is not valid`));
+    exit(1);
+  }
+  //Transfer rewards to pot 
+  txs.push(await dispatchAs(threasury, hydrationTx.currencies.transfer(
+      ...Object.values({
+      dest: padAddress(rewardsPot),
+      currencyId: gDOT,
+      amount: "13,320.000,000,000,000,000,000".replaceAll(",", "").replaceAll(".", ""),
+    }))
+  ));
 
   let p = await generateProposalV2(
     txs,
     false
   );
-
-  console.log(p)
   const decoder = new ProposalDecoder(hre);
   await decoder.init();
   console.log("submit preimages:");
@@ -211,14 +252,6 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   exit(1);
 
 
-
-  //incentives
-  await hre.run("review-emission-admin", { batch: true, reserve: "GDOT" });
-  await hre.run("review-incentive", {
-    batch: true,
-    reserve: "GDOT",
-    reserveAddress: aToken,
-  });
 
   //gigaDOT pool
   registerTokens.push({

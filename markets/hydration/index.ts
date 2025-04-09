@@ -96,7 +96,8 @@ export const HydrationConfig: IAaveConfiguration = {
       DOT: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
       VDOT: "0xF89728554C61B7AA08bf94823D1017697047c0fE",
       TBTC: "0xe5AcDfB0d5EC5cE34F7448B41ef4a97c4e83D9c1",
-      GDOT: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702", //TODO: this is wrong, DOT's oracle for testing
+      // GDOT: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: oracle from testnet deployment
+      GDOT: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702", //TODO: DOT's oracle
      },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -113,8 +114,8 @@ export const HydrationConfig: IAaveConfiguration = {
     [eHydrationNetwork.hydration]: {
       GDOT: [
         {
-          //13200*10^18/(13w*7*86400)
-          emissionPerSecond: BigNumber.from("1678876678876678"),
+          //13320*10^18/(13w*7*86400)
+          emissionPerSecond: BigNumber.from("1694139194139194"),
           duration: 7862400,
           reserve: "GDOT",
           incentivizedToken: AssetType.AToken,

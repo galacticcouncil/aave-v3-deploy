@@ -270,4 +270,5 @@ module.exports = {
   evmAddress,
   dispatchAs,
   rootEvmCall,
+  padAddress,
 };
