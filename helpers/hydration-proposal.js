@@ -34,7 +34,7 @@ async function generateProposal(
   from,
   registerAssets = [],
   whitelist = false,
-  newFeePaymentAssets = [],
+  newFeePaymentAssets = []
 ) {
   const provider = new WsProvider(
     process.env.RPC
@@ -155,31 +155,27 @@ async function generateProposal(
   }
 }
 
-const getApi = function() {
-  let api = null;  
+const getApi = (function () {
+  let api = null;
 
-  return async function() {
+  return async function () {
     if (!api) {
       const provider = new WsProvider(
         process.env.RPC
           ? process.env.RPC.replace(/^http:\/\//, "ws://").replace(
-            /^https:\/\//,
-            "wss://"
-          )
+              /^https:\/\//,
+              "wss://"
+            )
           : "wss://rpc.hydradx.cloud"
       );
       api = await ApiPromise.create({ provider, noInitWarn: true });
     }
 
-    return Promise.resolve(api)
-  }
-}()
+    return Promise.resolve(api);
+  };
+})();
 
-
-async function generateProposalV2(
-  transactions,
-  whitelist = false,
-) {
+async function generateProposalV2(transactions, whitelist = false) {
   const api = await getApi();
   const extrinsic = api.tx.utility.batchAll(transactions);
 
@@ -205,20 +201,28 @@ async function generateProposalV2(
 async function evmAddress(account) {
   return ethers.utils.hexlify(
     (await getApi()).createType("AccountId", account).toU8a().slice(0, 20)
-  )
+  );
 }
 
 async function dispatchAs(from, tx) {
   return (await getApi()).tx.utility.dispatchAs(
     { system: { signed: from } },
-    tx,
+    tx
   );
 }
-  
-async function rootEvmCall({from, to, data, gasLimit = "100000", gasPrice = "600000000"})  {
+
+async function rootEvmCall({
+  from,
+  to,
+  data,
+  gasLimit = "100000",
+  gasPrice = "600000000",
+}) {
   return await dispatchAs(
     padAddress(from),
-    (await getApi()).tx.evm.call(
+    (
+      await getApi()
+    ).tx.evm.call(
       from,
       to,
       data,
@@ -229,8 +233,8 @@ async function rootEvmCall({from, to, data, gasLimit = "100000", gasPrice = "600
       undefined,
       []
     )
-  )
-};
+  );
+}
 
 module.exports = {
   generateProposal,

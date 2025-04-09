@@ -97,7 +97,7 @@ export const HydrationConfig: IAaveConfiguration = {
       VDOT: "0xF89728554C61B7AA08bf94823D1017697047c0fE",
       TBTC: "0xe5AcDfB0d5EC5cE34F7448B41ef4a97c4e83D9c1",
       GDOT: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: use real contract's address from prod. deployment
-     },
+    },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
       USDT: "0xb4aC9f0E6E207D5d81B756F8aF6efe3fe7B0E72c",
@@ -157,7 +157,7 @@ export const HydrationConfig: IAaveConfiguration = {
     [eHydrationNetwork.hydration]: {
       GDOT: {
         assetToX: "0x0000010200000000000000000000000500000045", //hydration's chainlink precompile, 10min. 5, 69,
-        xToUSD:  "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
+        xToUSD: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
       },
     },
   },

@@ -4,10 +4,22 @@ import {
   getReserveAddress,
   loadPoolConfig,
 } from "../../helpers/market-config-helpers";
-import { generateProposal, getApi, location, generateProposalV2, dispatchAs, rootEvmCall, padAddress } from "../../helpers/hydration-proposal.js";
+import {
+  generateProposal,
+  getApi,
+  location,
+  generateProposalV2,
+  dispatchAs,
+  rootEvmCall,
+  padAddress,
+} from "../../helpers/hydration-proposal.js";
 import { MARKET_NAME } from "../../helpers/env";
 import { task } from "hardhat/config";
-import { addTransaction, getBatch, clearBatch } from "../../helpers/transaction-batch";
+import {
+  addTransaction,
+  getBatch,
+  clearBatch,
+} from "../../helpers/transaction-batch";
 import {
   FORK,
   getACLManager,
@@ -21,7 +33,6 @@ import ProposalDecoder from "../../helpers/proposal-decoder";
 import { exit } from "process";
 import { getPotRewardsStrategy } from "../../helpers/contract-getters";
 import chalk from "chalk";
-  
 
 task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   const { utils } = hre.ethers;
@@ -79,59 +90,70 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
       (await hre.deployments.getArtifact("AToken")).abi,
       signer
     );
-    txs.push(hydrationTx.assetRegistry.register(
-      ...Object.values({ id:  gDOT,
-        name: "GIGADOT",
-        assetType: "Erc20",
-        existentialDeposit: 0,
-        symbol: "GDOT",
-        decimals: 18,
-        location: location(aToken),
-        xcmRateLimit: null,
-        isSufficient: true,
-      })
-    ));
+    txs.push(
+      hydrationTx.assetRegistry.register(
+        ...Object.values({
+          id: gDOT,
+          name: "GIGADOT",
+          assetType: "Erc20",
+          existentialDeposit: 0,
+          symbol: "GDOT",
+          decimals: 18,
+          location: location(aToken),
+          xcmRateLimit: null,
+          isSufficient: true,
+        })
+      )
+    );
   } else {
     console.log("ATOKEN DOESNT EXIST");
     return Error("AToken should be there at this point");
   }
 
-  txs.push(hydrationTx.assetRegistry.register(
-    ...Object.values({ 
-      id:  gDOTs,
-      name: "2-Pool-GDOT",
-      assetType: "StableSwap",
-      existentialDeposit: 1,
-      symbol: "2-Pool-GDOT",
-      decimals: 18,
-      location: null,
-      xcmRateLimit: null,
-      isSufficient: true,
-    })
-  ));
- 
+  txs.push(
+    hydrationTx.assetRegistry.register(
+      ...Object.values({
+        id: gDOTs,
+        name: "2-Pool-GDOT",
+        assetType: "StableSwap",
+        existentialDeposit: 1,
+        symbol: "2-Pool-GDOT",
+        decimals: 18,
+        location: null,
+        xcmRateLimit: null,
+        isSufficient: true,
+      })
+    )
+  );
+
   //Create stableswap pool and add liquidity
-  txs.push(hydrationTx.stableswap.createPoolWithPegs(
-    ...Object.values({ 
-      shareAsset:  gDOTs,
-      assets: [vDOT, aDOT],
-      amplification: 22,
-      fee: 690,
-      pegSource: [{ oracle: ["bifrosto", 0, 5] }, { value: [1, 1] }],
-      maxPegUpdate: 1000000,
-    })
-  ));
+  txs.push(
+    hydrationTx.stableswap.createPoolWithPegs(
+      ...Object.values({
+        shareAsset: gDOTs,
+        assets: [vDOT, aDOT],
+        amplification: 22,
+        fee: 690,
+        pegSource: [{ oracle: ["bifrosto", 0, 5] }, { value: [1, 1] }],
+        maxPegUpdate: 1000000,
+      })
+    )
+  );
 
-
-  txs.push(await dispatchAs(threasury, hydrationTx.stableswap.addLiquidity(
-    ...Object.values({
-      poolId: gDOTs,
-      assets: [
-        { assetId: vDOT, amount: "608191293362092" },
-        { assetId: aDOT, amount: "1000000000000000" },
-      ],
-    })
-  )));
+  txs.push(
+    await dispatchAs(
+      threasury,
+      hydrationTx.stableswap.addLiquidity(
+        ...Object.values({
+          poolId: gDOTs,
+          assets: [
+            { assetId: vDOT, amount: "608191293362092" },
+            { assetId: aDOT, amount: "1000000000000000" },
+          ],
+        })
+      )
+    )
+  );
 
   console.log("update rate strategies");
   await hre.run("review-rate-strategies", {
@@ -139,11 +161,11 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
     fix: true,
     batch: true,
   });
-  
+
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(await rootEvmCall(el)) 
-  };
+    txs.push(await rootEvmCall(el));
+  }
   clearBatch();
 
   console.log("init GIGADOT reserve");
@@ -153,55 +175,57 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   });
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(await rootEvmCall(el)) 
-  };
+    txs.push(await rootEvmCall(el));
+  }
   clearBatch();
 
   console.log("update reserve configs");
   await hre.run("review-reserve-configs", { fix: false, batch: true });
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(await rootEvmCall(el)) 
-  };
+    txs.push(await rootEvmCall(el));
+  }
   clearBatch();
 
   console.log("update supply caps");
   await hre.run("review-supply-caps", { fix: false, batch: true });
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(await rootEvmCall(el)) 
-  };
+    txs.push(await rootEvmCall(el));
+  }
   clearBatch();
 
   console.log("update borrow caps");
   await hre.run("review-borrow-caps", { fix: false, batch: true });
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(await rootEvmCall(el))
-  };
+    txs.push(await rootEvmCall(el));
+  }
   clearBatch();
 
   // Create aToken's oracle
-  txs.push(hydrationTx.router.forceInsertRoute(
+  txs.push(
+    hydrationTx.router.forceInsertRoute(
       ...Object.values({
-      assetPair: {
-        assetIn: DOT,
-        assetOut: gDOT,
-      },
-      newRoute: [
-        { pool: "Aave",  assetIn: DOT, assetOut: aDOT },
-        { pool: {"Stableswap": 690}, assetIn: aDOT, assetOut: gDOTs },
-        { pool: "Aave",  assetIn: gDOTs, assetOut: gDOT },
-      ]
-    }))
+        assetPair: {
+          assetIn: DOT,
+          assetOut: gDOT,
+        },
+        newRoute: [
+          { pool: "Aave", assetIn: DOT, assetOut: aDOT },
+          { pool: { Stableswap: 690 }, assetIn: aDOT, assetOut: gDOTs },
+          { pool: "Aave", assetIn: gDOTs, assetOut: gDOT },
+        ],
+      })
+    )
   );
 
   //incentives
   await hre.run("review-emission-admin", { batch: true, reserve: "GDOT" });
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(await rootEvmCall(el)) 
-  };
+    txs.push(await rootEvmCall(el));
+  }
   clearBatch();
   await hre.run("review-incentive", {
     batch: true,
@@ -210,67 +234,78 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   });
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(hydrationTx.scheduler.scheduleAfter(
-      ...Object.values({
-        after: 2,
-        maybePeriodic: null,
-        priority: 0,
-        call: (await rootEvmCall(el))
-      })
-    ))
-  };
+    txs.push(
+      hydrationTx.scheduler.scheduleAfter(
+        ...Object.values({
+          after: 2,
+          maybePeriodic: null,
+          priority: 0,
+          call: await rootEvmCall(el),
+        })
+      )
+    );
+  }
   clearBatch();
 
   //add GDOTs to mm
-  txs.push(await dispatchAs(threasury, hydrationTx.router.sellAll(
-      ...Object.values({
-      assetIn: gDOTs,
-      assetOut: gDOT,
-      minAmountOut: 0,
-      route: [
-        { pool: "Aave",  assetIn: gDOTs, assetOut: gDOT },
-      ]
-    }))
-  ));
+  txs.push(
+    await dispatchAs(
+      threasury,
+      hydrationTx.router.sellAll(
+        ...Object.values({
+          assetIn: gDOTs,
+          assetOut: gDOT,
+          minAmountOut: 0,
+          route: [{ pool: "Aave", assetIn: gDOTs, assetOut: gDOT }],
+        })
+      )
+    )
+  );
 
   //send rewards to pot
   const rewardsPot = (await getPotRewardsStrategy())?.address;
   if (!rewardsPot || rewardsPot == ZERO_ADDRESS) {
-    console.log(rewardsPot)
+    console.log(rewardsPot);
     console.log(chalk.red(`failed to get rewrds pot address or is not valid`));
     exit(1);
   }
-  //Transfer rewards to pot 
-  txs.push(await dispatchAs(threasury, hydrationTx.currencies.transfer(
-      ...Object.values({
-      dest: padAddress(rewardsPot),
-      currencyId: gDOT,
-      amount: "13,320.000,000,000,000,000,000".replaceAll(",", "").replaceAll(".", ""),
-    }))
-  ));
+  //Transfer rewards to pot
+  txs.push(
+    await dispatchAs(
+      threasury,
+      hydrationTx.currencies.transfer(
+        ...Object.values({
+          dest: padAddress(rewardsPot),
+          currencyId: gDOT,
+          amount: "13,320.000,000,000,000,000,000"
+            .replaceAll(",", "")
+            .replaceAll(".", ""),
+        })
+      )
+    )
+  );
 
   //allow 69 as fee payment asset
-  txs.push(hydrationTx.multiTransactionPayment.addCurrency(
-    ...Object.values({
-      asset: gDOT,
-      price: "302571428571429000000"
-    })
-  ));
-  
-  //allow 690 as fee payment asset
-  txs.push(hydrationTx.multiTransactionPayment.addCurrency(
-    ...Object.values({
-      asset: gDOTs,
-      price: "302571428571429000000"
-    })
-  ));
-
-
-
-  let preimage = await generateProposalV2(
-    txs,
-    false
+  txs.push(
+    hydrationTx.multiTransactionPayment.addCurrency(
+      ...Object.values({
+        asset: gDOT,
+        price: "302571428571429000000",
+      })
+    )
   );
+
+  //allow 690 as fee payment asset
+  txs.push(
+    hydrationTx.multiTransactionPayment.addCurrency(
+      ...Object.values({
+        asset: gDOTs,
+        price: "302571428571429000000",
+      })
+    )
+  );
+
+  let preimage = await generateProposalV2(txs, false);
   const decoder = new ProposalDecoder(hre);
   await decoder.init();
   console.log("submit preimages:");

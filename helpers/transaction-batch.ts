@@ -16,5 +16,5 @@ export function getBatch() {
 }
 
 export function clearBatch() {
-  batch = []
+  batch = [];
 }
