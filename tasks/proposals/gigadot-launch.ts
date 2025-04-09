@@ -250,47 +250,4 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   console.log("submit preimages:");
   console.log(p.toHex());
   decoder.printTree(decoder.transformCall(p.toHuman()));
-
-  exit(1);
-
-
-
-  //gigaDOT pool
-  registerTokens.push({
-    asset: gDOTs,
-    name: "2-Pool-GDOT",
-    symbol: "2-Pool-GDOT",
-    assetType: "StableSwap",
-    existentialDeposit: 1,
-    address: null,
-    decimals: 18,
-  });
-
-  const addLiquidity = [
-    {
-      origin: "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh",
-      poolId: gDOTs,
-      assets: [
-        { assetId: vDOT, amount: "608191293362092" },
-        { assetId: aDOT, amount: "1000000000000000" },
-      ],
-    },
-  ];
-
-  let preimages = await generateProposal(
-    getBatch(),
-    admin,
-    registerTokens,
-    false,
-    [],
-    [],
-    createPoolWithPegs,
-    addLiquidity
-  );
-
-  // const decoder = new ProposalDecoder(hre);
-  // await decoder.init();
-  // console.log("submit preimages:");
-  // console.log(preimages.toHex());
-  // decoder.printTree(decoder.transformCall(preimages.toHuman()));
 });
