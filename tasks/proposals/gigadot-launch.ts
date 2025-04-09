@@ -190,7 +190,7 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
       },
       newRoute: [
         { pool: "Aave",  assetIn: DOT, assetOut: aDOT },
-        { pool: "Stableswap",  assetIn: aDOT, assetOut: gDOTs },
+        { pool: {"Stableswap": 690}, assetIn: aDOT, assetOut: gDOTs },
         { pool: "Aave",  assetIn: gDOTs, assetOut: gDOT },
       ]
     }))
