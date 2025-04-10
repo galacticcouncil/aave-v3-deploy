@@ -15,6 +15,7 @@ import {
   strategyWBTC,
   strategyWETH,
   strategyTBTC,
+  strategyGDOT,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -35,6 +36,7 @@ export const HydrationConfig: IAaveConfiguration = {
     DOT: strategyDOT,
     VDOT: strategyVDOT,
     TBTC: strategyTBTC,
+    GDOT: strategyGDOT,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -45,6 +47,7 @@ export const HydrationConfig: IAaveConfiguration = {
       DOT: tokenAddress(5),
       VDOT: tokenAddress(15),
       TBTC: tokenAddress(1000765),
+      GDOT: tokenAddress(690),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -53,6 +56,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: tokenAddress(3),
       DOT: tokenAddress(5),
       VDOT: tokenAddress(15),
+      GDOT: tokenAddress(69),
       //TBTC: ZERO_ADDRESS
     },
     [eHydrationNetwork.zombie]: {
@@ -92,6 +96,7 @@ export const HydrationConfig: IAaveConfiguration = {
       DOT: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
       VDOT: "0xF89728554C61B7AA08bf94823D1017697047c0fE",
       TBTC: "0xe5AcDfB0d5EC5cE34F7448B41ef4a97c4e83D9c1",
+      GDOT: "0xedbD21F476039C6019d2EC3e97f949af98a5c121",
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -101,10 +106,25 @@ export const HydrationConfig: IAaveConfiguration = {
       DOT: "0x422E745797EC0Ef399c17cE3E2348394F2944727",
       VDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191",
       //TBTC: "0x5d8320f3ced9575d8e25b6f437e610fc6a03bf52",
+      GDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191", //NOTE: this is vDOT's oracle
     },
   },
   IncentivesConfig: {
-    [eHydrationNetwork.hydration]: {},
+    [eHydrationNetwork.hydration]: {
+      GDOT: [
+        {
+          //13320*10^18/(13w*7*86400)
+          emissionPerSecond: BigNumber.from("1694139194139194"),
+          duration: 7862400,
+          reserve: "GDOT",
+          incentivizedToken: AssetType.AToken,
+          reward: tokenAddress(69),
+          rewardOracle: "GDOT",
+          transferStrategy: TransferStrategy.PotRewardsStrategy,
+          emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
+        },
+      ],
+    },
     [eHydrationNetwork.nice]: {
       DOT: [
         {
@@ -118,6 +138,27 @@ export const HydrationConfig: IAaveConfiguration = {
           emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
         },
       ],
+      GDOT: [
+        {
+          //9k*10^18/(13w*7*86400)
+          emissionPerSecond: BigNumber.from("1144688644688644"),
+          duration: 7862400,
+          reserve: "GDOT",
+          incentivizedToken: AssetType.AToken,
+          reward: tokenAddress(690),
+          rewardOracle: "GDOT",
+          transferStrategy: TransferStrategy.PotRewardsStrategy,
+          emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
+        },
+      ],
+    },
+  },
+  USDOracleAdapter: {
+    [eHydrationNetwork.hydration]: {
+      GDOT: {
+        assetToX: "0x00000102737461626c657377000003e9000002b2", //hydration's chainlink precompile, stableswap 10min. , gDOTs(690), aDOT(1001)
+        xToUSD: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
+      },
     },
   },
 };

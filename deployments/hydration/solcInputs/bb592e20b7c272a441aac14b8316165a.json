@@ -1,0 +1,42 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "@aave/core-v3/contracts/dependencies/chainlink/AggregatorInterface.sol": {
+      "content": "// SPDX-License-Identifier: MIT\n// Chainlink Contracts v0.8\npragma solidity ^0.8.0;\n\ninterface AggregatorInterface {\n  function latestAnswer() external view returns (int256);\n\n  function latestTimestamp() external view returns (uint256);\n\n  function latestRound() external view returns (uint256);\n\n  function getAnswer(uint256 roundId) external view returns (int256);\n\n  function getTimestamp(uint256 roundId) external view returns (uint256);\n\n  event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 updatedAt);\n\n  event NewRound(uint256 indexed roundId, address indexed startedBy, uint256 startedAt);\n}\n"
+    },
+    "@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol": {
+      "content": "// SPDX-License-Identifier: AGPL-3.0\npragma solidity ^0.8.10;\n\ninterface IEACAggregatorProxy {\n  function decimals() external view returns (uint8);\n\n  function latestAnswer() external view returns (int256);\n\n  function latestTimestamp() external view returns (uint256);\n\n  function latestRound() external view returns (uint256);\n\n  function getAnswer(uint256 roundId) external view returns (int256);\n\n  function getTimestamp(uint256 roundId) external view returns (uint256);\n\n  event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 timestamp);\n  event NewRound(uint256 indexed roundId, address indexed startedBy);\n}\n"
+    },
+    "contracts/USDOracleAdapter.sol": {
+      "content": "// SPDX-License-Identifier: AGPL-3.0\npragma solidity ^0.8.10;\n\nimport \"@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol\";\nimport {AggregatorInterface} from '@aave/core-v3/contracts/dependencies/chainlink/AggregatorInterface.sol';\n\ncontract  USDOracleAdapter is IEACAggregatorProxy {\n\n    uint8 public constant decimals = 8;\n\n    AggregatorInterface public assetToXOracle;\n    AggregatorInterface public XToUsdOracle;\n\n    constructor(address _assetToXOracle, address _XToUsdOracle) {\n        assetToXOracle = AggregatorInterface(_assetToXOracle);\n        XToUsdOracle = AggregatorInterface(_XToUsdOracle);\n    }\n\n    function latestAnswer() external view returns (int256) {\n        return int256((uint256(assetToXOracle.latestAnswer()) * uint256(XToUsdOracle.latestAnswer())) / uint256(10) ** decimals);\n    }\n\n    function latestTimestamp() external view returns (uint256) {\n        return block.timestamp;\n    }\n\n    function latestRound() external view returns (uint256) {\n        return 0;\n    }\n\n    function getAnswer(uint256 roundId) external view returns (int256) {\n        return this.latestAnswer();\n    }\n\n    function getTimestamp(uint256 roundId) external view returns (uint256) {\n        return 0;\n    }\n}\n"
+    }
+  },
+  "settings": {
+    "optimizer": {
+      "enabled": true,
+      "runs": 100000
+    },
+    "evmVersion": "berlin",
+    "outputSelection": {
+      "*": {
+        "*": [
+          "abi",
+          "evm.bytecode",
+          "evm.deployedBytecode",
+          "evm.methodIdentifiers",
+          "metadata",
+          "devdoc",
+          "userdoc",
+          "storageLayout",
+          "evm.gasEstimates"
+        ],
+        "": [
+          "ast"
+        ]
+      }
+    },
+    "metadata": {
+      "useLiteralContent": true
+    }
+  }
+}

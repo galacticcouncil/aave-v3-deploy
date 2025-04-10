@@ -1,6 +1,6 @@
 import { PopulatedTransaction } from "ethers";
 
-const batch: PopulatedTransaction[] = [];
+let batch: PopulatedTransaction[] = [];
 
 export function addTransaction(
   transaction: PopulatedTransaction,
@@ -13,4 +13,8 @@ export function addTransaction(
 
 export function getBatch() {
   return batch;
+}
+
+export function clearBatch() {
+  batch = [];
 }

@@ -34,14 +34,25 @@ async function generateProposal(
   from,
   registerAssets = [],
   whitelist = false,
-  newFeePaymentAssets = [],
-  dispatchAsSell = []
+  newFeePaymentAssets = []
 ) {
-  const provider = new WsProvider(process.env.RPC 
-    ? process.env.RPC.replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://')
-    : "wss://rpc.hydradx.cloud");
+  const provider = new WsProvider(
+    process.env.RPC
+      ? process.env.RPC.replace(/^http:\/\//, "ws://").replace(
+          /^https:\/\//,
+          "wss://"
+        )
+      : "wss://rpc.hydradx.cloud"
+  );
   const api = await ApiPromise.create({ provider, noInitWarn: true });
-  const { utility, evm, assetRegistry, multiTransactionPayment, tokens, router } = api.tx;
+  const {
+    utility,
+    evm,
+    assetRegistry,
+    multiTransactionPayment,
+    tokens,
+    router,
+  } = api.tx;
 
   const evmAddress = (account) =>
     ethers.utils.hexlify(
@@ -78,34 +89,41 @@ async function generateProposal(
       evmCall({ from, to, data, gas, gasPrice })
     );
 
-  const registerAsset = ({ asset, address, symbol, decimals }) =>
+  const registerAsset = ({
+    asset,
+    address,
+    symbol,
+    decimals,
+    name,
+    assetType,
+    existentialDeposit,
+  }) =>
     assetRegistry.register(
       asset,
-      symbol,
-      "Erc20",
-      0,
+      name ? name : symbol,
+      assetType ? assetType : "Erc20",
+      existentialDeposit ? existentialDeposit : 0,
       symbol,
       decimals,
-      location(address),
+      address ? location(address) : null,
       null,
       true
     );
 
-    const addFeePaymentAsset = ({ asset, price }) =>
-      multiTransactionPayment.addCurrency(asset, price);
+  const addFeePaymentAsset = ({ asset, price }) =>
+    multiTransactionPayment.addCurrency(asset, price);
 
-    const forceTransfer = ({ source, dest, id, amount }) =>
-      tokens.forceTransfer(source,dest, id, amount)
+  const forceTransfer = ({ source, dest, id, amount }) =>
+    tokens.forceTransfer(source, dest, id, amount);
 
-
-
-    const dispatchSell = ({asOrigin, assetIn, assetOut, amount, route}) => 
-      utility.dispatchAs(
-        { system: { signed: asOrigin} },
-        router.sell(assetIn, assetOut, amount, 0, route)
-      )
+  const dispatchSell = ({ asOrigin, assetIn, assetOut, amount, route }) =>
+    utility.dispatchAs(
+      { system: { signed: asOrigin } },
+      router.sell(assetIn, assetOut, amount, 0, route)
+    );
 
   const batch = [
+    ...registerAssets.map(registerAsset),
     ...transactions.map((tx) =>
       rootEvmCall({
         ...tx,
@@ -113,10 +131,7 @@ async function generateProposal(
         from: from ? padAddress(from) : padAddress(tx.from),
       })
     ),
-    ...registerAssets.map(registerAsset),
     ...newFeePaymentAssets.map(addFeePaymentAsset),
-    ...dispatchAsSell.map(dispatchSell)
-
   ];
 
   const extrinsic = utility.batchAll(batch);
@@ -140,6 +155,94 @@ async function generateProposal(
   }
 }
 
+const getApi = (function () {
+  let api = null;
+
+  return async function () {
+    if (!api) {
+      const provider = new WsProvider(
+        process.env.RPC
+          ? process.env.RPC.replace(/^http:\/\//, "ws://").replace(
+              /^https:\/\//,
+              "wss://"
+            )
+          : "wss://rpc.hydradx.cloud"
+      );
+      api = await ApiPromise.create({ provider, noInitWarn: true });
+    }
+
+    return Promise.resolve(api);
+  };
+})();
+
+async function generateProposalV2(transactions, whitelist = false) {
+  const api = await getApi();
+  const extrinsic = api.tx.utility.batchAll(transactions);
+
+  if (whitelist) {
+    const whitelistedCall = extrinsic.method;
+    const whitelist = api.tx.whitelist.whitelistCall(
+      whitelistedCall.hash
+    ).method;
+    const proposal =
+      api.tx.whitelist.dispatchWhitelistedCallWithPreimage(
+        whitelistedCall
+      ).method;
+    const preimages = api.tx.utility.batchAll([
+      api.tx.preimage.notePreimage(whitelistedCall.toHex()),
+      api.tx.preimage.notePreimage(proposal.toHex()),
+    ]).method;
+    return { whitelistedCall, preimages, whitelist, proposal };
+  } else {
+    return extrinsic.method;
+  }
+}
+
+async function evmAddress(account) {
+  return ethers.utils.hexlify(
+    (await getApi()).createType("AccountId", account).toU8a().slice(0, 20)
+  );
+}
+
+async function dispatchAs(from, tx) {
+  return (await getApi()).tx.utility.dispatchAs(
+    { system: { signed: from } },
+    tx
+  );
+}
+
+async function rootEvmCall({
+  from,
+  to,
+  data,
+  gasLimit = "100000",
+  gasPrice = "600000000",
+}) {
+  return await dispatchAs(
+    padAddress(from),
+    (
+      await getApi()
+    ).tx.evm.call(
+      from,
+      to,
+      data,
+      "0",
+      gasLimit.toString(),
+      gasPrice,
+      undefined,
+      undefined,
+      []
+    )
+  );
+}
+
 module.exports = {
   generateProposal,
+  generateProposalV2,
+  getApi,
+  location,
+  evmAddress,
+  dispatchAs,
+  rootEvmCall,
+  padAddress,
 };
