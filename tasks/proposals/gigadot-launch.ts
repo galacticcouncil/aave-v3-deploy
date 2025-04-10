@@ -203,23 +203,6 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   }
   clearBatch();
 
-  // Create aToken's oracle
-  txs.push(
-    hydrationTx.router.forceInsertRoute(
-      ...Object.values({
-        assetPair: {
-          assetIn: DOT,
-          assetOut: gDOT,
-        },
-        newRoute: [
-          { pool: "Aave", assetIn: DOT, assetOut: aDOT },
-          { pool: { Stableswap: 690 }, assetIn: aDOT, assetOut: gDOTs },
-          { pool: "Aave", assetIn: gDOTs, assetOut: gDOT },
-        ],
-      })
-    )
-  );
-
   //incentives
   await hre.run("review-emission-admin", { batch: true, reserve: "GDOT" });
   for await (const el of getBatch()) {

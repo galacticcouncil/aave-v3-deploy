@@ -156,7 +156,7 @@ export const HydrationConfig: IAaveConfiguration = {
   USDOracleAdapter: {
     [eHydrationNetwork.hydration]: {
       GDOT: {
-        assetToX: "0x0000010200000000000000000000000500000045", //hydration's chainlink precompile, 10min. 5, 69,
+        assetToX: "0x00000102737461626c657377000003e9000002b2", //hydration's chainlink precompile, stableswap 10min. , gDOTs(690), aDOT(1001)
         xToUSD: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
       },
     },

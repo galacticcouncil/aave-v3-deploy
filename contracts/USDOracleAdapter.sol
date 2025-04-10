@@ -7,12 +7,20 @@ contract  USDOracleAdapter {
     AggregatorInterface _assetToXOracle;
     AggregatorInterface _XToUsdOracle;
 
+    event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 timestamp);
+    event NewRound(uint256 indexed roundId, address indexed startedBy);
+
     error NotImplemented();
 
     constructor(address assetToXOracle, address XToUsdOracle) {
         _assetToXOracle = AggregatorInterface(assetToXOracle);
         _XToUsdOracle = AggregatorInterface(XToUsdOracle);
     }
+
+    function decimals() external view returns (uint8) {
+        return 8;
+    }
+
     function latestAnswer() external view returns (int256) {
         return int256((uint256(_assetToXOracle.latestAnswer()) * uint256(_XToUsdOracle.latestAnswer())) /uint256(10)**8);
     }
