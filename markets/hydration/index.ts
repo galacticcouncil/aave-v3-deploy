@@ -96,7 +96,7 @@ export const HydrationConfig: IAaveConfiguration = {
       DOT: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
       VDOT: "0xF89728554C61B7AA08bf94823D1017697047c0fE",
       TBTC: "0xe5AcDfB0d5EC5cE34F7448B41ef4a97c4e83D9c1",
-      GDOT: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: use real contract's address from prod. deployment
+      GDOT: "0x0fC2D65e57019559E7B4eB124D7413aAb76ef9CF",
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
