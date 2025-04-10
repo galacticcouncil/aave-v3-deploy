@@ -114,7 +114,7 @@ export const HydrationConfig: IAaveConfiguration = {
       GDOT: [
         {
           //13320*10^18/(13w*7*86400)
-          emissionPerSecond: BigNumber.from("1694139194139194"),
+          emissionPerSecond: BigNumber.from("1694139194139194").mul("2"),
           duration: 7862400,
           reserve: "GDOT",
           incentivizedToken: AssetType.AToken,

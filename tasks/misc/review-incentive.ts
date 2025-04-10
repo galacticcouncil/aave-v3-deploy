@@ -23,6 +23,10 @@ import { BigNumber } from "ethers";
 task(`review-incentive`, ``)
   .addFlag("batch")
   .addParam("reserve", "reserve's incentive config")
+  .addParam(
+    "incentivize",
+    "incentivized token address, either a token or debt token"
+  )
   .addFlag("update")
   .setAction(
     async (
@@ -30,12 +34,12 @@ task(`review-incentive`, ``)
         batch,
         reserve,
         update,
-        reserveAddress,
+        incentivize,
       }: {
         batch: boolean;
         reserve: string;
         update: boolean;
-        reserveAddress: string;
+        incentivize: string;
       },
       hre
     ) => {
@@ -89,7 +93,7 @@ task(`review-incentive`, ``)
           (el) => el.symbol == cfg.reserve
         )?.tokenAddress;
         if (!reserveAddr || reserveAddr == ZERO_ADDRESS) {
-          if (!reserveAddress) {
+          if (!incentivize) {
             console.log(
               chalk.red(
                 `'${network}.${reserve}[${i}]': reserve asset not found`
@@ -97,7 +101,7 @@ task(`review-incentive`, ``)
             );
             exit(1);
           }
-          reserveAddr = reserveAddress;
+          reserveAddr = incentivize;
         }
 
         const oracleAddr = chainlinkConf[cfg.rewardOracle];
@@ -153,8 +157,7 @@ task(`review-incentive`, ``)
               (el) =>
                 el.rewardTokenAddress.toLowerCase() == cfg.reward.toLowerCase()
             );
-            asset =
-              aTokenAddress != ZERO_ADDRESS ? aTokenAddress : reserveAddress;
+            asset = aTokenAddress != ZERO_ADDRESS ? aTokenAddress : incentivize;
             break;
           case AssetType.VariableDebtToken:
             activeInc = onChainInc?.vIncentiveData.rewardsTokenInformation.find(
@@ -164,7 +167,7 @@ task(`review-incentive`, ``)
             asset =
               variableDebtTokenAddress != ZERO_ADDRESS
                 ? variableDebtTokenAddress
-                : reserveAddress;
+                : incentivize;
             break;
           case AssetType.StableDebtToken:
             activeInc = onChainInc?.sIncentiveData.rewardsTokenInformation.find(
@@ -174,7 +177,7 @@ task(`review-incentive`, ``)
             asset =
               stableDebtTokenAddress != ZERO_ADDRESS
                 ? stableDebtTokenAddress
-                : reserveAddress;
+                : incentivize;
             break;
           default:
             console.log(

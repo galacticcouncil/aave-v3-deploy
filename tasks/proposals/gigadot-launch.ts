@@ -213,7 +213,7 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   await hre.run("review-incentive", {
     batch: true,
     reserve: "GDOT",
-    reserveAddress: aToken,
+    incentivize: aToken,
   });
   for await (const el of getBatch()) {
     el.from = admin;
