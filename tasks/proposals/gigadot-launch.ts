@@ -260,7 +260,7 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
         ...Object.values({
           dest: padAddress(rewardsPot),
           currencyId: gDOT,
-          amount: "13,320.000,000,000,000,000,000"
+          amount: "26,640.000,000,000,000,000,000"
             .replaceAll(",", "")
             .replaceAll(".", ""),
         })
