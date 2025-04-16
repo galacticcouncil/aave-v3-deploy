@@ -10,6 +10,7 @@ task(`update-supply-caps`, ``).setAction(async function (_, hre) {
 
   console.log("update supply caps");
   await hre.run("review-supply-caps", { fix: true, batch: true });
+  await hre.run("review-borrow-caps", { fix: true, batch: true });
 
   const { preimages, whitelist, proposal, whitelistedCall } =
     await generateProposal(getBatch(), admin, [], true);
