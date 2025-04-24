@@ -69,7 +69,7 @@ task(`review-emission-admin`, ``)
           exit(1);
         }
 
-        if (emAdmin == (await em.getEmissionAdmin(reward))) {
+        if (emAdmin.toLowerCase() == (await em.getEmissionAdmin(reward))?.toLowerCase()) {
           continue;
         }
 
