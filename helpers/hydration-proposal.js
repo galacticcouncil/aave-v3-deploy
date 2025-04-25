@@ -245,4 +245,5 @@ module.exports = {
   dispatchAs,
   rootEvmCall,
   padAddress,
+  account,
 };

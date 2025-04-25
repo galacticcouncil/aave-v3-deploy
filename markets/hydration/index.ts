@@ -86,7 +86,7 @@ export const HydrationConfig: IAaveConfiguration = {
       liquidationThreshold: "9000",
       liquidationBonus: "10450",
       label: "DOT correlated",
-      assets: ["DOT", "VDOT", "GDOT"], //TODO: <- THIS GDOT
+      assets: ["DOT", "VDOT", "GDOT"],
     },
   },
   ChainlinkAggregator: {
@@ -99,8 +99,8 @@ export const HydrationConfig: IAaveConfiguration = {
       VDOT: "0xF89728554C61B7AA08bf94823D1017697047c0fE",
       TBTC: "0xe5AcDfB0d5EC5cE34F7448B41ef4a97c4e83D9c1",
       GDOT: "0xedbD21F476039C6019d2EC3e97f949af98a5c121",
-      BNC: "0x0000010200000000000000000000000a0000000e", //10min usdt/bnc oracle(route)
-      HDX: "0x0000010200000000000000000000000a00000000", //10min usdt/hdx oracle(route)
+      BNC: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: use prod. contract address
+      HDX: "0xe36D8630E2C87F0389ffd2DdE39470D9946d04d3", //TODO: use prod. contract address
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -130,7 +130,7 @@ export const HydrationConfig: IAaveConfiguration = {
         {
           //214,285*10^12/(90*86400)
           emissionPerSecond: BigNumber.from("27557227366"),
-          duration: 90 * SECONDS_PER_DAY + 2 * SECONDS_PER_DAY, //2 days "buffer" for ref.
+          duration: 90 * SECONDS_PER_DAY + 2 * SECONDS_PER_DAY, //2 days buffer for voting
           reserve: "2-Pool-GDOT",
           incentivizedToken: AssetType.AToken,
           reward: tokenAddress(14),
@@ -141,7 +141,7 @@ export const HydrationConfig: IAaveConfiguration = {
         {
           //2,222,222*10^12/(90*86400)
           emissionPerSecond: BigNumber.from("285779578189"),
-          duration: 90 * SECONDS_PER_DAY + 2 * SECONDS_PER_DAY, //2 days "buffer" for ref.
+          duration: 90 * SECONDS_PER_DAY + 2 * SECONDS_PER_DAY, //2 days buffer for voting
           reserve: "2-Pool-GDOT",
           incentivizedToken: AssetType.AToken,
           reward: tokenAddress(0),
@@ -184,6 +184,14 @@ export const HydrationConfig: IAaveConfiguration = {
       GDOT: {
         assetToX: "0x00000102737461626c657377000003e9000002b2", //hydration's chainlink precompile, stableswap 10min. , gDOTs(690), aDOT(1001)
         xToUSD: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
+      },
+      HDX: {
+        assetToX: "0x0000010200000000000000000000000a00000000", //hydration's chainlink precompile, 10min. USD(10)/HDX(0)
+        xToUSD: "0x8b0DDfB8F56690eAde9ECa23a7d90E153C268d5B",
+      },
+      BNC: {
+        assetToX: "0x0000010200000000000000000000000a0000000e", //hydration's chainlink precompile, 10min. USDT(10)/BNC(14)
+        xToUSD: "0x8b0DDfB8F56690eAde9ECa23a7d90E153C268d5B",
       },
     },
   },

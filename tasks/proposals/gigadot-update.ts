@@ -12,6 +12,7 @@ import {
   dispatchAs,
   rootEvmCall,
   padAddress,
+  account,
 } from "../../helpers/hydration-proposal.js";
 import { MARKET_NAME } from "../../helpers/env";
 import { task } from "hardhat/config";
@@ -49,11 +50,6 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
   const admin = POOL_ADMIN[networkId];
   const isPoolAdmin = await aclManager.isPoolAdmin(admin);
   const hydrationTx = (await getApi()).tx;
-  const threasury = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
-
-  const BNC = 14;
-  const HDX = 0;
-  const USDT = 10;
 
   const txs = [];
 
@@ -70,25 +66,31 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
   }
   clearBatch();
 
-  //NOTE: maybe incentives would have to be delayed because of oracle - test it
-  //hm maybe not, pool already exists - oracle should be able to return value
-  txs.push(
-    await dispatchAs(
-      threasury,
-      hydrationTx.router.forceInsertRoute(
-        ...Object.values({
-          assetPair: {
-            assetIn:  BNC,
-            assetOut: USDT,
-          },
-          newRoute: [
-            { pool: "Omnipool", assetIn: BNC, assetOut: 102 },
-            { pool: { Stableswap: 102 }, assetIn: 102, assetOut: USDT },
-          ],
-        })
-      )
-    )
-  );
+  console.log("update DOT emode");
+  await hre.run("review-e-mode", {
+    name: "DotEMode",
+    fix: true,
+    batch: true,
+  });
+  for await (const el of getBatch()) {
+    el.from = admin;
+    txs.push(await rootEvmCall(el));
+  }
+  clearBatch();
+
+  console.log("add GDOT to DOT emode");
+  {
+    const tx = await poolConfigurator.populateTransaction.setAssetEModeCategory(
+      await getReserveAddress(config, "GDOT"),
+      config.EModes["DotEMode"].id
+    );
+    addTransaction(tx);
+  }
+  for await (const el of getBatch()) {
+    el.from = admin;
+    txs.push(await rootEvmCall(el));
+  }
+  clearBatch();
 
   console.log("review and udpate incentives");
   await hre.run("review-emission-admin", { batch: true, reserve: "GDOT" });
@@ -98,52 +100,15 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
   }
   clearBatch();
 
-  //TODO: remove this delay
   await hre.run("review-incentive", {
     batch: true,
     reserve: "GDOT",
   });
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(
-      hydrationTx.scheduler.scheduleAfter(
-        ...Object.values({
-          after: 2,
-          maybePeriodic: null,
-          priority: 0,
-          call: await rootEvmCall(el),
-        })
-      )
-    );
+    txs.push(await rootEvmCall(el));
   }
   clearBatch();
-  
-  
-  //send rewards to pot
-  const rewardsPot = (await getPotRewardsStrategy())?.address;
-  if (!rewardsPot || rewardsPot == ZERO_ADDRESS) {
-    console.log(rewardsPot);
-    console.log(chalk.red(`failed to get rewrds pot address or is not valid`));
-    exit(1);
-  }
-  txs.push(
-    hydrationTx.currencies.transfer(
-      ...Object.values( {
-        dest: padAddress(rewardsPot),
-        currencyId: BNC,
-        amount: "214,285.000,000,000,000".replaceAll(",", ""). replaceAll(".", "")
-      })
-    )
-  );
-  txs.push(
-    hydrationTx.currencies.transfer(
-      ...Object.values({
-        dest: padAddress(rewardsPot),
-        currencyId: HDX,
-        amount: "2,222,222.000,000,000,000".replaceAll(",", "").replaceAll(".", "")
-      })
-    )
-  );
 
   let preimage = await generateProposalV2(txs, false);
   const decoder = new ProposalDecoder(hre);
