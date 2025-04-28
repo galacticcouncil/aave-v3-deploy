@@ -86,7 +86,7 @@ export const HydrationConfig: IAaveConfiguration = {
       liquidationThreshold: "9000",
       liquidationBonus: "10450",
       label: "DOT correlated",
-      assets: ["DOT", "VDOT", "GDOT"],
+      assets: ["DOT", "VDOT", "2-Pool-GDOT"],
     },
   },
   ChainlinkAggregator: {
@@ -99,8 +99,8 @@ export const HydrationConfig: IAaveConfiguration = {
       VDOT: "0xF89728554C61B7AA08bf94823D1017697047c0fE",
       TBTC: "0xe5AcDfB0d5EC5cE34F7448B41ef4a97c4e83D9c1",
       GDOT: "0xedbD21F476039C6019d2EC3e97f949af98a5c121",
-      BNC: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: use prod. contract address
-      HDX: "0xe36D8630E2C87F0389ffd2DdE39470D9946d04d3", //TODO: use prod. contract address
+      BNC: "0xe36D8630E2C87F0389ffd2DdE39470D9946d04d3", //TODO: use prod. contract address
+      HDX: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: use prod. contract address
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
