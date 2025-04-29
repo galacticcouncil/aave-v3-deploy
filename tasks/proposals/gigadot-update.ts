@@ -10,9 +10,9 @@ import {
   location,
   generateProposalV2,
   dispatchAs,
-  rootEvmCall,
   padAddress,
   account,
+  aaveManagerCall,
 } from "../../helpers/hydration-proposal.js";
 import { MARKET_NAME } from "../../helpers/env";
 import { task } from "hardhat/config";
@@ -62,7 +62,7 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
   await hre.run("review-supply-caps", { fix: true, batch: true });
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(await rootEvmCall(el));
+    txs.push(await aaveManagerCall(el));
   }
   clearBatch();
 
@@ -74,7 +74,7 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
   });
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(await rootEvmCall(el));
+    txs.push(await aaveManagerCall(el));
   }
   clearBatch();
 
@@ -88,7 +88,7 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
   }
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(await rootEvmCall(el));
+    txs.push(await aaveManagerCall(el));
   }
   clearBatch();
 
@@ -96,7 +96,7 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
   await hre.run("review-emission-admin", { batch: true, reserve: "GDOT" });
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(await rootEvmCall(el));
+    txs.push(await aaveManagerCall(el));
   }
   clearBatch();
 
@@ -106,7 +106,7 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
   });
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(await rootEvmCall(el));
+    txs.push(await aaveManagerCall(el));
   }
   clearBatch();
 
