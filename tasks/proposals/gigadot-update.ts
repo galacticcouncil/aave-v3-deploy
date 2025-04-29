@@ -5,13 +5,7 @@ import {
   loadPoolConfig,
 } from "../../helpers/market-config-helpers";
 import {
-  generateProposal,
-  getApi,
-  location,
   generateProposalV2,
-  dispatchAs,
-  padAddress,
-  account,
   aaveManagerCall,
 } from "../../helpers/hydration-proposal.js";
 import { MARKET_NAME } from "../../helpers/env";
@@ -27,16 +21,10 @@ import {
   getPoolAddressesProvider,
   getPoolConfiguratorProxy,
   POOL_ADMIN,
-  ZERO_ADDRESS,
 } from "../../helpers";
-import { network } from "hardhat";
 import ProposalDecoder from "../../helpers/proposal-decoder";
-import { exit } from "process";
-import { getPotRewardsStrategy } from "../../helpers/contract-getters";
-import chalk from "chalk";
 
 task(`gigadot-update`, ``).setAction(async function (_, hre) {
-  const { utils } = hre.ethers;
   const config = await loadPoolConfig(MARKET_NAME as ConfigNames);
   const { poolAdmin } = await hre.getNamedAccounts();
   const signer = await hre.ethers.getSigner(poolAdmin);
@@ -49,7 +37,6 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
   const networkId = FORK ? FORK : hre.network.name;
   const admin = POOL_ADMIN[networkId];
   const isPoolAdmin = await aclManager.isPoolAdmin(admin);
-  const hydrationTx = (await getApi()).tx;
 
   const txs = [];
 
@@ -60,11 +47,6 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
 
   console.log("review and update supply caps");
   await hre.run("review-supply-caps", { fix: true, batch: true });
-  for await (const el of getBatch()) {
-    el.from = admin;
-    txs.push(await aaveManagerCall(el));
-  }
-  clearBatch();
 
   console.log("update DOT emode");
   await hre.run("review-e-mode", {
@@ -72,11 +54,6 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
     fix: true,
     batch: true,
   });
-  for await (const el of getBatch()) {
-    el.from = admin;
-    txs.push(await aaveManagerCall(el));
-  }
-  clearBatch();
 
   console.log("add GDOT to DOT emode");
   {
@@ -86,24 +63,15 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
     );
     addTransaction(tx);
   }
-  for await (const el of getBatch()) {
-    el.from = admin;
-    txs.push(await aaveManagerCall(el));
-  }
-  clearBatch();
 
   console.log("review and udpate incentives");
   await hre.run("review-emission-admin", { batch: true, reserve: "GDOT" });
-  for await (const el of getBatch()) {
-    el.from = admin;
-    txs.push(await aaveManagerCall(el));
-  }
-  clearBatch();
 
   await hre.run("review-incentive", {
     batch: true,
     reserve: "GDOT",
   });
+
   for await (const el of getBatch()) {
     el.from = admin;
     txs.push(await aaveManagerCall(el));
