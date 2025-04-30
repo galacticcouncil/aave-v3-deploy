@@ -120,7 +120,7 @@ export const strategyGDOT: IReserveParams = {
   reserveDecimals: "18",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "2222222",
+  supplyCap: "8,888,888".replaceAll(",", ""),
   borrowCap: "0",
   debtCeiling,
   borrowableIsolation: false,
