@@ -96,7 +96,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WETH: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
       WBTC: "0xeDD9A7C47A9F91a0F2db93978A88844167B4a04f",
       DOT: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
-      VDOT: "0xF89728554C61B7AA08bf94823D1017697047c0fE",
+      VDOT: "0x2fFa376E0a84606e4Ccb3738071312A34Cebad6C",
       TBTC: "0xe5AcDfB0d5EC5cE34F7448B41ef4a97c4e83D9c1",
       GDOT: "0xedbD21F476039C6019d2EC3e97f949af98a5c121",
       BNC: "0xc94c414E8eBF7EA928D9bE555A8eAb719B89bBcE",
@@ -182,7 +182,11 @@ export const HydrationConfig: IAaveConfiguration = {
   USDOracleAdapter: {
     [eHydrationNetwork.hydration]: {
       GDOT: {
-        assetToX: "0x00000102737461626c657377000003e9000002b2", //hydration's chainlink precompile, stableswap 10min. , gDOTs(690), aDOT(1001)
+        assetToX: "0x00000102737461626c657377000003e9000002b2", //hydration's chainlink precompile, stableswap 10min., aDOT(1001)/gDOTs(690)
+        xToUSD: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
+      },
+      VDOT: {
+        assetToX: "0x00000102626966726f73746f000000050000000f", //hydration's chainlink precompile, bifrosto 10min., DOT(5)/vDOT(15),
         xToUSD: "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
       },
       HDX: {
