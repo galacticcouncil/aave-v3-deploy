@@ -236,6 +236,28 @@ async function rootEvmCall({
   );
 }
 
+async function aaveManagerCall({
+  from,
+  to,
+  data,
+  gasLimit = "100000",
+  gasPrice = "600000000",
+}) {
+  return (await getApi()).tx.dispatcher.dispatchAsAaveManager(
+    (await getApi()).tx.evm.call(
+      from,
+      to,
+      data,
+      "0",
+      gasLimit.toString(),
+      gasPrice,
+      undefined,
+      undefined,
+      []
+    )
+  );
+}
+
 module.exports = {
   generateProposal,
   generateProposalV2,
@@ -245,4 +267,6 @@ module.exports = {
   dispatchAs,
   rootEvmCall,
   padAddress,
+  account,
+  aaveManagerCall,
 };

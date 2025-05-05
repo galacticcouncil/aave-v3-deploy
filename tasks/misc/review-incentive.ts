@@ -23,9 +23,9 @@ import { BigNumber } from "ethers";
 task(`review-incentive`, ``)
   .addFlag("batch")
   .addParam("reserve", "reserve's incentive config")
-  .addParam(
+  .addOptionalParam(
     "incentivize",
-    "incentivized token address, either a token or debt token"
+    "incentivized token address, either atoken or debt token"
   )
   .addFlag("update")
   .setAction(
@@ -39,7 +39,7 @@ task(`review-incentive`, ``)
         batch: boolean;
         reserve: string;
         update: boolean;
-        incentivize: string;
+        incentivize: string = "";
       },
       hre
     ) => {
