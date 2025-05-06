@@ -27,18 +27,15 @@ task(`review-incentive`, ``)
     "incentivize",
     "incentivized token address, either atoken or debt token"
   )
-  .addFlag("update")
   .setAction(
     async (
       {
         batch,
         reserve,
-        update,
         incentivize,
       }: {
         batch: boolean;
         reserve: string;
-        update: boolean;
         incentivize: string = "";
       },
       hre
