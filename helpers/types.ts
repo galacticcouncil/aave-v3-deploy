@@ -603,7 +603,7 @@ export enum TransferStrategy {
 
 export interface RewardsConfigInput {
   emissionPerSecond: BigNumberish;
-  duration: number;
+  distributionEnd: BigNumberish;
   reserve: string;
   incentivizedToken: AssetType;
   reward: tEthereumAddress;
