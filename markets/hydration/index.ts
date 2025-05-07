@@ -38,7 +38,7 @@ export const HydrationConfig: IAaveConfiguration = {
     DOT: strategyDOT,
     VDOT: strategyVDOT,
     TBTC: strategyTBTC,
-    GDOT: strategyGDOT,
+    "2-POOL-GDOT": strategyGDOT,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -49,7 +49,7 @@ export const HydrationConfig: IAaveConfiguration = {
       DOT: tokenAddress(5),
       VDOT: tokenAddress(15),
       TBTC: tokenAddress(1000765),
-      GDOT: tokenAddress(690),
+      "2-POOL-GDOT": tokenAddress(690),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -58,7 +58,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WBTC: tokenAddress(3),
       DOT: tokenAddress(5),
       VDOT: tokenAddress(15),
-      GDOT: tokenAddress(69),
+      "2-POOL-GDOT": tokenAddress(69),
       //TBTC: ZERO_ADDRESS
     },
     [eHydrationNetwork.zombie]: {
@@ -86,7 +86,7 @@ export const HydrationConfig: IAaveConfiguration = {
       liquidationThreshold: "9000",
       liquidationBonus: "10450",
       label: "DOT correlated",
-      assets: ["DOT", "VDOT", "2-Pool-GDOT"],
+      assets: ["DOT", "VDOT", "2-POOL-GDOT"],
     },
   },
   ChainlinkAggregator: {
