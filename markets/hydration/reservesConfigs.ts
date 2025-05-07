@@ -2,8 +2,8 @@ import { rateStrategyVolatileOne } from "./../aave/rateStrategies";
 import { eContractid, IReserveParams } from "../../helpers/types";
 import { rateStrategyDOT, rateStrategyStables } from "./rateStrategies";
 
-const supplyCap = "2222222";
-const borrowCap = "1111111";
+const supplyCap = "3222222";
+const borrowCap = "1611111";
 const debtCeiling = "0";
 const reserveFactor = "2000";
 
