@@ -23,7 +23,7 @@ task(`stables-rates`, ``).setAction(async function (_, hre) {
 
   console.log("update rate strategies");
   await hre.run("review-rate-strategies", {
-    deploy: false,
+    deploy: true,
     fix: true,
     batch: true,
   });
