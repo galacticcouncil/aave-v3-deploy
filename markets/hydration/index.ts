@@ -20,8 +20,6 @@ import {
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
 
-const SECONDS_PER_DAY = 86400;
-
 export const HydrationConfig: IAaveConfiguration = {
   ...AaveMarket,
   MarketId: "Hydration Market",
@@ -117,9 +115,8 @@ export const HydrationConfig: IAaveConfiguration = {
     [eHydrationNetwork.hydration]: {
       GDOT: [
         {
-          //13320*10^18/(13w*7*86400)
           emissionPerSecond: BigNumber.from("1694139194139194").mul("2"),
-          duration: 7862400,
+          distributionEnd: Date.parse("11 Jul 2025 14:24:36 GMT") / 1000,
           reserve: "2-Pool-GDOT",
           incentivizedToken: AssetType.AToken,
           reward: tokenAddress(69),
@@ -128,9 +125,8 @@ export const HydrationConfig: IAaveConfiguration = {
           emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
         },
         {
-          //214,285*10^12/(90*86400)
           emissionPerSecond: BigNumber.from("27557227366"),
-          duration: 90 * SECONDS_PER_DAY + 2 * SECONDS_PER_DAY, //2 days buffer for voting
+          distributionEnd: Date.parse("30 Jul 2025 17:52:36 GMT") / 1000,
           reserve: "2-Pool-GDOT",
           incentivizedToken: AssetType.AToken,
           reward: tokenAddress(14),
@@ -139,9 +135,8 @@ export const HydrationConfig: IAaveConfiguration = {
           emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
         },
         {
-          //2,222,222*10^12/(90*86400)
           emissionPerSecond: BigNumber.from("285779578189"),
-          duration: 90 * SECONDS_PER_DAY + 2 * SECONDS_PER_DAY, //2 days buffer for voting
+          distributionEnd: Date.parse("30 Jul 2025 17:52:36 GMT") / 1000,
           reserve: "2-Pool-GDOT",
           incentivizedToken: AssetType.AToken,
           reward: tokenAddress(0),

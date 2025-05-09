@@ -27,18 +27,15 @@ task(`review-incentive`, ``)
     "incentivize",
     "incentivized token address, either atoken or debt token"
   )
-  .addFlag("update")
   .setAction(
     async (
       {
         batch,
         reserve,
-        update,
         incentivize,
       }: {
         batch: boolean;
         reserve: string;
-        update: boolean;
         incentivize: string = "";
       },
       hre
@@ -188,20 +185,6 @@ task(`review-incentive`, ``)
             exit(1);
         }
 
-        const now = await getBlockTimestamp();
-
-        if (
-          activeInc?.emissionEndTimestamp.gt(BigNumber.from(now)) &&
-          !update
-        ) {
-          console.log(
-            chalk.yellow(
-              `'${network}.${reserve}[${i}]': liquidity mining is active. To update it use --update`
-            )
-          );
-          continue;
-        }
-
         if (!asset || asset == ZERO_ADDRESS) {
           console.log(
             chalk.red(
@@ -211,16 +194,41 @@ task(`review-incentive`, ``)
           exit(1);
         }
 
-        //start or update incentives
-        assetsConf.push({
-          emissionPerSecond: cfg.emissionPerSecond,
-          distributionEnd: now + cfg.duration,
-          asset: asset,
-          reward: cfg.reward,
-          transferStrategy: transferStrat.address,
-          rewardOracle: oracleAddr,
-          totalSupply: "0",
-        });
+        let changed = false;
+        changed = !activeInc?.emissionEndTimestamp.eq(cfg.distributionEnd)
+          ? true
+          : changed;
+        changed = !activeInc?.emissionPerSecond.eq(cfg.emissionPerSecond)
+          ? true
+          : changed;
+        changed =
+          activeInc?.rewardOracleAddress.toLowerCase() !=
+          oracleAddr.toLowerCase()
+            ? true
+            : changed;
+
+        if (changed) {
+          const now = await getBlockTimestamp();
+          if (cfg.distributionEnd <= now) {
+            console.log(
+              chalk.red(
+                `'${network}.${reserve}[${i}]': distribution end must be future date`
+              )
+            );
+            exit(1);
+          }
+
+          //start or update incentives
+          assetsConf.push({
+            emissionPerSecond: cfg.emissionPerSecond,
+            distributionEnd: cfg.distributionEnd,
+            asset: asset,
+            reward: cfg.reward,
+            transferStrategy: transferStrat.address,
+            rewardOracle: oracleAddr,
+            totalSupply: "0",
+          });
+        }
       }
 
       if (assetsConf.length != 0) {
