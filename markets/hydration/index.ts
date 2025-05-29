@@ -20,6 +20,8 @@ import {
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
 
+const GDOT = "2-POOL-GDOT";
+
 export const HydrationConfig: IAaveConfiguration = {
   ...AaveMarket,
   MarketId: "Hydration Market",
@@ -36,7 +38,7 @@ export const HydrationConfig: IAaveConfiguration = {
     DOT: strategyDOT,
     VDOT: strategyVDOT,
     TBTC: strategyTBTC,
-    GDOT: strategyGDOT,
+    "2-POOL-GDOT": strategyGDOT, //GDOT
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
