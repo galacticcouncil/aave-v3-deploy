@@ -125,3 +125,39 @@ export const strategyGDOT: IReserveParams = {
   debtCeiling,
   borrowableIsolation: false,
 };
+
+export const strategyETH: IReserveParams = {
+  strategy: rateStrategyDOT,
+  baseLTVAsCollateral: "7000",
+  liquidationThreshold: "8000",
+  liquidationBonus: "10700",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: true,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "18",
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "2,222".replaceAll(",", ""),
+  borrowCap: "1,111".replaceAll(",", ""),
+  debtCeiling,
+  borrowableIsolation: false,
+};
+
+export const strategyGETH: IReserveParams = {
+  strategy: rateStrategyDOT,
+  baseLTVAsCollateral: "6500",
+  liquidationThreshold: "7000",
+  liquidationBonus: "10700",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: false,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "18",
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "2,222".replaceAll(",", ""),
+  borrowCap: "0",
+  debtCeiling,
+  borrowableIsolation: false,
+};

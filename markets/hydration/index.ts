@@ -16,6 +16,8 @@ import {
   strategyWETH,
   strategyTBTC,
   strategyGDOT,
+  strategyETH,
+  strategyGETH,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -37,6 +39,8 @@ export const HydrationConfig: IAaveConfiguration = {
     VDOT: strategyVDOT,
     TBTC: strategyTBTC,
     GDOT: strategyGDOT,
+    ETH: strategyETH,
+    GETH: strategyGETH,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -48,6 +52,8 @@ export const HydrationConfig: IAaveConfiguration = {
       VDOT: tokenAddress(15),
       TBTC: tokenAddress(1000765),
       GDOT: tokenAddress(690),
+      ETH: tokenAddress(34),
+      GETH: tokenAddress(420),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -99,6 +105,8 @@ export const HydrationConfig: IAaveConfiguration = {
       GDOT: "0xedbD21F476039C6019d2EC3e97f949af98a5c121",
       BNC: "0xc94c414E8eBF7EA928D9bE555A8eAb719B89bBcE",
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
+      ETH: "0x1AF549Fe19A9B73D094173C41e18BF7F357F594b",
+      WSTETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36",
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -109,6 +117,8 @@ export const HydrationConfig: IAaveConfiguration = {
       VDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191",
       //TBTC: "0x5d8320f3ced9575d8e25b6f437e610fc6a03bf52",
       GDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191", //NOTE: this is vDOT's oracle
+      ETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36",
+      WSTETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36", //TODO: this is not correct
     },
   },
   IncentivesConfig: {
