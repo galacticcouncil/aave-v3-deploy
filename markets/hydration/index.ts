@@ -38,7 +38,7 @@ export const HydrationConfig: IAaveConfiguration = {
     DOT: strategyDOT,
     VDOT: strategyVDOT,
     TBTC: strategyTBTC,
-    GDOT: strategyGDOT,
+    "2-POOL-GDOT": strategyGDOT, //GDOT
     ETH: strategyETH,
     GETH: strategyGETH,
   },
