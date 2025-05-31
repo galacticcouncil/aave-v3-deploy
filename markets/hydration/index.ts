@@ -38,7 +38,7 @@ export const HydrationConfig: IAaveConfiguration = {
     DOT: strategyDOT,
     VDOT: strategyVDOT,
     TBTC: strategyTBTC,
-    "2-POOL-GDOT": strategyGDOT, //GDOT
+    GDOT: strategyGDOT,
     ETH: strategyETH,
     GETH: strategyGETH,
   },
@@ -107,6 +107,7 @@ export const HydrationConfig: IAaveConfiguration = {
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
       ETH: "0x1AF549Fe19A9B73D094173C41e18BF7F357F594b",
       WSTETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36",
+      GETH: "0xe36D8630E2C87F0389ffd2DdE39470D9946d04d3", //TODO: deploy adapter contract and set this address
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -117,8 +118,9 @@ export const HydrationConfig: IAaveConfiguration = {
       VDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191",
       //TBTC: "0x5d8320f3ced9575d8e25b6f437e610fc6a03bf52",
       GDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191", //NOTE: this is vDOT's oracle
-      ETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36",
-      WSTETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36", //TODO: this is not correct
+      ETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36",  //TODO: waithing on DIA
+      WSTETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36", //TODO: waiting on DIA
+      GETH: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: use real deployed adapter contract's address
     },
   },
   IncentivesConfig: {
@@ -201,6 +203,10 @@ export const HydrationConfig: IAaveConfiguration = {
       BNC: {
         assetToX: "0x0000010200000000000000000000000a0000000e", //hydration's chainlink precompile, 10min. USDT(10)/BNC(14)
         xToUSD: "0x8b0DDfB8F56690eAde9ECa23a7d90E153C268d5B",
+      },
+      GETH: {
+        assetToX: "0x00000102737461626c657377000003ef00001068", //hydration's chainlink precompile, stableswap 10min., aETH(1007)/gETHs(4200)
+        xToUSD: "0x1AF549Fe19A9B73D094173C41e18BF7F357F594b",
       },
     },
   },

@@ -228,7 +228,7 @@ export const initReservesByHelper = async (
     if (batch) {
       const tx = await configurator.populateTransaction.initReserves(
         chunkedInitInputParams[chunkIndex],
-        { gasLimit: 10000000 }
+        { gasLimit: 3000000 }
       );
       addTransaction(tx);
     } else {

@@ -62,6 +62,17 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
     return;
   }
 
+  const chainlinkConf = config.ChainlinkAggregator[network];
+  if (!chainlinkConf) {
+    console.log(
+      chalk.red(
+        `'${network}': chainlink configuration not found`
+      )
+    );
+    exit(1);
+  }
+
+  console.log("---------> register assets");
   let deployer;
   try {
     deployer =
@@ -72,19 +83,46 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
     deployer = await poolAddressesProvider.getPoolConfigurator();
   }
   console.log("Deployer Address:", deployer);
-
   const nonce = await hre.ethers.provider.getTransactionCount(deployer);
 
-  let aToken = utils.getContractAddress({
+  console.log("---------> register aETH");
+  let aEthToken = utils.getContractAddress({
     from: deployer,
     nonce: nonce,
   });
+  let reserveAddress = await getReserveAddress(config, "ETH");
+  if (aEthToken) {
+    const underlying = new hre.ethers.Contract(
+      reserveAddress,
+      (await hre.deployments.getArtifact("AToken")).abi,
+      signer
+    );
+    txs.push(
+      hydrationTx.assetRegistry.register(
+        ...Object.values({
+          id: aETH,
+          name: "aETH",
+          assetType: "Erc20",
+          existentialDeposit: 0,
+          symbol: "aETH",
+          decimals: 18,
+          location: location(aEthToken),
+          xcmRateLimit: null,
+          isSufficient: true,
+        })
+      )
+    );
+  } else {
+    return Error("ETH ATOKEN DOESNT EXIST");
+  }
 
-  const reserveAddress = await getReserveAddress(config, "GETH");
-  console.log("reserve", reserveAddress);
-
-  //Deploy aToken and register assets in asset registry
-  if (aToken) {
+  console.log("---------> register GETH");
+  let agEthToken = utils.getContractAddress({
+    from: deployer,
+    nonce: nonce + 1,
+  });
+  reserveAddress = await getReserveAddress(config, "GETH");
+  if (agEthToken) {
     const underlying = new hre.ethers.Contract(
       reserveAddress,
       (await hre.deployments.getArtifact("AToken")).abi,
@@ -99,17 +137,16 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
           existentialDeposit: 0,
           symbol: "GETH",
           decimals: 18,
-          location: location(aToken),
+          location: location(agEthToken),
           xcmRateLimit: null,
           isSufficient: true,
         })
       )
     );
   } else {
-    console.log("ATOKEN DOESNT EXIST");
-    return Error("AToken should be there at this point");
+    return Error("GETH ATOKEN DOESNT EXIST");
   }
-
+  console.log("---------> register 2-Pool-gETH");
   txs.push(
     hydrationTx.assetRegistry.register(
       ...Object.values({
@@ -123,64 +160,6 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
         xcmRateLimit: null,
         isSufficient: true,
       })
-    )
-  );
-
-  const chainlinkConf = config.ChainlinkAggregator[network];
-  if (!chainlinkConf) {
-    console.log(
-      chalk.red(
-        `'${network}': chainlink configuration not found`
-      )
-    );
-    exit(1);
-  }
-
-  const wstEthOracle = chainlinkConf.WSTETH;
-  if (!wstEthOracle) {
-    console.log(
-      chalk.red(
-        `'${network}.WSTETH' oracle's address not found`
-      )
-    );
-    exit(1);
-  }
-  const ethOracle = chainlinkConf.ETH;
-  if (!ethOracle) {
-    console.log(
-      chalk.red(
-        `'${network}.ETH' oracle's address not found`
-      )
-    );
-    exit(1);
-  }
-
-  //Create stableswap pool and add liquidity
-  txs.push(
-    hydrationTx.stableswap.createPoolWithPegs(
-      ...Object.values({
-        shareAsset: gETHs,
-        assets: [wstETH, aETH],
-        amplification: 100,
-        fee: 690, //TODO:
-        pegSource: [{ MMOracle: wstEthOracle }, { MMOracle: ethOracle }],
-        maxPegUpdate: 10000, //TODO:  
-      })
-    )
-  );
-
-  txs.push(
-    await dispatchAs(
-      threasury,
-      hydrationTx.stableswap.addLiquidity(
-        ...Object.values({
-          poolId: gETHs,
-          assets: [
-            { assetId: aETH, amount: "346.500_000_000_000_000_000".replaceAll(".", "").replaceAll("_", "") },
-            { assetId: wstETH, amount: "288.200_000_000_000_000_000".replaceAll(".", "").replaceAll("_", "") }, 
-          ],
-        })
-      )
     )
   );
 
@@ -200,6 +179,17 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   console.log("init GIGAETH reserve");
   await hre.run("init-reserve", {
     symbol: "GETH",
+    batch: true,
+  });
+  for await (const el of getBatch()) {
+    el.from = admin;
+    txs.push(await rootEvmCall(el));
+  }
+  clearBatch();
+
+  console.log("init ETH reserve");
+  await hre.run("init-reserve", {
+    symbol: "ETH",
     batch: true,
   });
   for await (const el of getBatch()) {
@@ -232,22 +222,73 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   }
   clearBatch();
 
-  //add gETHs to mm
-  txs.push(
-    await dispatchAs(
-      threasury,
-      hydrationTx.router.sellAll(
-        ...Object.values({
-          assetIn: gETHs,
-          assetOut: gETH,
-          minAmountOut: 0,
-          route: [{ pool: "Aave", assetIn: gETHs, assetOut: gETH }],
-        })
+  console.log("---------> create stableswap pool with pegs")
+  const wstEthOracle = chainlinkConf.WSTETH;
+  if (!wstEthOracle) {
+    console.log(
+      chalk.red(
+        `'${network}.WSTETH' oracle's address not found`
       )
-    )
-  );
+    );
+    exit(1);
+  }
+  const ethOracle = chainlinkConf.ETH;
+  if (!ethOracle) {
+    console.log(
+      chalk.red(
+        `'${network}.ETH' oracle's address not found`
+      )
+    );
+    exit(1);
+  }
+
+  // console.log("---------> add liquidity to created pool")
+  // //Create stableswap pool and add liquidity
+  // txs.push(
+  //   hydrationTx.stableswap.createPoolWithPegs(
+  //     ...Object.values({
+  //       shareAsset: gETHs,
+  //       assets: [wstETH, aETH],
+  //       amplification: 100,
+  //       fee: 690, //TODO:
+  //       pegSource: [{ MMOracle: wstEthOracle }, { MMOracle: ethOracle }],
+  //       maxPegUpdate: 10000, //TODO:  
+  //     })
+  //   )
+  // );
+  //
+  // txs.push(
+  //   await dispatchAs(
+  //     threasury,
+  //     hydrationTx.stableswap.addLiquidity(
+  //       ...Object.values({
+  //         poolId: gETHs,
+  //         assets: [
+  //           { assetId: aETH, amount: "346.500_000_000_000_000_000".replaceAll(".", "").replaceAll("_", "") },
+  //           { assetId: wstETH, amount: "288.200_000_000_000_000_000".replaceAll(".", "").replaceAll("_", "") }, 
+  //         ],
+  //       })
+  //     )
+  //   )
+  // );
+
+  // //add gETHs to mm
+  // txs.push(
+  //   await dispatchAs(
+  //     threasury,
+  //     hydrationTx.router.sellAll(
+  //       ...Object.values({
+  //         assetIn: gETHs,
+  //         assetOut: gETH,
+  //         minAmountOut: 0,
+  //         route: [{ pool: "Aave", assetIn: gETHs, assetOut: gETH }],
+  //       })
+  //     )
+  //   )
+  // );
 
 
+  // console.log("---------> setup incentives")
   //TODO: INCENTIVES
   // await hre.run("review-emission-admin", { batch: true, reserve: "GDOT" });
   // for await (const el of getBatch()) {
