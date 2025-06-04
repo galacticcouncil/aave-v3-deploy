@@ -53,7 +53,7 @@ export const HydrationConfig: IAaveConfiguration = {
       TBTC: tokenAddress(1000765),
       GDOT: tokenAddress(690),
       ETH: tokenAddress(34),
-      GETH: tokenAddress(420),
+      GETH: tokenAddress(4200),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),

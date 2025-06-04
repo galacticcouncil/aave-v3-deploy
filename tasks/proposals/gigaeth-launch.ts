@@ -54,7 +54,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   const wstETH  = 1000809;
   const aETH = 1007;
   const ETH = 34;
-  const threasury = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
+  const treasury = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
   const txs = [];
 
   if (!isPoolAdmin) {
@@ -83,14 +83,47 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
     deployer = await poolAddressesProvider.getPoolConfigurator();
   }
   console.log("Deployer Address:", deployer);
-  const nonce = await hre.ethers.provider.getTransactionCount(deployer);
+  let nonce = await hre.ethers.provider.getTransactionCount(deployer);
 
-  console.log("---------> register aETH");
-  let aEthToken = utils.getContractAddress({
+
+  console.log("---------> register GETH");
+  let agEthToken = utils.getContractAddress({
     from: deployer,
     nonce: nonce,
   });
-  let reserveAddress = await getReserveAddress(config, "ETH");
+  let reserveAddress = await getReserveAddress(config, "GETH");
+  if (agEthToken) {
+    const underlying = new hre.ethers.Contract(
+      reserveAddress,
+      (await hre.deployments.getArtifact("AToken")).abi,
+      signer
+    );
+    txs.push(
+      hydrationTx.assetRegistry.register(
+        ...Object.values({
+          id: gETH,
+          name: "GIGAETH",
+          assetType: "Erc20",
+          existentialDeposit: 0,
+          symbol: "GETH",
+          decimals: 18,
+          location: location(agEthToken),
+          xcmRateLimit: null,
+          isSufficient: true,
+        })
+      )
+    );
+  } else {
+    return Error("GETH ATOKEN DOESNT EXIST");
+  }
+
+  console.log("---------> register aETH");
+  nonce = await hre.ethers.provider.getTransactionCount(deployer);
+  let aEthToken = utils.getContractAddress({
+    from: deployer,
+    nonce: nonce + 3,
+  });
+  reserveAddress = await getReserveAddress(config, "ETH");
   if (aEthToken) {
     const underlying = new hre.ethers.Contract(
       reserveAddress,
@@ -116,36 +149,6 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
     return Error("ETH ATOKEN DOESNT EXIST");
   }
 
-  console.log("---------> register GETH");
-  let agEthToken = utils.getContractAddress({
-    from: deployer,
-    nonce: nonce + 1,
-  });
-  reserveAddress = await getReserveAddress(config, "GETH");
-  if (agEthToken) {
-    const underlying = new hre.ethers.Contract(
-      reserveAddress,
-      (await hre.deployments.getArtifact("AToken")).abi,
-      signer
-    );
-    txs.push(
-      hydrationTx.assetRegistry.register(
-        ...Object.values({
-          id: gETH,
-          name: "GIGAETH",
-          assetType: "Erc20",
-          existentialDeposit: 0,
-          symbol: "GETH",
-          decimals: 18,
-          location: location(agEthToken),
-          xcmRateLimit: null,
-          isSufficient: true,
-        })
-      )
-    );
-  } else {
-    return Error("GETH ATOKEN DOESNT EXIST");
-  }
   console.log("---------> register 2-Pool-gETH");
   txs.push(
     hydrationTx.assetRegistry.register(
@@ -242,122 +245,71 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
     exit(1);
   }
 
-  // console.log("---------> add liquidity to created pool")
-  // //Create stableswap pool and add liquidity
-  // txs.push(
-  //   hydrationTx.stableswap.createPoolWithPegs(
-  //     ...Object.values({
-  //       shareAsset: gETHs,
-  //       assets: [wstETH, aETH],
-  //       amplification: 100,
-  //       fee: 690, //TODO:
-  //       pegSource: [{ MMOracle: wstEthOracle }, { MMOracle: ethOracle }],
-  //       maxPegUpdate: 10000, //TODO:  
-  //     })
-  //   )
-  // );
-  //
-  // txs.push(
-  //   await dispatchAs(
-  //     threasury,
-  //     hydrationTx.stableswap.addLiquidity(
-  //       ...Object.values({
-  //         poolId: gETHs,
-  //         assets: [
-  //           { assetId: aETH, amount: "346.500_000_000_000_000_000".replaceAll(".", "").replaceAll("_", "") },
-  //           { assetId: wstETH, amount: "288.200_000_000_000_000_000".replaceAll(".", "").replaceAll("_", "") }, 
-  //         ],
-  //       })
-  //     )
-  //   )
-  // );
+  console.log("---------> add liquidity to created pool")
+  //Create stableswap pool and add liquidity
+  txs.push(
+    hydrationTx.stableswap.createPoolWithPegs(
+      ...Object.values({
+        shareAsset: gETHs,
+        assets: [wstETH, aETH],
+        amplification: 100,
+        fee: 690,
+        pegSource: [{ MMOracle: wstEthOracle }, { MMOracle: ethOracle }],
+        maxPegUpdate: 10000, //TODO:  
+      })
+    )
+  );
 
-  // //add gETHs to mm
-  // txs.push(
-  //   await dispatchAs(
-  //     threasury,
-  //     hydrationTx.router.sellAll(
-  //       ...Object.values({
-  //         assetIn: gETHs,
-  //         assetOut: gETH,
-  //         minAmountOut: 0,
-  //         route: [{ pool: "Aave", assetIn: gETHs, assetOut: gETH }],
-  //       })
-  //     )
-  //   )
-  // );
+  //add ETH to mm
+  txs.push(
+    await dispatchAs(
+      treasury,
+      hydrationTx.router.sell(
+        ...Object.values({
+          assetIn: ETH,
+          assetOut: aETH,
+          amount: "346.500_000_000_000_000_000".replaceAll(".", "").replaceAll("_", ""),
+          minAmountOut: 0,
+          route: [{ pool: "Aave", assetIn: ETH, assetOut: aETH }],
+        })
+      )
+    )
+  );
 
+  txs.push(
+    await dispatchAs(
+      treasury,
+      hydrationTx.stableswap.addLiquidity(
+        ...Object.values({
+          poolId: gETHs,
+          assets: [
+            { assetId: aETH, amount: "346.500_000_000_000_000_000".replaceAll(".", "").replaceAll("_", "") },
+            { assetId: wstETH, amount: "289.310_000_000_000_000_000".replaceAll(".", "").replaceAll("_", "") }, 
+          ],
+        })
+      )
+    )
+  );
 
-  // console.log("---------> setup incentives")
-  //TODO: INCENTIVES
-  // await hre.run("review-emission-admin", { batch: true, reserve: "GDOT" });
-  // for await (const el of getBatch()) {
-  //   el.from = admin;
-  //   txs.push(await rootEvmCall(el));
-  // }
-  // clearBatch();
-  // await hre.run("review-incentive", {
-  //   batch: true,
-  //   reserve: "GDOT",
-  //   incentivize: aToken,
-  // });
-  // for await (const el of getBatch()) {
-  //   el.from = admin;
-  //   txs.push(
-  //     hydrationTx.scheduler.scheduleAfter(
-  //       ...Object.values({
-  //         after: 2,
-  //         maybePeriodic: null,
-  //         priority: 0,
-  //         call: await rootEvmCall(el),
-  //       })
-  //     )
-  //   );
-  // }
-  // clearBatch();
-  //
-  //send rewards to pot
-  // const rewardsPot = (await getPotRewardsStrategy())?.address;
-  // if (!rewardsPot || rewardsPot == ZERO_ADDRESS) {
-  //   console.log(rewardsPot);
-  //   console.log(chalk.red(`failed to get rewrds pot address or is not valid`));
-  //   exit(1);
-  // }
-  // //Transfer rewards to pot
-  // txs.push(
-  //   await dispatchAs(
-  //     threasury,
-  //     hydrationTx.currencies.transfer(
-  //       ...Object.values({
-  //         dest: padAddress(rewardsPot),
-  //         currencyId: gDOT,
-  //         amount: "26,640.000,000,000,000,000,000"
-  //           .replaceAll(",", "")
-  //           .replaceAll(".", ""),
-  //       })
-  //     )
-  //   )
-  // );
+  //add gETHs to mm
+  txs.push(
+    await dispatchAs(
+      treasury,
+      hydrationTx.router.sell(
+        ...Object.values({
+          assetIn: gETHs,
+          assetOut: gETH,
+          amount: "1_827_517.698_892_041_000_000_000".replaceAll(".", "").replaceAll("_", ""),
+          minAmountOut: 0,
+          route: [{ pool: "Aave", assetIn: gETHs, assetOut: gETH }],
+        })
+      )
+    )
+  );
 
-  //TODO: allow 69 as fee payment asset
-  // txs.push(
-  //   hydrationTx.multiTransactionPayment.addCurrency(
-  //     ...Object.values({
-  //       asset: gDOT,
-  //       price: "302571428571429000000",
-  //     })
-  //   )
-  // );
-  //
-  // //allow 690 as fee payment asset
-  // txs.push(
-  //   hydrationTx.multiTransactionPayment.addCurrency(
-  //     ...Object.values({
-  //       asset: gDOTs,
-  //       price: "302571428571429000000",
-  //     })
-  //   )
-  // );
+  //TODO: emode
+  //TODO: tx geth(69) to omnipool's account 
+  //TODO: omnipool.add_token()
 
   let preimage = await generateProposalV2(txs, false);
   const decoder = new ProposalDecoder(hre);
