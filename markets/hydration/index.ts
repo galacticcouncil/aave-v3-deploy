@@ -107,7 +107,8 @@ export const HydrationConfig: IAaveConfiguration = {
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
       ETH: "0x1AF549Fe19A9B73D094173C41e18BF7F357F594b",
       WSTETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36",
-      GETH: "0xe36D8630E2C87F0389ffd2DdE39470D9946d04d3", //TODO: deploy adapter contract and set this address
+      GETH: "0xe36D8630E2C87F0389ffd2DdE39470D9946d04d3", //TODO: deploy USDOracleAdapter and use real address
+      WSTETH_ETH: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: deploy OraclesAggregator and use real address
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -120,7 +121,8 @@ export const HydrationConfig: IAaveConfiguration = {
       GDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191", //NOTE: this is vDOT's oracle
       ETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36",  //TODO: waithing on DIA
       WSTETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36", //TODO: waiting on DIA
-      GETH: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: use real deployed adapter contract's address
+      GETH: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: deploy USDOracleAdapter and use real address
+      WSTETH_ETH: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: deploy OraclesAggregator and use real address
     },
   },
   IncentivesConfig: {
@@ -210,6 +212,14 @@ export const HydrationConfig: IAaveConfiguration = {
       },
     },
   },
+  OraclesAggregator: {
+    [eHydrationNetwork.hydration]: {
+      WSTETH_ETH: {
+        srcAssetToX: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36",
+        destAssetToX: "0x1AF549Fe19A9B73D094173C41e18BF7F357F594b"
+      }
+    }
+  }
 };
 
 export default HydrationConfig;

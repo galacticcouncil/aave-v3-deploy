@@ -51,10 +51,11 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   const hydrationTx = (await getApi()).tx;
   const gETH = 420;
   const gETHs = 4200;
-  const wstETH  = 1000809;
+  const wstETH = 1000809;
   const aETH = 1007;
   const ETH = 34;
   const treasury = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
+  const omnipool = "13UVJyLnPLowAMzbZewu9zwEGiSMQKniJ2cp4vM4ru2nci9N";
   const txs = [];
 
   if (!isPoolAdmin) {
@@ -64,11 +65,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
 
   const chainlinkConf = config.ChainlinkAggregator[network];
   if (!chainlinkConf) {
-    console.log(
-      chalk.red(
-        `'${network}': chainlink configuration not found`
-      )
-    );
+    console.log(chalk.red(`'${network}': chainlink configuration not found`));
     exit(1);
   }
 
@@ -84,7 +81,6 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   }
   console.log("Deployer Address:", deployer);
   let nonce = await hre.ethers.provider.getTransactionCount(deployer);
-
 
   console.log("---------> register GETH");
   let agEthToken = utils.getContractAddress({
@@ -104,7 +100,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
           id: gETH,
           name: "GIGAETH",
           assetType: "Erc20",
-          existentialDeposit: 0,
+          existentialDeposit: 1,
           symbol: "GETH",
           decimals: 18,
           location: location(agEthToken),
@@ -225,27 +221,16 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   }
   clearBatch();
 
-  console.log("---------> create stableswap pool with pegs")
-  const wstEthOracle = chainlinkConf.WSTETH;
-  if (!wstEthOracle) {
+  console.log("---------> create stableswap pool with pegs");
+  const wstEthEthOracle = chainlinkConf.WSTETH_ETH;
+  if (!wstEthEthOracle) {
     console.log(
-      chalk.red(
-        `'${network}.WSTETH' oracle's address not found`
-      )
-    );
-    exit(1);
-  }
-  const ethOracle = chainlinkConf.ETH;
-  if (!ethOracle) {
-    console.log(
-      chalk.red(
-        `'${network}.ETH' oracle's address not found`
-      )
+      chalk.red(`'${network}.WSTETH_ETH' oracle's address not found`)
     );
     exit(1);
   }
 
-  console.log("---------> add liquidity to created pool")
+  console.log("---------> add liquidity to created pool");
   //Create stableswap pool and add liquidity
   txs.push(
     hydrationTx.stableswap.createPoolWithPegs(
@@ -254,8 +239,8 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
         assets: [wstETH, aETH],
         amplification: 100,
         fee: 690,
-        pegSource: [{ MMOracle: wstEthOracle }, { MMOracle: ethOracle }],
-        maxPegUpdate: 10000, //TODO:  
+        pegSource: [{ MMOracle: wstEthEthOracle }, { value: [1, 1] }],
+        maxPegUpdate: 50000, //TODO:
       })
     )
   );
@@ -268,7 +253,9 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
         ...Object.values({
           assetIn: ETH,
           assetOut: aETH,
-          amount: "346.500_000_000_000_000_000".replaceAll(".", "").replaceAll("_", ""),
+          amount: "346.500_000_000_000_000_000"
+            .replaceAll(".", "")
+            .replaceAll("_", ""),
           minAmountOut: 0,
           route: [{ pool: "Aave", assetIn: ETH, assetOut: aETH }],
         })
@@ -283,8 +270,18 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
         ...Object.values({
           poolId: gETHs,
           assets: [
-            { assetId: aETH, amount: "346.500_000_000_000_000_000".replaceAll(".", "").replaceAll("_", "") },
-            { assetId: wstETH, amount: "289.310_000_000_000_000_000".replaceAll(".", "").replaceAll("_", "") }, 
+            {
+              assetId: aETH,
+              amount: "346.500_000_000_000_000_000"
+                .replaceAll(".", "")
+                .replaceAll("_", ""),
+            },
+            {
+              assetId: wstETH,
+              amount: "289.310_000_000_000_000_000"
+                .replaceAll(".", "")
+                .replaceAll("_", ""),
+            },
           ],
         })
       )
@@ -295,11 +292,10 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   txs.push(
     await dispatchAs(
       treasury,
-      hydrationTx.router.sell(
+      hydrationTx.router.sellAll(
         ...Object.values({
           assetIn: gETHs,
           assetOut: gETH,
-          amount: "1_827_517.698_892_041_000_000_000".replaceAll(".", "").replaceAll("_", ""),
           minAmountOut: 0,
           route: [{ pool: "Aave", assetIn: gETHs, assetOut: gETH }],
         })
@@ -307,9 +303,38 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
     )
   );
 
+  //tx asset to omnipool's account
+  txs.push(
+    await dispatchAs(
+      treasury,
+      hydrationTx.currencies.transfer(
+        ...Object.values({
+          dest: omnipool,
+          currencyId: gETH,
+          amount: "703.149_801_922_654_340_265"
+            .replaceAll(".", "")
+            .replaceAll("_", ""),
+        })
+      )
+    )
+  );
+
+  txs.push(
+    hydrationTx.utility.dispatchAs(
+      { System: "Root" },
+      hydrationTx.omnipool.addToken(
+        ...Object.values({
+          asset: gETH,
+          price: "120_282_396_655_829".replaceAll(".", "").replaceAll("_", ""),
+          weightCap: "100_000".replaceAll(".", "").replaceAll("_", ""),
+          positionOwner: treasury,
+        })
+      )
+    )
+  );
+
   //TODO: emode
-  //TODO: tx geth(69) to omnipool's account 
-  //TODO: omnipool.add_token()
+  //TODO: fee payment assets
 
   let preimage = await generateProposalV2(txs, false);
   const decoder = new ProposalDecoder(hre);

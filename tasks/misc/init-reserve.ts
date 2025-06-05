@@ -91,8 +91,8 @@ async function initReserve(
     }
   }
 
-  console.log(symbol)
-  console.log(ReservesConfig)
+  console.log(symbol);
+  console.log(ReservesConfig);
   const strategy: IInterestRateStrategyParams =
     ReservesConfig[symbol.toUpperCase()].strategy;
 
