@@ -148,33 +148,34 @@ export const HydrationConfig: IAaveConfiguration = {
         },
       ],
     },
-    [eHydrationNetwork.nice]: {
-      DOT: [
-        {
-          emissionPerSecond: BigNumber.from("413359788"),
-          duration: 1209600,
-          reserve: "DOT",
-          incentivizedToken: AssetType.AToken,
-          reward: tokenAddress(15),
-          rewardOracle: "VDOT",
-          transferStrategy: TransferStrategy.PotRewardsStrategy,
-          emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
-        },
-      ],
-      GDOT: [
-        {
-          //9k*10^18/(13w*7*86400)
-          emissionPerSecond: BigNumber.from("1144688644688644"),
-          duration: 7862400,
-          reserve: "GDOT",
-          incentivizedToken: AssetType.AToken,
-          reward: tokenAddress(690),
-          rewardOracle: "GDOT",
-          transferStrategy: TransferStrategy.PotRewardsStrategy,
-          emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
-        },
-      ],
-    },
+    // TODO: fix broken duration by type change
+    // [eHydrationNetwork.nice]: {
+    //   DOT: [
+    //     {
+    //       emissionPerSecond: BigNumber.from("413359788"),
+    //       duration: 1209600,
+    //       reserve: "DOT",
+    //       incentivizedToken: AssetType.AToken,
+    //       reward: tokenAddress(15),
+    //       rewardOracle: "VDOT",
+    //       transferStrategy: TransferStrategy.PotRewardsStrategy,
+    //       emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
+    //     },
+    //   ],
+    //   GDOT: [
+    //     {
+    //       //9k*10^18/(13w*7*86400)
+    //       emissionPerSecond: BigNumber.from("1144688644688644"),
+    //       duration: 7862400,
+    //       reserve: "GDOT",
+    //       incentivizedToken: AssetType.AToken,
+    //       reward: tokenAddress(690),
+    //       rewardOracle: "GDOT",
+    //       transferStrategy: TransferStrategy.PotRewardsStrategy,
+    //       emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
+    //     },
+    //   ],
+    // },
   },
   USDOracleAdapter: {
     [eHydrationNetwork.hydration]: {

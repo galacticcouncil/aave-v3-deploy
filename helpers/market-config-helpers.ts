@@ -408,5 +408,5 @@ export const isIncentivesEnabled = (poolConfig: ICommonConfiguration) => {
     return !!ENABLE_REWARDS;
   }
 
-  return !!getParamPerNetwork(poolConfig.IncentivesConfig.enabled, network);
+  return !!getParamPerNetwork(poolConfig.IncentivesConfig, network);
 };
