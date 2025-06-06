@@ -333,8 +333,29 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
     )
   );
 
-  //TODO: emode
-  //TODO: fee payment assets
+  //allow 420 as fee payment asset
+  txs.push(
+    hydrationTx.multiTransactionPayment.addCurrency(
+      ...Object.values({
+        asset: gETH,
+        price: "408_930_833_153_131_000"
+          .replaceAll(".", "")
+          .replaceAll("_", ""),
+      })
+    )
+  );
+
+  //allow 4200 as fee payment asset
+  txs.push(
+    hydrationTx.multiTransactionPayment.addCurrency(
+      ...Object.values({
+        asset: gETHs,
+        price: "408_930_833_153_131_000"
+          .replaceAll(".", "")
+          .replaceAll("_", ""),
+      })
+    )
+  );
 
   let preimage = await generateProposalV2(txs, false);
   const decoder = new ProposalDecoder(hre);

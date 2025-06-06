@@ -92,6 +92,14 @@ export const HydrationConfig: IAaveConfiguration = {
       label: "DOT correlated",
       assets: ["DOT", "VDOT", "2-Pool-GDOT"],
     },
+    EthEMode: {
+      id: "3",
+      ltv: "8000",
+      liquidationThreshold: "9000",
+      liquidationBonus: "10450",
+      label: "ETH correlated",
+      assets: ["ETH", "2-Pool-GETH"],
+    },
   },
   ChainlinkAggregator: {
     [eHydrationNetwork.hydration]: {
@@ -119,7 +127,7 @@ export const HydrationConfig: IAaveConfiguration = {
       VDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191",
       //TBTC: "0x5d8320f3ced9575d8e25b6f437e610fc6a03bf52",
       GDOT: "0x234F96059d628Da80B76A40c0E50a9D16a8F3191", //NOTE: this is vDOT's oracle
-      ETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36",  //TODO: waithing on DIA
+      ETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36", //TODO: waithing on DIA
       WSTETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36", //TODO: waiting on DIA
       GETH: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: deploy USDOracleAdapter and use real address
       WSTETH_ETH: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: deploy OraclesAggregator and use real address
@@ -215,11 +223,11 @@ export const HydrationConfig: IAaveConfiguration = {
   OraclesAggregator: {
     [eHydrationNetwork.hydration]: {
       WSTETH_ETH: {
-        srcAssetToX: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36",
-        destAssetToX: "0x1AF549Fe19A9B73D094173C41e18BF7F357F594b"
-      }
-    }
-  }
+        srcAssetToX: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36", //wstETH -> USD
+        destAssetToX: "0x1AF549Fe19A9B73D094173C41e18BF7F357F594b", //ETH -> USD
+      },
+    },
+  },
 };
 
 export default HydrationConfig;
