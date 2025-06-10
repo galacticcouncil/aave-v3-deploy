@@ -221,13 +221,13 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   }
   clearBatch();
 
-  console.log("setup ETH emode");
-  await hre.run("review-e-mode", { fix: true, batch: true, name: "EthEMode" });
-  for await (const el of getBatch()) {
-    el.from = admin;
-    txs.push(await rootEvmCall(el));
-  }
-  clearBatch();
+  // console.log("setup ETH emode");
+  // await hre.run("review-e-mode", { fix: true, batch: true, name: "EthEMode" });
+  // for await (const el of getBatch()) {
+  //   el.from = admin;
+  //   txs.push(await rootEvmCall(el));
+  // }
+  // clearBatch();
 
   console.log("---------> create stableswap pool with pegs");
   const wstEthEthOracle = chainlinkConf.WSTETH_ETH;
@@ -244,10 +244,10 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
     hydrationTx.stableswap.createPoolWithPegs(
       ...Object.values({
         shareAsset: gETHs,
-        assets: [wstETH, aETH],
+        assets: [aETH, wstETH ], //NOTE: assets are stored sorted and aETH < wstETH => reversed order than GDOT
         amplification: 100,
         fee: 690,
-        pegSource: [{ MMOracle: wstEthEthOracle }, { value: [1, 1] }],
+        pegSource: [{ value: [1, 1] }, { MMOracle: wstEthEthOracle } ],
         maxPegUpdate: 50000, //TODO:
       })
     )
