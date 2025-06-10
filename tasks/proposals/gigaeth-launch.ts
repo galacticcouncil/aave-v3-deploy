@@ -244,11 +244,11 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
     hydrationTx.stableswap.createPoolWithPegs(
       ...Object.values({
         shareAsset: gETHs,
-        assets: [aETH, wstETH ], //NOTE: assets are stored sorted and aETH < wstETH => reversed order than GDOT
+        assets: [aETH, wstETH], //NOTE: assets are stored sorted and aETH < wstETH => reversed order than GDOT
         amplification: 100,
         fee: 690,
-        pegSource: [{ value: [1, 1] }, { MMOracle: wstEthEthOracle } ],
-        maxPegUpdate: 50000, //TODO:
+        pegSource: [{ value: [1, 1] }, { MMOracle: wstEthEthOracle }],
+        maxPegUpdate: 250,
       })
     )
   );

@@ -8,7 +8,7 @@ import { exit } from "process";
 import chalk from "chalk";
 
 task(
-  `deploy-OralesAggregator`,
+  `deploy-OraclesAggregator`,
   `Deploys the ./contracts/OraclesAggregator contract`
 )
   .addParam("oracle", "oracle aggregator name")

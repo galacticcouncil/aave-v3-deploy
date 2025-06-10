@@ -78,13 +78,13 @@ async function initReserve(
     if (assets.length == 0 && sources.length == 0) {
       const addr = reserve["ETH"];
       if (addr) {
-        assets =  [ addr ];
-        sources =  [ chainlinkAggregators["ETH"] ]
+        assets = [addr];
+        sources = [chainlinkAggregators["ETH"]];
       }
     }
 
     if (assets.length == 0 || sources.length == 0) {
-        throw `Missing aggregator for ${reserve}`;
+      throw `Missing aggregator for ${reserve}`;
     }
 
     const { abi, address } = await deployments.get(ORACLE_ID);
