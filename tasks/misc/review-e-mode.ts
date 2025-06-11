@@ -54,7 +54,7 @@ task(`review-e-mode`, ``)
         priceSource: configEmodeCategory.oracleId
           ? await getOracleByAsset(poolConfig, configEmodeCategory.oracleId)
           : ZERO_ADDRESS,
-        label: onChainCategory.label,
+        label: onChainCategory.label || configEmodeCategory.label,
       };
       const currentCategory = {
         ltv: onChainCategory.ltv,

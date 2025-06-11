@@ -221,13 +221,41 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   }
   clearBatch();
 
-  // console.log("setup ETH emode");
-  // await hre.run("review-e-mode", { fix: true, batch: true, name: "EthEMode" });
-  // for await (const el of getBatch()) {
-  //   el.from = admin;
-  //   txs.push(await rootEvmCall(el));
-  // }
-  // clearBatch();
+  console.log("setup ETH emode");
+  await hre.run("review-e-mode", { fix: true, batch: true, name: "EthEMode" });
+  for await (const el of getBatch()) {
+    el.from = admin;
+    txs.push(await rootEvmCall(el));
+  }
+  clearBatch();
+
+  console.log("add ETH to ETH emode");
+  {
+    const tx = await poolConfigurator.populateTransaction.setAssetEModeCategory(
+      await getReserveAddress(config, "ETH"),
+      config.EModes["EthEMode"].id
+    );
+    addTransaction(tx);
+  }
+  for await (const el of getBatch()) {
+    el.from = admin;
+    txs.push(await rootEvmCall(el));
+  }
+  clearBatch();
+
+  console.log("add GETH to ETH emode");
+  {
+    const tx = await poolConfigurator.populateTransaction.setAssetEModeCategory(
+      await getReserveAddress(config, "GETH"),
+      config.EModes["EthEMode"].id
+    );
+    addTransaction(tx);
+  }
+  for await (const el of getBatch()) {
+    el.from = admin;
+    txs.push(await rootEvmCall(el));
+  }
+  clearBatch();
 
   console.log("---------> create stableswap pool with pegs");
   const wstEthEthOracle = chainlinkConf.WSTETH_ETH;
