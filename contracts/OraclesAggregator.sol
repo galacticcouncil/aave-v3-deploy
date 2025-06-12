@@ -38,11 +38,27 @@ contract  OraclesAggregator is AggregatorV3Interface {
     function getRoundData(
         uint80 _roundId
     ) external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) {
-        return (0, 0, 0, 0, 0);
+        return this.latestRoundData();
     }
 
     function latestAnswer() external view returns (int256) {
         (, int256 answer, , , ) = this.latestRoundData();
         return answer;
+    }
+
+    function latestTimestamp() external view returns (uint256) {
+        return block.timestamp;
+    }
+
+    function latestRound() external view returns (uint256) {
+        return 0;
+    }
+
+    function getAnswer(uint256 roundId) external view returns (int256) {
+        return this.latestAnswer();
+    }
+
+    function getTimestamp(uint256 roundId) external view returns (uint256) {
+        return 0;
     }
 }

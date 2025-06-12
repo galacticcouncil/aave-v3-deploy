@@ -12,6 +12,8 @@ import {
   dispatchAs,
   rootEvmCall,
   padAddress,
+  evm,
+  aaveManagerCall,
 } from "../../helpers/hydration-proposal.js";
 import { MARKET_NAME } from "../../helpers/env";
 import { task } from "hardhat/config";
@@ -100,7 +102,9 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
           id: gETH,
           name: "GIGAETH",
           assetType: "Erc20",
-          existentialDeposit: 1,
+          existentialDeposit: "8,202,803,876,747"
+            .replaceAll(".", "")
+            .replaceAll("_", ""),
           symbol: "GETH",
           decimals: 18,
           location: location(agEthToken),
@@ -132,7 +136,9 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
           id: aETH,
           name: "aETH",
           assetType: "Erc20",
-          existentialDeposit: 0,
+          existentialDeposit: "8,202,803,876,747"
+            .replaceAll(".", "")
+            .replaceAll("_", ""),
           symbol: "aETH",
           decimals: 18,
           location: location(aEthToken),
@@ -152,7 +158,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
         id: gETHs,
         name: "2-Pool-GETH",
         assetType: "StableSwap",
-        existentialDeposit: 1,
+        existentialDeposit: 1000,
         symbol: "2-Pool-GETH",
         decimals: 18,
         location: null,
@@ -169,65 +175,29 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
     batch: true,
   });
 
-  for await (const el of getBatch()) {
-    el.from = admin;
-    txs.push(await rootEvmCall(el));
-  }
-  clearBatch();
-
   console.log("init GIGAETH reserve");
   await hre.run("init-reserve", {
     symbol: "GETH",
     batch: true,
   });
-  for await (const el of getBatch()) {
-    el.from = admin;
-    txs.push(await rootEvmCall(el));
-  }
-  clearBatch();
 
   console.log("init ETH reserve");
   await hre.run("init-reserve", {
     symbol: "ETH",
     batch: true,
   });
-  for await (const el of getBatch()) {
-    el.from = admin;
-    txs.push(await rootEvmCall(el));
-  }
-  clearBatch();
 
   console.log("update reserve configs");
   await hre.run("review-reserve-configs", { fix: false, batch: true });
-  for await (const el of getBatch()) {
-    el.from = admin;
-    txs.push(await rootEvmCall(el));
-  }
-  clearBatch();
 
   console.log("update supply caps");
   await hre.run("review-supply-caps", { fix: false, batch: true });
-  for await (const el of getBatch()) {
-    el.from = admin;
-    txs.push(await rootEvmCall(el));
-  }
-  clearBatch();
 
   console.log("update borrow caps");
   await hre.run("review-borrow-caps", { fix: false, batch: true });
-  for await (const el of getBatch()) {
-    el.from = admin;
-    txs.push(await rootEvmCall(el));
-  }
-  clearBatch();
 
   console.log("setup ETH emode");
   await hre.run("review-e-mode", { fix: true, batch: true, name: "EthEMode" });
-  for await (const el of getBatch()) {
-    el.from = admin;
-    txs.push(await rootEvmCall(el));
-  }
-  clearBatch();
 
   console.log("add ETH to ETH emode");
   {
@@ -237,11 +207,6 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
     );
     addTransaction(tx);
   }
-  for await (const el of getBatch()) {
-    el.from = admin;
-    txs.push(await rootEvmCall(el));
-  }
-  clearBatch();
 
   console.log("add GETH to ETH emode");
   {
@@ -253,7 +218,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   }
   for await (const el of getBatch()) {
     el.from = admin;
-    txs.push(await rootEvmCall(el));
+    txs.push(await aaveManagerCall(el));
   }
   clearBatch();
 
@@ -356,16 +321,13 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   );
 
   txs.push(
-    hydrationTx.utility.dispatchAs(
-      { System: "Root" },
-      hydrationTx.omnipool.addToken(
-        ...Object.values({
-          asset: gETH,
-          price: "120_282_396_655_829".replaceAll(".", "").replaceAll("_", ""),
-          weightCap: "100_000".replaceAll(".", "").replaceAll("_", ""),
-          positionOwner: treasury,
-        })
-      )
+    hydrationTx.omnipool.addToken(
+      ...Object.values({
+        asset: gETH,
+        price: "120_282_396_655_829".replaceAll(".", "").replaceAll("_", ""),
+        weightCap: "100_000".replaceAll(".", "").replaceAll("_", ""),
+        positionOwner: treasury,
+      })
     )
   );
 
