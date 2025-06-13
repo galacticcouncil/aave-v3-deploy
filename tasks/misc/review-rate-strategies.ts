@@ -13,9 +13,6 @@ import { diff, formatters } from "jsondiffpatch";
 import chalk from "chalk";
 import { DefaultReserveInterestRateStrategy } from "../../typechain";
 import { addTransaction } from "../../helpers/transaction-batch";
-import { exit } from "process";
-import { FORK } from "../../helpers/hardhat-config-helpers";
-import { getAddress } from "ethers/lib/utils";
 
 // This task will review the InterestRate strategy of each reserve from a Market passed by environment variable MARKET_NAME.
 // If the fix flag is present it will change the current strategy of the reserve to the desired strategy from market configuration.
@@ -38,7 +35,6 @@ task(`review-rate-strategies`, ``)
       }: { fix: boolean; only: string; deploy: boolean; batch: boolean },
       hre
     ) => {
-      const network = FORK ? FORK : (hre.network.name as eNetwork);
       const { deployer, poolAdmin } = await hre.getNamedAccounts();
       const checkOnlyReserves: string[] = only ? only.split(",") : [];
       const dataProvider = await getAaveProtocolDataProvider();
@@ -55,25 +51,16 @@ task(`review-rate-strategies`, ``)
           )
         : reserves;
 
-      const reserveAssets = poolConfig.ReserveAssets?.[network];
-      if (!reserveAssets) {
-        console.log("Exiting due missing ReserveAssets");
-        exit(2);
-      }
       for (let index = 0; index < reservesToCheck.length; index++) {
         const { symbol, tokenAddress } = reservesToCheck[index];
 
-        let normalizedSymbol = "";
-        Object.values(reserveAssets).forEach((value, index) => {
-          if (getAddress(value) === getAddress(tokenAddress)) {
-            normalizedSymbol = Object.keys(reserveAssets)[index];
-          }
-        });
+        const normalizedSymbol = symbol.toUpperCase();
+        console.log(symbol, normalizedSymbol, tokenAddress);
         if (!normalizedSymbol) {
-          console.error(
+          console.warn(
             `- Missing address ${tokenAddress} at ReserveAssets configuration for ${symbol}`
           );
-          exit(3);
+          continue;
         }
 
         console.log(

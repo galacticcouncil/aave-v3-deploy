@@ -10,7 +10,7 @@ task(`update-gdot-incentives`, ``).setAction(async function (_, hre) {
 
   await hre.run("review-incentive", {
     batch: true,
-    reserve: "GDOT",
+    reserve: "2-POOL-GDOT",
     incentivize: "0x34D5ffB83D14D82f87aAf2f13BE895a3C814c2ad",
   });
 

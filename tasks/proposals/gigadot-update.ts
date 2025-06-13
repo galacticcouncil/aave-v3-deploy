@@ -37,6 +37,7 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
   const networkId = FORK ? FORK : hre.network.name;
   const admin = POOL_ADMIN[networkId];
   const isPoolAdmin = await aclManager.isPoolAdmin(admin);
+  const gDOTReserveName = "2-POOL-GDOT";
 
   const txs = [];
 
@@ -58,18 +59,21 @@ task(`gigadot-update`, ``).setAction(async function (_, hre) {
   console.log("add GDOT to DOT emode");
   {
     const tx = await poolConfigurator.populateTransaction.setAssetEModeCategory(
-      await getReserveAddress(config, "GDOT"),
+      await getReserveAddress(config, gDOTReserveName),
       config.EModes["DotEMode"].id
     );
     addTransaction(tx);
   }
 
   console.log("review and udpate incentives");
-  await hre.run("review-emission-admin", { batch: true, reserve: "GDOT" });
+  await hre.run("review-emission-admin", {
+    batch: true,
+    reserve: gDOTReserveName,
+  });
 
   await hre.run("review-incentive", {
     batch: true,
-    reserve: "GDOT",
+    reserve: gDOTReserveName,
   });
 
   for await (const el of getBatch()) {

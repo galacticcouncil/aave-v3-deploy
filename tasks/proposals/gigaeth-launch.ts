@@ -51,6 +51,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   const admin = POOL_ADMIN[networkId];
   const isPoolAdmin = await aclManager.isPoolAdmin(admin);
   const hydrationTx = (await getApi()).tx;
+  const gETHReserveName = "2-POOL-GETH";
   const gETH = 420;
   const gETHs = 4200;
   const wstETH = 1000809;
@@ -89,7 +90,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
     from: deployer,
     nonce: nonce,
   });
-  let reserveAddress = await getReserveAddress(config, "GETH");
+  let reserveAddress = await getReserveAddress(config, gETHReserveName);
   if (agEthToken) {
     const underlying = new hre.ethers.Contract(
       reserveAddress,
@@ -102,7 +103,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
           id: gETH,
           name: "GIGAETH",
           assetType: "Erc20",
-          existentialDeposit: "8,202,803,876,747"
+          existentialDeposit: "8_202_803_876_747"
             .replaceAll(".", "")
             .replaceAll("_", ""),
           symbol: "GETH",
@@ -136,7 +137,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
           id: aETH,
           name: "aETH",
           assetType: "Erc20",
-          existentialDeposit: "8,202,803,876,747"
+          existentialDeposit: "8_202_803_876_747"
             .replaceAll(".", "")
             .replaceAll("_", ""),
           symbol: "aETH",
@@ -177,7 +178,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
 
   console.log("init GIGAETH reserve");
   await hre.run("init-reserve", {
-    symbol: "GETH",
+    symbol: gETHReserveName,
     batch: true,
   });
 
@@ -211,7 +212,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   console.log("add GETH to ETH emode");
   {
     const tx = await poolConfigurator.populateTransaction.setAssetEModeCategory(
-      await getReserveAddress(config, "GETH"),
+      await getReserveAddress(config, gETHReserveName),
       config.EModes["EthEMode"].id
     );
     addTransaction(tx);
