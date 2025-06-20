@@ -242,7 +242,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
         amplification: 100,
         fee: 690,
         pegSource: [{ value: [1, 1] }, { MMOracle: wstEthEthOracle }],
-        maxPegUpdate: 250,
+        maxPegUpdate: 3, //1% in 5 hours is 0.00033333...% -> 0.000_003 => 0.9% change in 5 hours
       })
     )
   );

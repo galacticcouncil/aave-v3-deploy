@@ -99,7 +99,7 @@ export const HydrationConfig: IAaveConfiguration = {
       ltv: "8000",
       liquidationThreshold: "9000",
       liquidationBonus: "10450",
-      label: "ETH correlated",
+      label: "ETH",
       assets: ["ETH", "2-Pool-GETH"],
     },
   },
