@@ -535,7 +535,7 @@ export interface IBaseConfiguration {
   OracleQuoteCurrencyAddress: tEthereumAddress;
   ReservesConfig: SymbolMap<IReserveParams>;
   WrappedNativeTokenSymbol: string; // ex: WETH or WMATIC
-  IncentivesConfig: IncentivesConfig;
+  IncentivesConfig?: iParamsPerNetwork<SymbolMap<RewardsConfigInput[]>>;
   EModes: SymbolMap<EMode>;
   L2PoolEnabled?: iParamsPerNetwork<boolean>;
   StkAaveProxy?: iParamsPerNetwork<tEthereumAddress>;
@@ -545,6 +545,7 @@ export interface IBaseConfiguration {
     protocol: number;
   };
   RateStrategies: IStrategy;
+  USDOracleAdapter?: any;
 }
 
 export interface ICommonConfiguration extends IBaseConfiguration {}
