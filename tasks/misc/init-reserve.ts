@@ -70,10 +70,22 @@ async function initReserve(
   {
     const chainlinkAggregators = await getChainlinkOracles(poolConfig, network);
 
-    const [assets, sources] = getPairsTokenAggregator(
+    let [assets, sources] = getPairsTokenAggregator(
       reserve,
       chainlinkAggregators
     );
+
+    if (assets.length == 0 && sources.length == 0) {
+      const addr = reserve["ETH"];
+      if (addr) {
+        assets = [addr];
+        sources = [chainlinkAggregators["ETH"]];
+      }
+    }
+
+    if (assets.length == 0 || sources.length == 0) {
+      throw `Missing aggregator for ${reserve}`;
+    }
 
     const { abi, address } = await deployments.get(ORACLE_ID);
     const oracle = (await hre.ethers.getContractAt(abi, address)).connect(
@@ -91,6 +103,8 @@ async function initReserve(
     }
   }
 
+  console.log(symbol);
+  console.log(ReservesConfig);
   const strategy: IInterestRateStrategyParams =
     ReservesConfig[symbol.toUpperCase()].strategy;
 

@@ -41,3 +41,4 @@ export const STAKE_AAVE_IMPL_V3 = `StakeAave-REV-3-${IMPL_ID}`;
 export const L2_ENCODER = "L2Encoder";
 export const FAUCET_OWNABLE_ID = `Faucet-${MARKET_NAME}`;
 export const USD_ORACLE_ADAPTER_ID = `USDOracleAdapter`;
+export const ORACLES_AGGREGATOR_ID = `OraclesAggregator`;

@@ -54,6 +54,7 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   const vDOT = 15;
   const aDOT = 1001;
   const DOT = 5;
+  const gDOTReserveName = "2-POOL-GDOT";
   const threasury = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
   const txs = [];
 
@@ -80,7 +81,7 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
     nonce: nonce,
   });
 
-  const reserveAddress = await getReserveAddress(config, "GDOT");
+  const reserveAddress = await getReserveAddress(config, gDOTReserveName);
   console.log("reserve", reserveAddress);
 
   //Deploy aToken and register assets in asset registry
@@ -204,7 +205,10 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   clearBatch();
 
   //incentives
-  await hre.run("review-emission-admin", { batch: true, reserve: "GDOT" });
+  await hre.run("review-emission-admin", {
+    batch: true,
+    reserve: gDOTReserveName,
+  });
   for await (const el of getBatch()) {
     el.from = admin;
     txs.push(await rootEvmCall(el));
@@ -212,7 +216,7 @@ task(`gigadot-launch`, ``).setAction(async function (_, hre) {
   clearBatch();
   await hre.run("review-incentive", {
     batch: true,
-    reserve: "GDOT",
+    reserve: gDOTReserveName,
     incentivize: aToken,
   });
   for await (const el of getBatch()) {
