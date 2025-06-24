@@ -546,6 +546,7 @@ export interface IBaseConfiguration {
   };
   RateStrategies: IStrategy;
   USDOracleAdapter?: any;
+  OraclesAggregator?: any;
 }
 
 export interface ICommonConfiguration extends IBaseConfiguration {}
