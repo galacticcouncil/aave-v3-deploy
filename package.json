@@ -1,6 +1,6 @@
 {
   "name": "@galacticcouncil/aave-deploy-v3",
-  "version": "1.57.0",
+  "version": "1.58.0",
   "files": [
     "dist",
     "helpers",
@@ -45,8 +45,9 @@
   "license": "AGPLv3",
   "scripts": {
     "run-env": "npm ci && tail -f /dev/null",
+    "cp-deployments": "mkdir ./dist/deployments && cp -r ./deployments/hydration ./dist/deployments/hydration",
     "cp-typechain": "cp typechain/*.d.ts ./dist/types/typechain",
-    "build": "tsc --project lib.tsconfig.json && npm run cp-typechain",
+    "build": "tsc --project lib.tsconfig.json && npm run cp-typechain && npm run cp-deployments",
     "clean": "rm -rf artifacts/ types/ dist/ typechain/",
     "compile": "SKIP_LOAD=true npx hardhat compile",
     "prepublish": "npm run clean && npm run compile && npm run build",

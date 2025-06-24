@@ -2,7 +2,7 @@ import { rateStrategyVolatileOne } from "./../aave/rateStrategies";
 import { eContractid, IReserveParams } from "../../helpers/types";
 import { rateStrategyDOT, rateStrategyStables } from "./rateStrategies";
 
-const supplyCap = "2222222";
+const supplyCap = "3222222";
 const borrowCap = "1111111";
 const debtCeiling = "0";
 const reserveFactor = "2000";
@@ -84,7 +84,7 @@ export const strategyVDOT: IReserveParams = {
   reserveDecimals: "10",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "666666",
+  supplyCap: "1333333",
   borrowCap: "111111",
   debtCeiling,
   borrowableIsolation: false,
