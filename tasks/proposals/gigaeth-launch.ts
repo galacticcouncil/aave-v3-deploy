@@ -382,7 +382,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
       treasury,
       hydrationTx.omnipoolLiquidityMining.createYieldFarm(
         ...Object.values({
-          globalFarmId: 75,
+          globalFarmId: 99,
           assetId: gETH,
           multiplier: "1,000,000,000,000,000,000".replaceAll(",", ""),
           loyaltyCurve: {
