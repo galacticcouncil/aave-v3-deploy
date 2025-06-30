@@ -270,6 +270,36 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   txs.push(
     await dispatchAs(
       treasury,
+      hydrationTx.currencies.transfer(
+        ...Object.values({
+          dest: omnipool,
+          currencyId: aETH,
+          amount: "346.500_000_000_000_000_000"
+            .replaceAll(".", "")
+            .replaceAll("_", ""),
+        })
+      )
+    )
+  );
+
+  txs.push(
+    await dispatchAs(
+      treasury,
+      hydrationTx.currencies.transfer(
+        ...Object.values({
+          dest: omnipool,
+          currencyId: wstETH,
+          amount: "289.310_000_000_000_000_000"
+            .replaceAll(".", "")
+            .replaceAll("_", ""),
+        })
+      )
+    )
+  );
+
+  txs.push(
+    await dispatchAs(
+      omnipool,
       hydrationTx.stableswap.addLiquidity(
         ...Object.values({
           poolId: gETHs,
@@ -295,29 +325,13 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   //add gETHs to mm
   txs.push(
     await dispatchAs(
-      treasury,
+      omnipool,
       hydrationTx.router.sellAll(
         ...Object.values({
           assetIn: gETHs,
           assetOut: gETH,
           minAmountOut: 0,
           route: [{ pool: "Aave", assetIn: gETHs, assetOut: gETH }],
-        })
-      )
-    )
-  );
-
-  //tx asset to omnipool's account
-  txs.push(
-    await dispatchAs(
-      treasury,
-      hydrationTx.currencies.transfer(
-        ...Object.values({
-          dest: omnipool,
-          currencyId: gETH,
-          amount: "703.149_801_922_654_340_265"
-            .replaceAll(".", "")
-            .replaceAll("_", ""),
         })
       )
     )
