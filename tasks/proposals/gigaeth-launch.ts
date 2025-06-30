@@ -57,6 +57,8 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
   const wstETH = 1000809;
   const aETH = 1007;
   const ETH = 34;
+  const VDOT = 15;
+  const LRNA = 1;
   const treasury = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
   const omnipool = "13UVJyLnPLowAMzbZewu9zwEGiSMQKniJ2cp4vM4ru2nci9N";
   const txs = [];
@@ -352,6 +354,61 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
         price: "408_930_833_153_131_000"
           .replaceAll(".", "")
           .replaceAll("_", ""),
+      })
+    )
+  );
+
+  //Liquidity mining setup
+  txs.push(
+    hydrationTx.omnipoolLiquidityMining.createGlobalFarm(
+      ...Object.values({
+        totalRewards: "56,197,740,000,000,000,000,000".replaceAll(",", ""),
+        plannedYieldingPeriods: 1314000,
+        blocksPerPeriod: 1,
+        rewardCurrecny: 69,
+        owner: treasury,
+        yieldPerPeriod: "131,278,538,813".replaceAll(",", ""),
+        minDeposit: "502,765,208,648".replaceAll(",", ""),
+        lrnaPriceAdjustment: "5,668,946,648,426,810,000,000,000".replaceAll(
+          ",",
+          ""
+        ),
+      })
+    )
+  );
+
+  txs.push(
+    await dispatchAs(
+      treasury,
+      hydrationTx.omnipoolLiquidityMining.createYieldFarm(
+        ...Object.values({
+          globalFarmId: 99,
+          assetId: gETH,
+          multiplier: "1,000,000,000,000,000,000".replaceAll(",", ""),
+          loyaltyCurve: {
+            initialRewardPercentage: "500,000,000,000,000,000".replaceAll(
+              ",",
+              ""
+            ),
+            scaleCoef: 12000,
+          },
+        })
+      )
+    )
+  );
+
+  txs.push(
+    hydrationTx.router.forceInsertRoute(
+      ...Object.values({
+        assetPair: {
+          assetIn: LRNA,
+          assetOut: 69,
+        },
+        newRoute: [
+          { pool: "Omnipool", assetIn: LRNA, assetOut: VDOT },
+          { pool: { Stableswap: 690 }, assetIn: VDOT, assetOut: 690 },
+          { pool: "Aave", assetIn: 690, assetOut: 69 },
+        ],
       })
     )
   );
