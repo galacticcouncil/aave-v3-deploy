@@ -3,7 +3,7 @@ import { eContractid, IReserveParams } from "../../helpers/types";
 import { rateStrategyDOT, rateStrategyStables } from "./rateStrategies";
 
 const supplyCap = "3222222";
-const borrowCap = "1111111";
+const borrowCap = "1611111";
 const debtCeiling = "0";
 const reserveFactor = "2000";
 
@@ -67,7 +67,7 @@ export const strategyDOT: IReserveParams = {
   aTokenImpl: eContractid.AToken,
   reserveFactor,
   supplyCap: "22,222,222".replace(/,/g, ""),
-  borrowCap: "6,000,000".replace(/,/g, ""),
+  borrowCap: "10,000,000".replace(/,/g, ""),
   debtCeiling,
   borrowableIsolation: false,
 };
@@ -120,7 +120,7 @@ export const strategyGDOT: IReserveParams = {
   reserveDecimals: "18",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "8,888,888".replace(/,/g, ""),
+  supplyCap: "22,222,222".replace(/,/g, ""),
   borrowCap: "0",
   debtCeiling,
   borrowableIsolation: false,

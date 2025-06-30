@@ -117,8 +117,8 @@ export const HydrationConfig: IAaveConfiguration = {
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
       ETH: "0x1AF549Fe19A9B73D094173C41e18BF7F357F594b",
       WSTETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36",
-      "2-POOL-GETH": "0xe36D8630E2C87F0389ffd2DdE39470D9946d04d3", //TODO: deploy USDOracleAdapter and use real address
-      WSTETH_ETH: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: deploy OraclesAggregator and use real address
+      "2-POOL-GETH": "0xA317cEbdE7F948e132fDD177E5002A1DD2C2cB21",
+      WSTETH_ETH: "0x32CC29cA6924B16077056A7B049663AF153D9E90",
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -139,8 +139,8 @@ export const HydrationConfig: IAaveConfiguration = {
     [eHydrationNetwork.hydration]: {
       "2-POOL-GDOT": [
         {
-          emissionPerSecond: BigNumber.from("1694139194139194").mul("2"),
-          distributionEnd: Date.parse("11 Jul 2025 14:24:36 GMT") / 1000,
+          emissionPerSecond: BigNumber.from("19270000000000000"),
+          distributionEnd: Date.parse("17 Sep 2025 14:24:36 GMT") / 1000,
           reserve: "2-Pool-GDOT",
           incentivizedToken: AssetType.AToken,
           reward: tokenAddress(69),
