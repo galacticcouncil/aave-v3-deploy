@@ -289,7 +289,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
         ...Object.values({
           dest: omnipool,
           currencyId: wstETH,
-          amount: "289.310_000_000_000_000_000"
+          amount: "286.310_000_000_000_000_000"
             .replaceAll(".", "")
             .replaceAll("_", ""),
         })
@@ -312,7 +312,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
             },
             {
               assetId: wstETH,
-              amount: "289.310_000_000_000_000_000"
+              amount: "286.310_000_000_000_000_000"
                 .replaceAll(".", "")
                 .replaceAll("_", ""),
             },
@@ -341,7 +341,7 @@ task(`gigaeth-launch`, ``).setAction(async function (_, hre) {
     hydrationTx.omnipool.addToken(
       ...Object.values({
         asset: gETH,
-        price: "120_282_396_655_829".replaceAll(".", "").replaceAll("_", ""),
+        price: "127.505_454_545_454".replaceAll(".", "").replaceAll("_", ""),
         weightCap: "100_000".replaceAll(".", "").replaceAll("_", ""),
         positionOwner: treasury,
       })
