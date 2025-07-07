@@ -156,7 +156,7 @@ export const strategyGETH: IReserveParams = {
   reserveDecimals: "18",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "2,222".replace(/,/g, ""),
+  supplyCap: "3,333".replace(/,/g, ""),
   borrowCap: "0",
   debtCeiling,
   borrowableIsolation: false,
