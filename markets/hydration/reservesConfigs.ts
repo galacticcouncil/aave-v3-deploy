@@ -161,3 +161,21 @@ export const strategyGETH: IReserveParams = {
   debtCeiling,
   borrowableIsolation: false,
 };
+
+export const strategy3POOL: IReserveParams = {
+  strategy: rateStrategyStables,
+  baseLTVAsCollateral: "0",
+  liquidationThreshold: "0",
+  liquidationBonus: "0",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: false,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "18",
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "5,000,000".replace(/,/g, ""),
+  borrowCap: "0",
+  debtCeiling,
+  borrowableIsolation: false,
+};
