@@ -107,8 +107,35 @@ task(`3pool-launch`, ``).setAction(async function (_, hre) {
           assetOut: a3pool,
         },
         newRoute: [
-          { pool: "Omnipool", assetIn: 0, assetOut: 103 },
-          { pool: "Aave", assetIn: 103, assetOut: a3pool },
+          {
+            pool: "Omnipool",
+            assetIn: 0,
+            assetOut: 102,
+          },
+          {
+            pool: {
+              Stableswap: 102,
+            },
+            assetIn: 102,
+            assetOut: 10,
+          },
+          {
+            pool: "Aave",
+            assetIn: 10,
+            assetOut: 1002,
+          },
+          {
+            pool: {
+              Stableswap: 103,
+            },
+            assetIn: 1002,
+            assetOut: 103,
+          },
+          {
+            pool: "Aave",
+            assetIn: 103,
+            assetOut: a3pool,
+          },
         ],
       })
     )
