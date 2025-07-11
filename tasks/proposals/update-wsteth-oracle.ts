@@ -58,7 +58,10 @@ task(`update-wsteth-oracle`).setAction(async function (_, hre) {
   decoder.printTree(decoder.transformCall(preimage.toHuman()));
   console.log("hash:");
   console.log(preimage.hash.toHex());
-  let { whitelistedCall } = await generateProposalV2(afterUpgrade, true);
-  console.log("whitelistedCall:");
-  console.log(whitelistedCall.toHex());
+  let { proposal } = await generateProposalV2(afterUpgrade, true);
+  console.log("proposal:");
+  console.log(proposal.toHex());
+  decoder.printTree(decoder.transformCall(proposal.toHuman()));
+  console.log("proposal hash:");
+  console.log(proposal.hash.toHex());
 });
