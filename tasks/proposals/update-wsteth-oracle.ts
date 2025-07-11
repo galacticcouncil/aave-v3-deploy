@@ -50,19 +50,7 @@ task(`update-wsteth-oracle`).setAction(async function (_, hre) {
     })
   );
 
-  const txs = [
-    hydrationTx.system.authorizeUpgrade(
-      "0xb76d4164995e9d7801bd0cc7d674fc88fb29bb26e32abce2babb6973f74d2423"
-    ),
-    hydrationTx.scheduler.scheduleAfter(
-      900,
-      null,
-      0,
-      hydrationTx.utility.batchAll(afterUpgrade)
-    ),
-  ];
-
-  let preimage = await generateProposalV2(txs, false);
+  let preimage = await generateProposalV2(afterUpgrade, false);
   const decoder = new ProposalDecoder(hre);
   await decoder.init();
   console.log("preimage:");
@@ -70,4 +58,7 @@ task(`update-wsteth-oracle`).setAction(async function (_, hre) {
   decoder.printTree(decoder.transformCall(preimage.toHuman()));
   console.log("hash:");
   console.log(preimage.hash.toHex());
+  let { whitelistedCall } = await generateProposalV2(afterUpgrade, true);
+  console.log("whitelistedCall:");
+  console.log(whitelistedCall.toHex());
 });
