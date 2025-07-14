@@ -5,7 +5,7 @@ import {
   TransferStrategy,
 } from "./../../helpers/types";
 import { POOL_ADMIN } from "./../../helpers/constants";
-import { BigNumber } from "ethers";
+import { BigNumber, utils } from "ethers";
 import AaveMarket from "../aave";
 import {
   strategyDOT,
@@ -18,6 +18,7 @@ import {
   strategyGDOT,
   strategyETH,
   strategyGETH,
+  strategy3POOL,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -41,6 +42,7 @@ export const HydrationConfig: IAaveConfiguration = {
     "2-POOL-GDOT": strategyGDOT,
     ETH: strategyETH,
     "2-POOL-GETH": strategyGETH,
+    "3-POOL": strategy3POOL,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -54,6 +56,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-GDOT": tokenAddress(690),
       ETH: tokenAddress(34),
       "2-POOL-GETH": tokenAddress(4200),
+      "3-POOL": tokenAddress(103),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -119,6 +122,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WSTETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36",
       "2-POOL-GETH": "0x32CC29cA6924B16077056A7B049663AF153D9E90",
       WSTETH_ETH: "0xA317cEbdE7F948e132fDD177E5002A1DD2C2cB21",
+      "3-POOL": "0xFbD6F083b9e8683fe62B21cF5849f362238610AF",
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -165,6 +169,18 @@ export const HydrationConfig: IAaveConfiguration = {
           incentivizedToken: AssetType.AToken,
           reward: tokenAddress(0),
           rewardOracle: "HDX",
+          transferStrategy: TransferStrategy.PotRewardsStrategy,
+          emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
+        },
+      ],
+      "3-POOL": [
+        {
+          emissionPerSecond: utils.parseEther("0.001606016693").toString(),
+          distributionEnd: Date.parse("15 Oct 2025 14:24:36 GMT") / 1000,
+          reserve: "3-POOL",
+          incentivizedToken: AssetType.AToken,
+          reward: tokenAddress(69),
+          rewardOracle: "2-POOL-GDOT",
           transferStrategy: TransferStrategy.PotRewardsStrategy,
           emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
         },
@@ -220,6 +236,10 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-GETH": {
         assetToX: "0x00000102737461626c657377000003ef00001068", //hydration's chainlink precompile, stableswap 10min., aETH(1007)/gETHs(4200)
         xToUSD: "0x1AF549Fe19A9B73D094173C41e18BF7F357F594b",
+      },
+      "3-POOL": {
+        assetToX: "0x00000102737461626c657377000003ea00000067", //hydration's chainlink precompile, stableswap 10min., aUSDT(1002)/3-POOL(103)
+        xToUSD: "0x8b0DDfB8F56690eAde9ECa23a7d90E153C268d5B", // DIA USDT/USD oracle
       },
     },
   },
