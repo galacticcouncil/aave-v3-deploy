@@ -179,3 +179,23 @@ export const strategy3POOL: IReserveParams = {
   debtCeiling,
   borrowableIsolation: false,
 };
+
+export const strategyHUSDT: IReserveParams = {
+  ...strategy3POOL,
+  supplyCap: "3,000,000".replace(/,/g, ""),
+};
+
+export const strategyHUSDC: IReserveParams = {
+  ...strategy3POOL,
+  supplyCap: "3,000,000".replace(/,/g, ""),
+};
+
+export const strategyHUSDS: IReserveParams = {
+  ...strategy3POOL,
+  supplyCap: "2,000,000".replace(/,/g, ""),
+};
+
+export const strategyHUSDe: IReserveParams = {
+  ...strategy3POOL,
+  supplyCap: "2,000,000".replace(/,/g, ""),
+};
