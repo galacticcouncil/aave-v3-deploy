@@ -54,11 +54,11 @@ export const HydrationConfig: IAaveConfiguration = {
     "2-POOL-GDOT": strategyGDOT,
     ETH: strategyETH,
     "2-POOL-GETH": strategyGETH,
-    "3-POOL": strategy3POOL,
+    // "3-POOL": strategy3POOL,
     "2-POOL-HUSDT": strategyHUSDT,
     "2-POOL-HUSDC": strategyHUSDC,
     "2-POOL-HUSDS": strategyHUSDS,
-    "2-POOL-HUSDe": strategyHUSDe,
+    "2-POOL-HUSDE": strategyHUSDe,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -72,11 +72,11 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-GDOT": tokenAddress(690),
       ETH: tokenAddress(34),
       "2-POOL-GETH": tokenAddress(4200),
-      "3-POOL": tokenAddress(103),
+      // "3-POOL": tokenAddress(103),
+      "2-POOL-HUSDC": tokenAddress(103),
       "2-POOL-HUSDT": tokenAddress(104),
-      "2-POOL-HUSDC": tokenAddress(105),
-      "2-POOL-HUSDS": tokenAddress(106),
-      "2-POOL-HUSDe": tokenAddress(107),
+      "2-POOL-HUSDS": tokenAddress(105),
+      "2-POOL-HUSDE": tokenAddress(106),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -143,10 +143,10 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-GETH": "0x32CC29cA6924B16077056A7B049663AF153D9E90",
       WSTETH_ETH: "0xA317cEbdE7F948e132fDD177E5002A1DD2C2cB21",
       "3-POOL": "0xFbD6F083b9e8683fe62B21cF5849f362238610AF",
-      "2-POOL-HUSDT": "0x00000102737461626c657377000000de00000068", // HOLLAR(222) / 2-POOL-HUSDT(104) 10 min. stablesw
-      "2-POOL-HUSDC": "0x00000102737461626c657377000000de00000069", // HOLLAR(222) / 2-POOL-HUSDC(105) 10 min. stablesw
-      "2-POOL-HUSDS": "0x00000102737461626c657377000000de0000006a", // HOLLAR(222) / 2-POOL-HUSDS(106) 10 min. stablesw
-      "2-POOL-HUSDe": "0x00000102737461626c657377000000de0000006b", // HOLLAR(222) / 2-POOL-HUSDe(107) 10 min. stablesw
+      "2-POOL-HUSDT": "0x00000102737461626c657377000000de00000067", // HOLLAR(222) / 2-POOL-HUSDT(104) 10 min. stablesw
+      "2-POOL-HUSDC": "0x00000102737461626c657377000000de00000068", // HOLLAR(222) / 2-POOL-HUSDC(105) 10 min. stablesw
+      "2-POOL-HUSDS": "0x00000102737461626c657377000000de00000069", // HOLLAR(222) / 2-POOL-HUSDS(106) 10 min. stablesw
+      "2-POOL-HUSDE": "0x00000102737461626c657377000000de0000006a", // HOLLAR(222) / 2-POOL-HUSDe(107) 10 min. stablesw
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -225,11 +225,11 @@ export const HydrationConfig: IAaveConfiguration = {
           ...gdotSupplyIncentive,
         },
       ],
-      "2-POOL-HUSDe": [
+      "2-POOL-HUSDE": [
         {
           emissionPerSecond: "805,631,257,824,581".replace(/,/g, ""),
           distributionEnd: Date.parse("15 Oct 2025 14:24:36 GMT") / 1000, //todo shift date
-          reserve: "2-POOL-HUSDe",
+          reserve: "2-POOL-HUSDE",
           ...gdotSupplyIncentive,
         },
       ],

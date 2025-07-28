@@ -233,7 +233,7 @@ task(`review-incentive`, ``)
 
       if (assetsConf.length != 0) {
         const tx = await em.populateTransaction.configureAssets(assetsConf, {
-          gasLimit: 1000000,
+          gasLimit: 300000,
         });
         addTransaction(tx);
       }

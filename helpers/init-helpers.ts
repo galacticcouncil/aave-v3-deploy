@@ -442,7 +442,7 @@ export const configureReservesByHelper = async (
           await reservesSetupHelper.populateTransaction.configureReserves(
             poolConfiguratorAddress,
             chunkedInputParams[chunkIndex],
-            { gasLimit: 1000000 }
+            { gasLimit: 300000 }
           );
         addTransaction(tx);
       } else {
@@ -450,7 +450,7 @@ export const configureReservesByHelper = async (
           await reservesSetupHelper.configureReserves(
             poolConfiguratorAddress,
             chunkedInputParams[chunkIndex],
-            { gasLimit: 1000000 }
+            { gasLimit: 300000 }
           )
         );
         console.log(

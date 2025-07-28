@@ -19,18 +19,18 @@ task(`hollar-pools-launch`, ``).setAction(async function (_, hre) {
 
   const txs = [];
   const reserves = [
-    "2-POOL-HUSDT",
     "2-POOL-HUSDC",
+    "2-POOL-HUSDT",
     "2-POOL-HUSDS",
-    "2-POOL-HUSDe",
+    "2-POOL-HUSDE",
   ];
   const assetIds = [1009, 1010, 1011, 1012];
-  const symbols = ["HUSDT", "HUSDe", "HUSDC", "HUSDS"];
+  const symbols = ["HUSDC", "HUSDT", "HUSDS", "HUSDe"];
   const displayNames = [
-    "Hydrated Tether",
-    "Hydrated USDe",
     "Hydrated USDC",
+    "Hydrated Tether",
     "Hydrated USDS",
+    "Hydrated USDe",
   ];
 
   // Initialize all reserves
@@ -42,31 +42,27 @@ task(`hollar-pools-launch`, ``).setAction(async function (_, hre) {
     });
   }
 
-  console.log("update reserve configs");
-  await hre.run("review-reserve-configs", { fix: false, batch: true });
-
-  console.log("update supply caps");
-  await hre.run("review-supply-caps", { fix: false, batch: true });
-
-  console.log("update borrow caps");
-  await hre.run("review-borrow-caps", { fix: false, batch: true });
-
-  // Process each reserve for incentives
+  // Process each reserve
   for (let i = 0; i < reserves.length; i++) {
-    let atoken = utils.getContractAddress({
-      from: deployer,
-      nonce: nonce + 3 * i, // 3x because each reserve deploys atoken, vtoken and stoken
+    console.log("update reserve configs");
+    await hre.run("review-reserve-configs", {
+      fix: false,
+      batch: true,
+      only: reserves[i],
     });
 
-    await hre.run("review-emission-admin", {
+    console.log("update supply caps");
+    await hre.run("review-supply-caps", {
+      fix: false,
       batch: true,
-      reserve: reserves[i],
+      checkOnly: reserves[i],
     });
 
-    await hre.run("review-incentive", {
+    console.log("update borrow caps");
+    await hre.run("review-borrow-caps", {
+      fix: false,
       batch: true,
-      reserve: reserves[i],
-      incentivize: atoken,
+      checkOnly: reserves[i],
     });
   }
 
@@ -80,7 +76,7 @@ task(`hollar-pools-launch`, ``).setAction(async function (_, hre) {
   for (let i = 0; i < reserves.length; i++) {
     let atoken = utils.getContractAddress({
       from: deployer,
-      nonce: nonce + i,
+      nonce: nonce + 3 * i, // 3x because each reserve deploys atoken, vtoken and stoken
     });
 
     console.log(`register ${reserves[i]} atoken`);
@@ -152,7 +148,33 @@ task(`hollar-pools-launch`, ``).setAction(async function (_, hre) {
         })
       )
     );
+
+    await hre.run("review-emission-admin", {
+      batch: true,
+      reserve: reserves[i],
+    });
+
+    await hre.run("review-incentive", {
+      batch: true,
+      reserve: reserves[i],
+      incentivize: atoken,
+    });
   }
+
+  const later = [];
+  for (const el of getBatch()) {
+    el.from = POOL_ADMIN[hre.network.name];
+    later.push(await aaveManagerCall(el));
+  }
+
+  txs.push(
+    hydrationTx.scheduler.scheduleAfter(
+      1,
+      null,
+      0,
+      hydrationTx.utility.batchAll(later)
+    )
+  );
 
   let preimage = await generateProposalV2(txs, false);
   const decoder = new ProposalDecoder(hre);
