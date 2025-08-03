@@ -87,7 +87,7 @@ export const HydrationConfig: IAaveConfiguration = {
       liquidationThreshold: "9300",
       liquidationBonus: "10150",
       label: "Stablecoins",
-      assets: ["USDC", "USDT"],
+      assets: ["USDC", "USDT", "3-POOL"],
     },
     DotEMode: {
       id: "2",

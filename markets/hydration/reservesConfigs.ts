@@ -2,8 +2,8 @@ import { rateStrategyVolatileOne } from "./../aave/rateStrategies";
 import { eContractid, IReserveParams } from "../../helpers/types";
 import { rateStrategyDOT, rateStrategyStables } from "./rateStrategies";
 
-const supplyCap = "3222222";
-const borrowCap = "1611111";
+const supplyCap = "10000000";
+const borrowCap = "2000000";
 const debtCeiling = "0";
 const reserveFactor = "2000";
 
@@ -103,7 +103,7 @@ export const strategyTBTC: IReserveParams = {
   aTokenImpl: eContractid.AToken,
   reserveFactor,
   supplyCap: "33",
-  borrowCap: "10",
+  borrowCap: "20",
   debtCeiling,
   borrowableIsolation: false,
 };
@@ -164,9 +164,9 @@ export const strategyGETH: IReserveParams = {
 
 export const strategy3POOL: IReserveParams = {
   strategy: rateStrategyStables,
-  baseLTVAsCollateral: "0",
-  liquidationThreshold: "0",
-  liquidationBonus: "0",
+  baseLTVAsCollateral: "7500",
+  liquidationThreshold: "8500",
+  liquidationBonus: "10350",
   liquidationProtocolFee: "1000",
   borrowingEnabled: false,
   stableBorrowRateEnabled: false,
