@@ -24,7 +24,7 @@ task(`hollar-pools-launch`, ``).setAction(async function (_, hre) {
     "2-POOL-HUSDS",
     "2-POOL-HUSDE",
   ];
-  const assetIds = [1009, 1010, 1011, 1012];
+  const assetIds = [1110, 1111, 1112, 1113];
   const symbols = ["HUSDC", "HUSDT", "HUSDS", "HUSDe"];
   const displayNames = [
     "Hydrated USDC",
@@ -134,14 +134,14 @@ task(`hollar-pools-launch`, ``).setAction(async function (_, hre) {
             },
             {
               pool: {
-                Stableswap: 104 + i,
+                Stableswap: 110 + i,
               },
               assetIn: 1002,
-              assetOut: 104 + i,
+              assetOut: 110 + i,
             },
             {
               pool: "Aave",
-              assetIn: 104 + i,
+              assetIn: 110 + i,
               assetOut: assetIds[i],
             },
           ],
@@ -169,7 +169,7 @@ task(`hollar-pools-launch`, ``).setAction(async function (_, hre) {
 
   txs.push(
     hydrationTx.scheduler.scheduleAfter(
-      1,
+      0,
       null,
       0,
       hydrationTx.utility.batchAll(later)
