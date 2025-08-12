@@ -3,7 +3,7 @@ import { eContractid, IReserveParams } from "../../helpers/types";
 import { rateStrategyDOT, rateStrategyStables } from "./rateStrategies";
 
 const supplyCap = "10000000";
-const borrowCap = "2000000";
+const borrowCap = "6000000";
 const debtCeiling = "0";
 const reserveFactor = "2000";
 
@@ -56,8 +56,8 @@ export const strategyWBTC = {
 
 export const strategyDOT: IReserveParams = {
   strategy: rateStrategyDOT,
-  baseLTVAsCollateral: "7500",
-  liquidationThreshold: "8000",
+  baseLTVAsCollateral: "8000",
+  liquidationThreshold: "8500",
   liquidationBonus: "10700",
   liquidationProtocolFee: "1000",
   borrowingEnabled: true,
@@ -128,8 +128,8 @@ export const strategyGDOT: IReserveParams = {
 
 export const strategyETH: IReserveParams = {
   strategy: rateStrategyDOT,
-  baseLTVAsCollateral: "7000",
-  liquidationThreshold: "8000",
+  baseLTVAsCollateral: "7500",
+  liquidationThreshold: "8500",
   liquidationBonus: "10700",
   liquidationProtocolFee: "1000",
   borrowingEnabled: true,
@@ -138,16 +138,16 @@ export const strategyETH: IReserveParams = {
   reserveDecimals: "18",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "2,222".replace(/,/g, ""),
-  borrowCap: "1,111".replace(/,/g, ""),
+  supplyCap: "4,444".replace(/,/g, ""),
+  borrowCap: "2,222".replace(/,/g, ""),
   debtCeiling,
   borrowableIsolation: false,
 };
 
 export const strategyGETH: IReserveParams = {
   strategy: rateStrategyDOT,
-  baseLTVAsCollateral: "6500",
-  liquidationThreshold: "7000",
+  baseLTVAsCollateral: "7000",
+  liquidationThreshold: "7500",
   liquidationBonus: "10700",
   liquidationProtocolFee: "1000",
   borrowingEnabled: false,
