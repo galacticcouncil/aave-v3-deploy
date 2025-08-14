@@ -48,7 +48,7 @@ task(`review-reserve-factors`, ``)
         ? reserves.filter(([reserveSymbol]) =>
             checkOnlyReserves.includes(reserveSymbol)
           )
-        : reserves;
+        : reserves.filter(([reserveSymbol]) => reserveSymbol != "HOLLAR");
 
       const reserveAssets = poolConfig.ReserveAssets?.[network];
       if (!reserveAssets) {
