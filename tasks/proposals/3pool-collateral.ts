@@ -48,7 +48,7 @@ task(`3pool-collateral`, ``).setAction(async function (_, hre) {
 
   await hre.run("set-oracle-price", {
     oracle: "0x11c1E47AaEcdc47dba8b9B9419b05903e53F3b4f",
-    price: "121086179",
+    price: "121095345",
   });
 
   for (const el of getBatch()) {
