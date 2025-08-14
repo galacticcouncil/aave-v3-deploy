@@ -42,7 +42,7 @@ task(`review-stable-borrow`, ``)
         ? reserves.filter(([reserveSymbol]) =>
             checkOnlyReserves.includes(reserveSymbol)
           )
-        : reserves;
+        : reserves.filter(([reserveSymbol]) => reserveSymbol != "HOLLAR");
 
       const reserveAssets = await dataProvider.getAllReservesTokens();
       const normalizedSymbols = Object.keys(poolConfig.ReservesConfig);
