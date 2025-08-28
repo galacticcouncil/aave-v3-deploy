@@ -4,6 +4,7 @@ import {
   location,
   generateProposalV2,
   aaveManagerCall,
+  dispatchAs,
 } from "../../helpers/hydration-proposal.js";
 import { task } from "hardhat/config";
 import { getBatch, clearBatch } from "../../helpers/transaction-batch";
@@ -14,6 +15,7 @@ task(`hollar-pools-update`, ``).setAction(async function (_, hre) {
   const { utils } = hre.ethers;
   const poolAddressesProvider = await getPoolAddressesProvider();
   const hydrationTx = (await getApi()).tx;
+  const treasury = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
 
   const txs = [];
   const reserves = [
@@ -36,6 +38,8 @@ task(`hollar-pools-update`, ``).setAction(async function (_, hre) {
   });
 
   for (let i = 0; i < reserves.length; i++) {
+    let share = 110 + i;
+    let wrapped = share + 1000;
     // console.log("update reserve configs");
     // await hre.run("review-reserve-configs", {
     //   fix: true,
@@ -52,6 +56,16 @@ task(`hollar-pools-update`, ``).setAction(async function (_, hre) {
     //   batch: true,
     //   reserve: reserves[i],
     // });
+
+    // supply shares to MM
+    txs.push(
+      await dispatchAs(
+        treasury,
+        await hydrationTx.router.sellAll(share, wrapped, 0, [
+          { pool: "Aave", assetIn: share, assetOut: wrapped },
+        ])
+      )
+    );
   }
 
   for (const el of getBatch()) {
