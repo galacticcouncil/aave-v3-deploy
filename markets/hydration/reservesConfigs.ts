@@ -189,7 +189,7 @@ export const strategyHUSDT: IReserveParams = {
   baseLTVAsCollateral: "0",
   liquidationThreshold: "0",
   liquidationBonus: "0",
-  supplyCap: "3,000,000".replace(/,/g, ""),
+  supplyCap: "2,000,000".replace(/,/g, ""),
 };
 
 export const strategyHUSDC: IReserveParams = {
@@ -197,7 +197,7 @@ export const strategyHUSDC: IReserveParams = {
   baseLTVAsCollateral: "0",
   liquidationThreshold: "0",
   liquidationBonus: "0",
-  supplyCap: "3,000,000".replace(/,/g, ""),
+  supplyCap: "2,000,000".replace(/,/g, ""),
 };
 
 export const strategyHUSDS: IReserveParams = {
@@ -205,7 +205,7 @@ export const strategyHUSDS: IReserveParams = {
   baseLTVAsCollateral: "0",
   liquidationThreshold: "0",
   liquidationBonus: "0",
-  supplyCap: "2,000,000".replace(/,/g, ""),
+  supplyCap: "1,000,000".replace(/,/g, ""),
 };
 
 export const strategyHUSDe: IReserveParams = {
@@ -213,5 +213,5 @@ export const strategyHUSDe: IReserveParams = {
   baseLTVAsCollateral: "0",
   liquidationThreshold: "0",
   liquidationBonus: "0",
-  supplyCap: "2,000,000".replace(/,/g, ""),
+  supplyCap: "1,000,000".replace(/,/g, ""),
 };
