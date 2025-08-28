@@ -52,10 +52,10 @@ task(`hollar-pools-update`, ``).setAction(async function (_, hre) {
       reserve: reserves[i],
     });
 
-    // await hre.run("review-incentive", {
-    //   batch: true,
-    //   reserve: reserves[i],
-    // });
+    await hre.run("review-incentive", {
+      batch: true,
+      reserve: reserves[i],
+    });
 
     // supply shares to MM
     txs.push(
