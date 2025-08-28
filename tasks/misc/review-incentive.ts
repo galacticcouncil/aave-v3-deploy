@@ -87,7 +87,7 @@ task(`review-incentive`, ``)
         const cfg = incentiveConf[i];
 
         let reserveAddr = reserveTokens.find(
-          (el) => el.symbol == cfg.reserve
+          (el) => el.symbol.toLowerCase() == cfg.reserve.toLowerCase()
         )?.tokenAddress;
         if (!reserveAddr || reserveAddr == ZERO_ADDRESS) {
           if (!incentivize) {
