@@ -203,7 +203,7 @@ export const HydrationConfig: IAaveConfiguration = {
       ],
       "2-POOL-HUSDT": [
         {
-          emissionPerSecond: "1,611,262,515,649,160".replace(/,/g, ""),
+          emissionPerSecond: "805,631,257,824,581".replace(/,/g, ""),
           distributionEnd: Date.parse("15 Oct 2025 14:24:36 GMT") / 1000, //todo shift date
           reserve: "2-POOL-HUSDT",
           ...gdotSupplyIncentive,
@@ -211,7 +211,7 @@ export const HydrationConfig: IAaveConfiguration = {
       ],
       "2-POOL-HUSDC": [
         {
-          emissionPerSecond: "1,611,262,515,649,160".replace(/,/g, ""),
+          emissionPerSecond: "805,631,257,824,581".replace(/,/g, ""),
           distributionEnd: Date.parse("15 Oct 2025 14:24:36 GMT") / 1000, //todo shift date
           reserve: "2-POOL-HUSDC",
           ...gdotSupplyIncentive,
@@ -219,7 +219,7 @@ export const HydrationConfig: IAaveConfiguration = {
       ],
       "2-POOL-HUSDS": [
         {
-          emissionPerSecond: "805,631,257,824,581".replace(/,/g, ""),
+          emissionPerSecond: "402,815,628,912,290".replace(/,/g, ""),
           distributionEnd: Date.parse("15 Oct 2025 14:24:36 GMT") / 1000, //todo shift date
           reserve: "2-POOL-HUSDS",
           ...gdotSupplyIncentive,
@@ -227,7 +227,7 @@ export const HydrationConfig: IAaveConfiguration = {
       ],
       "2-POOL-HUSDE": [
         {
-          emissionPerSecond: "805,631,257,824,581".replace(/,/g, ""),
+          emissionPerSecond: "402,815,628,912,290".replace(/,/g, ""),
           distributionEnd: Date.parse("15 Oct 2025 14:24:36 GMT") / 1000, //todo shift date
           reserve: "2-POOL-HUSDE",
           ...gdotSupplyIncentive,
