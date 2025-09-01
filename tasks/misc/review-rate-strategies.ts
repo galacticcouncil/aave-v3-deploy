@@ -49,7 +49,7 @@ task(`review-rate-strategies`, ``)
         ? reserves.filter(([reserveSymbol]) =>
             checkOnlyReserves.includes(reserveSymbol)
           )
-        : reserves;
+        : reserves.filter(([reserveSymbol]) => reserveSymbol != "HOLLAR");
 
       for (let index = 0; index < reservesToCheck.length; index++) {
         const { symbol, tokenAddress } = reservesToCheck[index];
