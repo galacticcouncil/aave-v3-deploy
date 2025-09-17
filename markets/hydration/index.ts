@@ -168,7 +168,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-GDOT": [
         {
           emissionPerSecond: BigNumber.from("19270000000000000"),
-          distributionEnd: Date.parse("17 Sep 2025 14:24:36 GMT") / 1000,
+          distributionEnd: Date.parse("17 Sep 2026 14:24:36 GMT") / 1000,
           reserve: "2-Pool-GDOT",
           ...gdotSupplyIncentive,
         },
