@@ -176,8 +176,8 @@ export const HydrationConfig: IAaveConfiguration = {
       "3-POOL": [
         {
           emissionPerSecond: utils.parseEther("0.001606016693").toString(),
-          distributionEnd: Date.parse("15 Oct 2025 14:24:36 GMT") / 1000,
-          reserve: "3-POOL",
+          distributionEnd: Date.parse("17 Sep 2026 14:24:36 GMT") / 1000,
+          reserve: "3-Pool",
           incentivizedToken: AssetType.AToken,
           reward: tokenAddress(69),
           rewardOracle: "2-POOL-GDOT",
