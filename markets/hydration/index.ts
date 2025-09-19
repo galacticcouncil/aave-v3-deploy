@@ -204,7 +204,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDT": [
         {
           emissionPerSecond: "805,631,257,824,581".replace(/,/g, ""),
-          distributionEnd: Date.parse("15 Oct 2025 14:24:36 GMT") / 1000, //todo shift date
+          distributionEnd: Date.parse("22 Oct 2025 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDT",
           ...gdotSupplyIncentive,
         },
@@ -212,7 +212,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDC": [
         {
           emissionPerSecond: "805,631,257,824,581".replace(/,/g, ""),
-          distributionEnd: Date.parse("15 Oct 2025 14:24:36 GMT") / 1000, //todo shift date
+          distributionEnd: Date.parse("22 Oct 2025 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDC",
           ...gdotSupplyIncentive,
         },
@@ -220,7 +220,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDS": [
         {
           emissionPerSecond: "402,815,628,912,290".replace(/,/g, ""),
-          distributionEnd: Date.parse("15 Oct 2025 14:24:36 GMT") / 1000, //todo shift date
+          distributionEnd: Date.parse("22 Oct 2025 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDS",
           ...gdotSupplyIncentive,
         },
@@ -228,40 +228,12 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDE": [
         {
           emissionPerSecond: "402,815,628,912,290".replace(/,/g, ""),
-          distributionEnd: Date.parse("15 Oct 2025 14:24:36 GMT") / 1000, //todo shift date
+          distributionEnd: Date.parse("22 Oct 2025 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDe",
           ...gdotSupplyIncentive,
         },
       ],
     },
-    // TODO: fix broken duration by type change
-    // [eHydrationNetwork.nice]: {
-    //   DOT: [
-    //     {
-    //       emissionPerSecond: BigNumber.from("413359788"),
-    //       duration: 1209600,
-    //       reserve: "DOT",
-    //       incentivizedToken: AssetType.AToken,
-    //       reward: tokenAddress(15),
-    //       rewardOracle: "VDOT",
-    //       transferStrategy: TransferStrategy.PotRewardsStrategy,
-    //       emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
-    //     },
-    //   ],
-    //   GDOT: [
-    //     {
-    //       //9k*10^18/(13w*7*86400)
-    //       emissionPerSecond: BigNumber.from("1144688644688644"),
-    //       duration: 7862400,
-    //       reserve: "GDOT",
-    //       incentivizedToken: AssetType.AToken,
-    //       reward: tokenAddress(690),
-    //       rewardOracle: "GDOT",
-    //       transferStrategy: TransferStrategy.PotRewardsStrategy,
-    //       emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
-    //     },
-    //   ],
-    // },
   },
   USDOracleAdapter: {
     [eHydrationNetwork.hydration]: {
