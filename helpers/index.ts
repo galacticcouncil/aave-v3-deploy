@@ -16,7 +16,7 @@ export * from "../markets/aave/rateStrategies";
 export * from "../markets/aave/reservesConfigs";
 export * from "../tasks/market-registry/market-registry-add";
 export * from "../tasks/proposals/vdot-prop";
-export * from "../tasks/proposals/update-supply-caps";
+export * from "../tasks/proposals/update-caps";
 export * from "../tasks/proposals/reserve-factor-prop";
 export * from "../tasks/misc/deploy-ui-helpers";
 export * from "../tasks/misc/deploy-UiIncentiveDataProvider";
