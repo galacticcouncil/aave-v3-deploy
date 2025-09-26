@@ -19,9 +19,21 @@ import {
   strategyETH,
   strategyGETH,
   strategy3POOL,
+  strategyHUSDT,
+  strategyHUSDC,
+  strategyHUSDS,
+  strategyHUSDe,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
+
+const gdotSupplyIncentive = {
+  incentivizedToken: AssetType.AToken,
+  reward: tokenAddress(69),
+  rewardOracle: "2-POOL-GDOT",
+  transferStrategy: TransferStrategy.PotRewardsStrategy,
+  emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
+};
 
 export const HydrationConfig: IAaveConfiguration = {
   ...AaveMarket,
@@ -43,6 +55,10 @@ export const HydrationConfig: IAaveConfiguration = {
     ETH: strategyETH,
     "2-POOL-GETH": strategyGETH,
     "3-POOL": strategy3POOL,
+    "2-POOL-HUSDT": strategyHUSDT,
+    "2-POOL-HUSDC": strategyHUSDC,
+    "2-POOL-HUSDS": strategyHUSDS,
+    "2-POOL-HUSDE": strategyHUSDe,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -57,6 +73,10 @@ export const HydrationConfig: IAaveConfiguration = {
       ETH: tokenAddress(34),
       "2-POOL-GETH": tokenAddress(4200),
       "3-POOL": tokenAddress(103),
+      "2-POOL-HUSDC": tokenAddress(110),
+      "2-POOL-HUSDT": tokenAddress(111),
+      "2-POOL-HUSDS": tokenAddress(112),
+      "2-POOL-HUSDE": tokenAddress(113),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -123,6 +143,10 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-GETH": "0x32CC29cA6924B16077056A7B049663AF153D9E90",
       WSTETH_ETH: "0xA317cEbdE7F948e132fDD177E5002A1DD2C2cB21",
       "3-POOL": "0xFbD6F083b9e8683fe62B21cF5849f362238610AF",
+      "2-POOL-HUSDC": "0x00000102737461626c657377000000de0000006e", // HOLLAR(222) / 2-POOL-HUSDC(110) 10 min. stablesw
+      "2-POOL-HUSDT": "0x00000102737461626c657377000000de0000006f", // HOLLAR(222) / 2-POOL-HUSDT(111) 10 min. stablesw
+      "2-POOL-HUSDS": "0x00000102737461626c657377000000de00000070", // HOLLAR(222) / 2-POOL-HUSDS(112) 10 min. stablesw
+      "2-POOL-HUSDE": "0x00000102737461626c657377000000de00000071", // HOLLAR(222) / 2-POOL-HUSDe(113) 10 min. stablesw
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -146,11 +170,7 @@ export const HydrationConfig: IAaveConfiguration = {
           emissionPerSecond: BigNumber.from("19270000000000000"),
           distributionEnd: Date.parse("17 Sep 2026 14:24:36 GMT") / 1000,
           reserve: "2-Pool-GDOT",
-          incentivizedToken: AssetType.AToken,
-          reward: tokenAddress(69),
-          rewardOracle: "2-POOL-GDOT",
-          transferStrategy: TransferStrategy.PotRewardsStrategy,
-          emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
+          ...gdotSupplyIncentive,
         },
         {
           emissionPerSecond: BigNumber.from("27557227366"),
@@ -178,42 +198,42 @@ export const HydrationConfig: IAaveConfiguration = {
           emissionPerSecond: utils.parseEther("0.001606016693").toString(),
           distributionEnd: Date.parse("17 Sep 2026 14:24:36 GMT") / 1000,
           reserve: "3-Pool",
-          incentivizedToken: AssetType.AToken,
-          reward: tokenAddress(69),
-          rewardOracle: "2-POOL-GDOT",
-          transferStrategy: TransferStrategy.PotRewardsStrategy,
-          emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
+          ...gdotSupplyIncentive,
+        },
+      ],
+      "2-POOL-HUSDT": [
+        {
+          emissionPerSecond: "1,611,262,515,649,160".replace(/,/g, ""),
+          distributionEnd: Date.parse("22 Oct 2025 14:22:22 GMT") / 1000,
+          reserve: "2-Pool-HUSDT",
+          ...gdotSupplyIncentive,
+        },
+      ],
+      "2-POOL-HUSDC": [
+        {
+          emissionPerSecond: "1,611,262,515,649,160".replace(/,/g, ""),
+          distributionEnd: Date.parse("22 Oct 2025 14:22:22 GMT") / 1000,
+          reserve: "2-Pool-HUSDC",
+          ...gdotSupplyIncentive,
+        },
+      ],
+      "2-POOL-HUSDS": [
+        {
+          emissionPerSecond: "805,631,257,824,581".replace(/,/g, ""),
+          distributionEnd: Date.parse("22 Oct 2025 14:22:22 GMT") / 1000,
+          reserve: "2-Pool-HUSDS",
+          ...gdotSupplyIncentive,
+        },
+      ],
+      "2-POOL-HUSDE": [
+        {
+          emissionPerSecond: "805,631,257,824,581".replace(/,/g, ""),
+          distributionEnd: Date.parse("22 Oct 2025 14:22:22 GMT") / 1000,
+          reserve: "2-Pool-HUSDe",
+          ...gdotSupplyIncentive,
         },
       ],
     },
-    // TODO: fix broken duration by type change
-    // [eHydrationNetwork.nice]: {
-    //   DOT: [
-    //     {
-    //       emissionPerSecond: BigNumber.from("413359788"),
-    //       duration: 1209600,
-    //       reserve: "DOT",
-    //       incentivizedToken: AssetType.AToken,
-    //       reward: tokenAddress(15),
-    //       rewardOracle: "VDOT",
-    //       transferStrategy: TransferStrategy.PotRewardsStrategy,
-    //       emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
-    //     },
-    //   ],
-    //   GDOT: [
-    //     {
-    //       //9k*10^18/(13w*7*86400)
-    //       emissionPerSecond: BigNumber.from("1144688644688644"),
-    //       duration: 7862400,
-    //       reserve: "GDOT",
-    //       incentivizedToken: AssetType.AToken,
-    //       reward: tokenAddress(690),
-    //       rewardOracle: "GDOT",
-    //       transferStrategy: TransferStrategy.PotRewardsStrategy,
-    //       emissionAdmin: POOL_ADMIN[eHydrationNetwork.nice],
-    //     },
-    //   ],
-    // },
   },
   USDOracleAdapter: {
     [eHydrationNetwork.hydration]: {

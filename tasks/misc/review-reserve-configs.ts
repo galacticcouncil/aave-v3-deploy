@@ -89,7 +89,8 @@ task(`review-reserve-configs`, ``)
                 reserve.underlyingAsset,
                 reserveConfig.baseLTVAsCollateral,
                 reserveConfig.liquidationThreshold,
-                reserveConfig.liquidationBonus
+                reserveConfig.liquidationBonus,
+                { gasLimit: 300000 }
               );
             if (batch) {
               addTransaction(tx);

@@ -87,7 +87,7 @@ task(`review-incentive`, ``)
         const cfg = incentiveConf[i];
 
         let reserveAddr = reserveTokens.find(
-          (el) => el.symbol == cfg.reserve
+          (el) => el.symbol.toLowerCase() == cfg.reserve.toLowerCase()
         )?.tokenAddress;
         if (!reserveAddr || reserveAddr == ZERO_ADDRESS) {
           if (!incentivize) {
@@ -233,7 +233,7 @@ task(`review-incentive`, ``)
 
       if (assetsConf.length != 0) {
         const tx = await em.populateTransaction.configureAssets(assetsConf, {
-          gasLimit: 1000000,
+          gasLimit: 300000,
         });
         addTransaction(tx);
       }
