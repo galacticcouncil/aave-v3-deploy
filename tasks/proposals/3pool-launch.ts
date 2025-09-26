@@ -77,10 +77,10 @@ task(`3pool-launch`, ``).setAction(async function (_, hre) {
     hydrationTx.assetRegistry.register(
       ...Object.values({
         id: a3pool,
-        name: "a3pool",
+        name: "a3-Pool",
         assetType: "Erc20",
         existentialDeposit: utils.parseEther("0.033").toString(),
-        symbol: "a3pool",
+        symbol: "a3-Pool",
         decimals: 18,
         location: location(atoken),
         xcmRateLimit: null,

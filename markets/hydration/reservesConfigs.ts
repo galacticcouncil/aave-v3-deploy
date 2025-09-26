@@ -183,3 +183,35 @@ export const strategy3POOL: IReserveParams = {
   debtCeiling,
   borrowableIsolation: false,
 };
+
+export const strategyHUSDT: IReserveParams = {
+  ...strategy3POOL,
+  baseLTVAsCollateral: "0",
+  liquidationThreshold: "0",
+  liquidationBonus: "0",
+  supplyCap: "2,000,000".replace(/,/g, ""),
+};
+
+export const strategyHUSDC: IReserveParams = {
+  ...strategy3POOL,
+  baseLTVAsCollateral: "0",
+  liquidationThreshold: "0",
+  liquidationBonus: "0",
+  supplyCap: "2,000,000".replace(/,/g, ""),
+};
+
+export const strategyHUSDS: IReserveParams = {
+  ...strategy3POOL,
+  baseLTVAsCollateral: "0",
+  liquidationThreshold: "0",
+  liquidationBonus: "0",
+  supplyCap: "1,000,000".replace(/,/g, ""),
+};
+
+export const strategyHUSDe: IReserveParams = {
+  ...strategy3POOL,
+  baseLTVAsCollateral: "0",
+  liquidationThreshold: "0",
+  liquidationBonus: "0",
+  supplyCap: "1,000,000".replace(/,/g, ""),
+};
