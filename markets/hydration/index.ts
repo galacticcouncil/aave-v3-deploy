@@ -196,7 +196,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "3-POOL": [
         {
           emissionPerSecond: utils.parseEther("0.001606016693").toString(),
-          distributionEnd: Date.parse("20 Oct 2025 14:24:36 GMT") / 1000,
+          distributionEnd: Date.parse("17 Sep 2026 14:24:36 GMT") / 1000,
           reserve: "3-Pool",
           ...gdotSupplyIncentive,
         },
