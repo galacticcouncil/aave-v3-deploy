@@ -107,7 +107,15 @@ export const HydrationConfig: IAaveConfiguration = {
       liquidationThreshold: "9300",
       liquidationBonus: "10150",
       label: "Stablecoins",
-      assets: ["USDC", "USDT", "3-POOL"],
+      assets: [
+        "USDC",
+        "USDT",
+        "3-POOL",
+        "2-POOL-HUSDT",
+        "2-POOL-HUSDC",
+        "2-POOL-HUSDS",
+        "2-POOL-HUSDE",
+      ],
     },
     DotEMode: {
       id: "2",
@@ -203,32 +211,40 @@ export const HydrationConfig: IAaveConfiguration = {
       ],
       "2-POOL-HUSDT": [
         {
-          emissionPerSecond: "1,611,262,515,649,160".replace(/,/g, ""),
-          distributionEnd: Date.parse("22 Oct 2025 14:22:22 GMT") / 1000,
+          emissionPerSecond: BigNumber.from(
+            "1,611,262,515,649,160".replace(/,/g, "")
+          ).mul(2),
+          distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDT",
           ...gdotSupplyIncentive,
         },
       ],
       "2-POOL-HUSDC": [
         {
-          emissionPerSecond: "1,611,262,515,649,160".replace(/,/g, ""),
-          distributionEnd: Date.parse("22 Oct 2025 14:22:22 GMT") / 1000,
+          emissionPerSecond: BigNumber.from(
+            "1,611,262,515,649,160".replace(/,/g, "")
+          ).mul(2),
+          distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDC",
           ...gdotSupplyIncentive,
         },
       ],
       "2-POOL-HUSDS": [
         {
-          emissionPerSecond: "805,631,257,824,581".replace(/,/g, ""),
-          distributionEnd: Date.parse("22 Oct 2025 14:22:22 GMT") / 1000,
+          emissionPerSecond: BigNumber.from(
+            "805,631,257,824,581".replace(/,/g, "")
+          ).mul(2),
+          distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDS",
           ...gdotSupplyIncentive,
         },
       ],
       "2-POOL-HUSDE": [
         {
-          emissionPerSecond: "805,631,257,824,581".replace(/,/g, ""),
-          distributionEnd: Date.parse("22 Oct 2025 14:22:22 GMT") / 1000,
+          emissionPerSecond: BigNumber.from(
+            "805,631,257,824,581".replace(/,/g, "")
+          ).mul(2),
+          distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDe",
           ...gdotSupplyIncentive,
         },
