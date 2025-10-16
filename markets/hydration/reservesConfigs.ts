@@ -22,7 +22,7 @@ export const strategyUSDC: IReserveParams = {
   flashLoanEnabled: false,
   reserveDecimals: "6",
   aTokenImpl: eContractid.AToken,
-  reserveFactor,
+  reserveFactor: "1000",
   supplyCap,
   borrowCap,
   debtCeiling,
@@ -88,7 +88,7 @@ export const strategyVDOT: IReserveParams = {
   reserveDecimals: "10",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "2,222,000".replace(/,/g, ""),
+  supplyCap: "2,222,222".replace(/,/g, ""),
   borrowCap: "111111",
   debtCeiling,
   borrowableIsolation: false,
@@ -96,8 +96,8 @@ export const strategyVDOT: IReserveParams = {
 
 export const strategyTBTC: IReserveParams = {
   strategy: rateStrategyVolatileOne,
-  baseLTVAsCollateral: "7000",
-  liquidationThreshold: "8000",
+  baseLTVAsCollateral: "8000",
+  liquidationThreshold: "8500",
   liquidationBonus: "10500",
   liquidationProtocolFee: "1000",
   borrowingEnabled: true,
@@ -106,7 +106,7 @@ export const strategyTBTC: IReserveParams = {
   reserveDecimals: "18",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "33",
+  supplyCap: "50",
   borrowCap: "20",
   debtCeiling,
   borrowableIsolation: false,
@@ -150,8 +150,8 @@ export const strategyETH: IReserveParams = {
 
 export const strategyGETH: IReserveParams = {
   strategy: rateStrategyDOT,
-  baseLTVAsCollateral: "7000",
-  liquidationThreshold: "7500",
+  baseLTVAsCollateral: "8000",
+  liquidationThreshold: "8500",
   liquidationBonus: "10700",
   liquidationProtocolFee: "1000",
   borrowingEnabled: false,
@@ -184,34 +184,28 @@ export const strategy3POOL: IReserveParams = {
   borrowableIsolation: false,
 };
 
-export const strategyHUSDT: IReserveParams = {
+const strategyHtoken: IReserveParams = {
   ...strategy3POOL,
-  baseLTVAsCollateral: "0",
-  liquidationThreshold: "0",
-  liquidationBonus: "0",
-  supplyCap: "2,000,000".replace(/,/g, ""),
+  baseLTVAsCollateral: "7000",
+  liquidationThreshold: "8000",
+};
+
+export const strategyHUSDT: IReserveParams = {
+  ...strategyHtoken,
+  supplyCap: "4,000,000".replace(/,/g, ""),
 };
 
 export const strategyHUSDC: IReserveParams = {
-  ...strategy3POOL,
-  baseLTVAsCollateral: "0",
-  liquidationThreshold: "0",
-  liquidationBonus: "0",
-  supplyCap: "2,000,000".replace(/,/g, ""),
+  ...strategyHtoken,
+  supplyCap: "4,000,000".replace(/,/g, ""),
 };
 
 export const strategyHUSDS: IReserveParams = {
-  ...strategy3POOL,
-  baseLTVAsCollateral: "0",
-  liquidationThreshold: "0",
-  liquidationBonus: "0",
-  supplyCap: "1,000,000".replace(/,/g, ""),
+  ...strategyHtoken,
+  supplyCap: "2,000,000".replace(/,/g, ""),
 };
 
 export const strategyHUSDe: IReserveParams = {
-  ...strategy3POOL,
-  baseLTVAsCollateral: "0",
-  liquidationThreshold: "0",
-  liquidationBonus: "0",
-  supplyCap: "1,000,000".replace(/,/g, ""),
+  ...strategyHtoken,
+  supplyCap: "2,000,000".replace(/,/g, ""),
 };
