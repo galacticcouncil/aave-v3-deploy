@@ -96,8 +96,8 @@ export const strategyVDOT: IReserveParams = {
 
 export const strategyTBTC: IReserveParams = {
   strategy: rateStrategyVolatileOne,
-  baseLTVAsCollateral: "7000",
-  liquidationThreshold: "8000",
+  baseLTVAsCollateral: "8000",
+  liquidationThreshold: "8500",
   liquidationBonus: "10500",
   liquidationProtocolFee: "1000",
   borrowingEnabled: true,
@@ -106,7 +106,7 @@ export const strategyTBTC: IReserveParams = {
   reserveDecimals: "18",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "33",
+  supplyCap: "50",
   borrowCap: "20",
   debtCeiling,
   borrowableIsolation: false,
@@ -192,20 +192,20 @@ const strategyHtoken: IReserveParams = {
 
 export const strategyHUSDT: IReserveParams = {
   ...strategyHtoken,
-  supplyCap: "2,000,000".replace(/,/g, ""),
+  supplyCap: "4,000,000".replace(/,/g, ""),
 };
 
 export const strategyHUSDC: IReserveParams = {
   ...strategyHtoken,
-  supplyCap: "2,000,000".replace(/,/g, ""),
+  supplyCap: "4,000,000".replace(/,/g, ""),
 };
 
 export const strategyHUSDS: IReserveParams = {
   ...strategyHtoken,
-  supplyCap: "1,000,000".replace(/,/g, ""),
+  supplyCap: "2,000,000".replace(/,/g, ""),
 };
 
 export const strategyHUSDe: IReserveParams = {
   ...strategyHtoken,
-  supplyCap: "1,000,000".replace(/,/g, ""),
+  supplyCap: "2,000,000".replace(/,/g, ""),
 };

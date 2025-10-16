@@ -2,6 +2,7 @@
 import {
   generateProposalV2,
   aaveManagerCall,
+  dispatchAs,
 } from "../../helpers/hydration-proposal.js";
 import { task } from "hardhat/config";
 import {
@@ -46,6 +47,11 @@ task(`htoken-collateral`, ``).setAction(async function (_, hre) {
       config.EModes["StableEMode"].id
     );
     addTransaction(tx);
+
+    await hre.run("review-incentive", {
+      batch: true,
+      reserve: token,
+    });
   }
 
   await hre.run("review-reserve-factors", {
