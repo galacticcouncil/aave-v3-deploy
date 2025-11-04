@@ -23,6 +23,7 @@ import {
   strategyHUSDC,
   strategyHUSDS,
   strategyHUSDe,
+  strategyPAXG,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -59,6 +60,7 @@ export const HydrationConfig: IAaveConfiguration = {
     "2-POOL-HUSDC": strategyHUSDC,
     "2-POOL-HUSDS": strategyHUSDS,
     "2-POOL-HUSDE": strategyHUSDe,
+    PAXG: strategyPAXG,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -77,6 +79,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDT": tokenAddress(111),
       "2-POOL-HUSDS": tokenAddress(112),
       "2-POOL-HUSDE": tokenAddress(113),
+      PAXG: tokenAddress(39),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -155,6 +158,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDT": "0x00000102737461626c657377000000de0000006f", // HOLLAR(222) / 2-POOL-HUSDT(111) 10 min. stablesw
       "2-POOL-HUSDS": "0x00000102737461626c657377000000de00000070", // HOLLAR(222) / 2-POOL-HUSDS(112) 10 min. stablesw
       "2-POOL-HUSDE": "0x00000102737461626c657377000000de00000071", // HOLLAR(222) / 2-POOL-HUSDe(113) 10 min. stablesw
+      PAXG: "0x8fB61B8E81C2f17695F14A136C98b0C4013bc105",
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -213,7 +217,7 @@ export const HydrationConfig: IAaveConfiguration = {
         {
           emissionPerSecond: BigNumber.from(
             "1,611,262,515,649,160".replace(/,/g, "")
-          ).mul(2),
+          ).mul(3),
           distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDT",
           ...gdotSupplyIncentive,
@@ -223,7 +227,7 @@ export const HydrationConfig: IAaveConfiguration = {
         {
           emissionPerSecond: BigNumber.from(
             "1,611,262,515,649,160".replace(/,/g, "")
-          ).mul(2),
+          ).mul(3),
           distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDC",
           ...gdotSupplyIncentive,
@@ -233,7 +237,7 @@ export const HydrationConfig: IAaveConfiguration = {
         {
           emissionPerSecond: BigNumber.from(
             "805,631,257,824,581".replace(/,/g, "")
-          ).mul(2),
+          ).mul(3),
           distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDS",
           ...gdotSupplyIncentive,
@@ -243,7 +247,7 @@ export const HydrationConfig: IAaveConfiguration = {
         {
           emissionPerSecond: BigNumber.from(
             "805,631,257,824,581".replace(/,/g, "")
-          ).mul(2),
+          ).mul(3),
           distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDe",
           ...gdotSupplyIncentive,

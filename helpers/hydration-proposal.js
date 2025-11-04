@@ -123,7 +123,6 @@ async function generateProposal(
     );
 
   const batch = [
-    ...registerAssets.map(registerAsset),
     ...transactions.map((tx) =>
       rootEvmCall({
         ...tx,
@@ -131,6 +130,7 @@ async function generateProposal(
         from: from ? padAddress(from) : padAddress(tx.from),
       })
     ),
+    ...registerAssets.map(registerAsset),
     ...newFeePaymentAssets.map(addFeePaymentAsset),
   ];
 

@@ -4,6 +4,7 @@ import {
   rateStrategyDOT,
   rateStrategyDOT10,
   rateStrategyStables,
+  rateStrategyStables80,
 } from "./rateStrategies";
 
 const supplyCap = "10000000";
@@ -12,7 +13,7 @@ const debtCeiling = "0";
 const reserveFactor = "2000";
 
 export const strategyUSDC: IReserveParams = {
-  strategy: rateStrategyStables,
+  strategy: rateStrategyStables80,
   baseLTVAsCollateral: "8000",
   liquidationThreshold: "9000",
   liquidationBonus: "10300",
@@ -192,20 +193,38 @@ const strategyHtoken: IReserveParams = {
 
 export const strategyHUSDT: IReserveParams = {
   ...strategyHtoken,
-  supplyCap: "4,000,000".replace(/,/g, ""),
+  supplyCap: "8,000,000".replace(/,/g, ""),
 };
 
 export const strategyHUSDC: IReserveParams = {
   ...strategyHtoken,
-  supplyCap: "4,000,000".replace(/,/g, ""),
+  supplyCap: "8,000,000".replace(/,/g, ""),
 };
 
 export const strategyHUSDS: IReserveParams = {
   ...strategyHtoken,
-  supplyCap: "2,000,000".replace(/,/g, ""),
+  supplyCap: "4,000,000".replace(/,/g, ""),
 };
 
 export const strategyHUSDe: IReserveParams = {
   ...strategyHtoken,
-  supplyCap: "2,000,000".replace(/,/g, ""),
+  supplyCap: "4,000,000".replace(/,/g, ""),
+};
+
+export const strategyPAXG: IReserveParams = {
+  strategy: rateStrategyDOT,
+  baseLTVAsCollateral: "7000",
+  liquidationThreshold: "7500",
+  liquidationBonus: "10500",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: true,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "18",
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "100",
+  borrowCap: "70",
+  debtCeiling,
+  borrowableIsolation: false,
 };
