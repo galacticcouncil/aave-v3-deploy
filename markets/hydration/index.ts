@@ -179,7 +179,7 @@ export const HydrationConfig: IAaveConfiguration = {
     [eHydrationNetwork.hydration]: {
       "2-POOL-GDOT": [
         {
-          emissionPerSecond: BigNumber.from("19270000000000000"),
+          emissionPerSecond: BigNumber.from("15030600000000000"),
           distributionEnd: Date.parse("17 Sep 2026 14:24:36 GMT") / 1000,
           reserve: "2-Pool-GDOT",
           ...gdotSupplyIncentive,
@@ -207,7 +207,7 @@ export const HydrationConfig: IAaveConfiguration = {
       ],
       "3-POOL": [
         {
-          emissionPerSecond: utils.parseEther("0.001606016693").toString(),
+          emissionPerSecond: utils.parseEther("0.001124211685").toString(),
           distributionEnd: Date.parse("17 Sep 2026 14:24:36 GMT") / 1000,
           reserve: "3-Pool",
           ...gdotSupplyIncentive,
