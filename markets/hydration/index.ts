@@ -179,7 +179,7 @@ export const HydrationConfig: IAaveConfiguration = {
     [eHydrationNetwork.hydration]: {
       "2-POOL-GDOT": [
         {
-          emissionPerSecond: BigNumber.from("15030600000000000"),
+          emissionPerSecond: BigNumber.from("3757650000000000"),
           distributionEnd: Date.parse("17 Sep 2026 14:24:36 GMT") / 1000,
           reserve: "2-Pool-GDOT",
           ...gdotSupplyIncentive,
@@ -207,7 +207,7 @@ export const HydrationConfig: IAaveConfiguration = {
       ],
       "3-POOL": [
         {
-          emissionPerSecond: utils.parseEther("0.001124211685").toString(),
+          emissionPerSecond: utils.parseEther("0.0002810529212").toString(),
           distributionEnd: Date.parse("17 Sep 2026 14:24:36 GMT") / 1000,
           reserve: "3-Pool",
           ...gdotSupplyIncentive,
@@ -216,7 +216,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDT": [
         {
           emissionPerSecond: BigNumber.from(
-            "1,611,262,515,649,160".replace(/,/g, "")
+            "1,079,545,885,484,937".replace(/,/g, "")
           ).mul(3),
           distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDT",
@@ -226,7 +226,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDC": [
         {
           emissionPerSecond: BigNumber.from(
-            "1,611,262,515,649,160".replace(/,/g, "")
+            "1,079,545,885,484,937".replace(/,/g, "")
           ).mul(3),
           distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDC",
@@ -236,7 +236,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDS": [
         {
           emissionPerSecond: BigNumber.from(
-            "805,631,257,824,581".replace(/,/g, "")
+            "402,815,628,912,290".replace(/,/g, "")
           ).mul(3),
           distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDS",
@@ -246,7 +246,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDE": [
         {
           emissionPerSecond: BigNumber.from(
-            "805,631,257,824,581".replace(/,/g, "")
+            "402,815,628,912,290".replace(/,/g, "")
           ).mul(3),
           distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
           reserve: "2-Pool-HUSDe",
