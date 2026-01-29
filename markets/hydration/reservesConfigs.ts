@@ -7,7 +7,7 @@ import {
   rateStrategyStables80,
 } from "./rateStrategies";
 
-const supplyCap = "10000000";
+const supplyCap = "12000000";
 const borrowCap = "6000000";
 const debtCeiling = "0";
 const reserveFactor = "2000";
