@@ -122,7 +122,7 @@ export const HydrationConfig: IAaveConfiguration = {
     },
     DotEMode: {
       id: "2",
-      ltv: "9000",
+      ltv: "8500",
       liquidationThreshold: "9200",
       liquidationBonus: "10450",
       label: "DOT correlated",
