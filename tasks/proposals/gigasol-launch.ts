@@ -307,10 +307,10 @@ task(`gigasol-launch`, `Generate GIGASOL launch governance proposal`).setAction(
 
     //TODO: fix it with correct values, ask Ben
     // --- Initial liquidity from treasury ---
-    const initialSolAmount = "250_000_000_000" // 804 SOL (9 decimals)
+    const initialSolAmount = "804_000_000_000" // 804 SOL (9 decimals)
       .replaceAll(".", "")
       .replaceAll("_", "");
-    const initialJitoSolAmount = "300_000_000_000" // 640 jitoSOL (9 decimals)
+    const initialJitoSolAmount = "640_000_000_000" // 640 jitoSOL (9 decimals)
       .replaceAll(".", "")
       .replaceAll("_", "");
 
@@ -397,7 +397,6 @@ task(`gigasol-launch`, `Generate GIGASOL launch governance proposal`).setAction(
     );
 
     // --- add GIGASOL to the Omnipool ---
-    // TODO: DOUBLE CHECK PRICE BEFORE PROPOSAL EXECUTION
     const omnipoolPrice = "10_813_704_496_788"
       .replaceAll(".", "")
       .replaceAll("_", "");
