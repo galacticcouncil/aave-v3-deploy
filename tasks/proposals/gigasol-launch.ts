@@ -398,7 +398,7 @@ task(`gigasol-launch`, `Generate GIGASOL launch governance proposal`).setAction(
 
     // --- add GIGASOL to the Omnipool ---
     // TODO: DOUBLE CHECK PRICE BEFORE PROPOSAL EXECUTION
-    const omnipoolPrice = "10_925_768_823_966"
+    const omnipoolPrice = "10_813_704_496_788"
       .replaceAll(".", "")
       .replaceAll("_", "");
 
