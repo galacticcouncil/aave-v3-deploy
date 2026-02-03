@@ -277,15 +277,6 @@ export const HydrationConfig: IAaveConfiguration = {
           ...gdotSupplyIncentive,
         },
       ],
-      // GIGASOL supply incentives - TODO: Update emission parameters based on risk team recommendations
-      "2-POOL-GSOL": [
-        {
-          emissionPerSecond: BigNumber.from("0"), // TODO: Set emission rate
-          distributionEnd: Date.parse("01 Jan 2027 00:00:00 GMT") / 1000, // TODO: Set distribution end
-          reserve: "2-Pool-GSOL",
-          ...gdotSupplyIncentive,
-        },
-      ],
     },
   },
   USDOracleAdapter: {
