@@ -463,7 +463,7 @@ task(`gigasol-launch`, `Generate GIGASOL launch governance proposal`).setAction(
         treasury,
         hydrationTx.omnipoolLiquidityMining.createYieldFarm(
           ...Object.values({
-            globalFarmId: 100, // Next farm ID after GIGAETH (99)
+            globalFarmId: 127, // Next farm ID from the sequencer
             assetId: gSOL,
             multiplier: "1,000,000,000,000,000,000".replaceAll(",", ""),
             loyaltyCurve: {
