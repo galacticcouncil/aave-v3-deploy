@@ -228,3 +228,40 @@ export const strategyPAXG: IReserveParams = {
   debtCeiling,
   borrowableIsolation: false,
 };
+
+// GIGASOL reserve configurations
+export const strategySOL: IReserveParams = {
+  strategy: rateStrategyDOT,
+  baseLTVAsCollateral: "7000",
+  liquidationThreshold: "7500",
+  liquidationBonus: "10700",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: true,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "9", // SOL has 9 decimals
+  aTokenImpl: eContractid.AToken,
+  reserveFactor, // 20%
+  supplyCap: "50,000".replace(/,/g, ""),
+  borrowCap: "25,000".replace(/,/g, ""),
+  debtCeiling,
+  borrowableIsolation: false,
+};
+
+export const strategyGSOL: IReserveParams = {
+  strategy: rateStrategyDOT,
+  baseLTVAsCollateral: "6000",
+  liquidationThreshold: "7000",
+  liquidationBonus: "10700",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: false, // Stablepool LP tokens cannot be borrowed
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "18", // LP tokens use 18 decimals
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "100,000".replace(/,/g, ""),
+  borrowCap: "0",
+  debtCeiling,
+  borrowableIsolation: false,
+};

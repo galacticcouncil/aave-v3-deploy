@@ -24,6 +24,8 @@ import {
   strategyHUSDS,
   strategyHUSDe,
   strategyPAXG,
+  strategySOL,
+  strategyGSOL,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -61,6 +63,8 @@ export const HydrationConfig: IAaveConfiguration = {
     "2-POOL-HUSDS": strategyHUSDS,
     "2-POOL-HUSDE": strategyHUSDe,
     PAXG: strategyPAXG,
+    SOL: strategySOL,
+    "2-POOL-GSOL": strategyGSOL,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -80,6 +84,8 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDS": tokenAddress(112),
       "2-POOL-HUSDE": tokenAddress(113),
       PAXG: tokenAddress(39),
+      SOL: tokenAddress(1000752), 
+      "2-POOL-GSOL": tokenAddress(901),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -136,6 +142,14 @@ export const HydrationConfig: IAaveConfiguration = {
       label: "ETH",
       assets: ["ETH", "2-Pool-GETH"],
     },
+    SolEMode: {
+      id: "4",
+      ltv: "8000",
+      liquidationThreshold: "9000",
+      liquidationBonus: "10450",
+      label: "SOL correlated",
+      assets: ["SOL", "2-Pool-GSOL"],
+    },
   },
   ChainlinkAggregator: {
     [eHydrationNetwork.hydration]: {
@@ -159,6 +173,10 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDS": "0x00000102737461626c657377000000de00000070", // HOLLAR(222) / 2-POOL-HUSDS(112) 10 min. stablesw
       "2-POOL-HUSDE": "0x00000102737461626c657377000000de00000071", // HOLLAR(222) / 2-POOL-HUSDe(113) 10 min. stablesw
       PAXG: "0x8fB61B8E81C2f17695F14A136C98b0C4013bc105",
+      // GIGASOL oracles
+      SOL: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
+      "2-POOL-GSOL": "0x202df3eDac2775b857ee2f61A3569731E53eC713", // TODO: REPLACE BEFORE CREATING GIGASOL PROPOSAL
+      JITOSOL_SOL: "0xbd1108369553bfFBAaa1BA5C8D07a8131EB92F10", // TODO: REPLACE BEFORE CREATING GIGASOL PROPOSAL
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -173,6 +191,12 @@ export const HydrationConfig: IAaveConfiguration = {
       WSTETH: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36", //TODO: waiting on DIA
       "2-POOL-GETH": "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: deploy USDOracleAdapter and use real address
       WSTETH_ETH: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: deploy OraclesAggregator and use real address
+    },
+    [eHydrationNetwork.zombie]: {
+      // GIGASOL oracles for zombie testing
+      SOL: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle (same as mainnet fork)
+      "2-POOL-GSOL": "0x202df3eDac2775b857ee2f61A3569731E53eC713", // USDOracleAdapter TODO: REPLACE BEFORE CREATING GIGASOL PROPOSAL
+      JITOSOL_SOL: "0xbd1108369553bfFBAaa1BA5C8D07a8131EB92F10", // ManagedOracle (jitoSOL/SOL) TODO: REPLACE BEFORE CREATING GIGASOL PROPOSAL
     },
   },
   IncentivesConfig: {
@@ -253,6 +277,15 @@ export const HydrationConfig: IAaveConfiguration = {
           ...gdotSupplyIncentive,
         },
       ],
+      // GIGASOL supply incentives - TODO: Update emission parameters based on risk team recommendations
+      "2-POOL-GSOL": [
+        {
+          emissionPerSecond: BigNumber.from("0"), // TODO: Set emission rate
+          distributionEnd: Date.parse("01 Jan 2027 00:00:00 GMT") / 1000, // TODO: Set distribution end
+          reserve: "2-Pool-GSOL",
+          ...gdotSupplyIncentive,
+        },
+      ],
     },
   },
   USDOracleAdapter: {
@@ -281,6 +314,18 @@ export const HydrationConfig: IAaveConfiguration = {
         assetToX: "0x00000102737461626c657377000003ea00000067", //hydration's chainlink precompile, stableswap 10min., aUSDT(1002)/3-POOL(103)
         xToUSD: "0x8b0DDfB8F56690eAde9ECa23a7d90E153C268d5B", // DIA USDT/USD oracle
       },
+      // GIGASOL - stableswap price oracle for 2-POOL-GSOL
+      "2-POOL-GSOL": {
+        assetToX: "0x00000102737461626c657377000003f100000385", // hydration's chainlink precompile, stableswap 10min., aSOL(1009)/gSOLs(901)
+        xToUSD: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
+      },
+    },
+    [eHydrationNetwork.zombie]: {
+      // GIGASOL - stableswap price oracle for 2-POOL-GSOL (same config as mainnet)
+      "2-POOL-GSOL": {
+        assetToX: "0x00000102737461626c657377000003f100000385", // hydration's chainlink precompile, stableswap 10min., aSOL(1009)/gSOLs(901)
+        xToUSD: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
+      },
     },
   },
   OraclesAggregator: {
@@ -289,6 +334,7 @@ export const HydrationConfig: IAaveConfiguration = {
         srcAssetToX: "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36", //wstETH -> USD
         destAssetToX: "0x1AF549Fe19A9B73D094173C41e18BF7F357F594b", //ETH -> USD
       },
+      // NOTE: JITOSOL_SOL uses ManagedOracle pattern (like wstETH), not OraclesAggregator
     },
   },
 };
