@@ -415,10 +415,10 @@ task(`gigasol-launch`, `Generate GIGASOL launch governance proposal`).setAction(
     );
 
     // --- Enable as fee payment asset ---
-    const feePaymentPrice = "30_776_699_029_126_213_592"
+    const feePaymentPrice = "31_108_910_891_089_100_000"
       .replaceAll(".", "")
       .replaceAll("_", "");
-
+      
     // Allow gSOL (GIGASOL) as fee payment asset
     txs.push(
       hydrationTx.multiTransactionPayment.addCurrency(
