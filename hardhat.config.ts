@@ -67,6 +67,11 @@ export default {
       url: "http://127.0.0.1:8545",
       ...hardhatNetworkSettings,
     },
+    anvil: {
+      url: "http://127.0.0.1:8545",
+      chainId: 31337,
+      ...hardhatNetworkSettings,
+    },
     tenderly: getCommonNetworkConfig("tenderly", 1),
     main: getCommonNetworkConfig(eEthereumNetwork.main, 1),
     kovan: getCommonNetworkConfig(eEthereumNetwork.kovan, 42),
