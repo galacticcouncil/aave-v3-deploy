@@ -145,7 +145,7 @@ export const HydrationConfig: IAaveConfiguration = {
     SolEMode: {
       id: "4",
       ltv: "8000",
-      liquidationThreshold: "9000",
+      liquidationThreshold: "8500",
       liquidationBonus: "10450",
       label: "SOL correlated",
       assets: ["SOL", "2-Pool-GSOL"],
