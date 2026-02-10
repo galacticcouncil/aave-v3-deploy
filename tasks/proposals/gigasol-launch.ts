@@ -300,7 +300,7 @@ task(`gigasol-launch`, `Generate GIGASOL launch governance proposal`).setAction(
             { MMOracle: jitoSolSolOracle }, // jitoSOL uses oracle for drifting peg
             { value: [1, 1] }, // aSOL pegged 1:1 to SOL
           ],
-          maxPegUpdate: 3, // 3 Perbill per block (~1.6% max drift per year)
+          maxPegUpdate: 160, // should be atleast 10x expected APY
         })
       )
     );
