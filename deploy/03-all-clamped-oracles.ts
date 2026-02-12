@@ -248,6 +248,11 @@ async function main() {
     (v) => v.address === null,
   ).length
   console.log(`\nSummary: ${successful} deployed, ${failed} failed`)
+
+  if (failed > 0) {
+    console.error('Some oracles failed to deploy. Skipping config update.')
+    return
+  }
 }
 
 main().catch((e) => {
