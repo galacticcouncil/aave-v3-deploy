@@ -152,10 +152,10 @@ task(`prime`, ``).setAction(async function (_, hre) {
     hydrationTx.stableswap.createPoolWithPegs(
       ...Object.values({
         shareAsset: poolPRIME,
-        assets: [HOLLAR, PRIME],
+        assets: [PRIME, HOLLAR],
         amplification: 100,
         fee: 400,
-        pegSource: [{ value: [1, 1] }, { MMOracle: oracle }],
+        pegSource: [{ MMOracle: oracle }, { value: [1, 1] }],
         maxPegUpdate: 120,
       })
     ),
