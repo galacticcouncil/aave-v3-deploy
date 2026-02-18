@@ -85,7 +85,7 @@ task(`prime`, ``).setAction(async function (_, hre) {
   });
 
   const oracle = await getOracleByAsset(cfg, "PRIME");
-  const price = 1.0164348;
+  const price = 1.0191654;
 
   await hre.run("set-oracle-price", {
     oracle,
@@ -177,10 +177,15 @@ task(`prime`, ``).setAction(async function (_, hre) {
     ),
   ];
 
-  let preimage = await generateProposalV2([...txs, ...rootTxs], false);
+  const { whitelistedCall, proposal } = await generateProposalV2(
+    [...txs, ...rootTxs],
+    true
+  );
   const decoder = new ProposalDecoder(hre);
   await decoder.init();
-  console.log("submit preimages:");
-  console.log(preimage.toHex());
-  decoder.printTree(decoder.transformCall(preimage.toHuman()));
+  console.log("whitelisted call hash:");
+  console.log(whitelistedCall.hash.toString());
+  console.log("proposal preimage:");
+  console.log(proposal.toHex());
+  decoder.printTree(decoder.transformCall(whitelistedCall.toHuman()));
 });
