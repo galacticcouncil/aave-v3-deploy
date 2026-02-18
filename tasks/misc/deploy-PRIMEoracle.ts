@@ -13,7 +13,7 @@ task(`deploy-PRIMEoracle`, `Deploys the PRIME oracle contract`).setAction(
     const artifact = await hre.deployments.deploy(`PRIMEoracle`, {
       from: deployer,
       contract: "ManagedOracle",
-      args: ["PRIME/USD", 1, admin, 101643480],
+      args: ["PRIME/USD", 1, admin, 101953577],
     });
 
     console.log("PRIME oracle deployed at:", artifact.address);

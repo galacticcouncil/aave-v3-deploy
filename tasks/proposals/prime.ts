@@ -85,7 +85,7 @@ task(`prime`, ``).setAction(async function (_, hre) {
   });
 
   const oracle = await getOracleByAsset(cfg, "PRIME");
-  const price = 1.0191654;
+  const price = 1.0195357;
 
   await hre.run("set-oracle-price", {
     oracle,
