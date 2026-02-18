@@ -1,124 +1,124 @@
 {
   "network": "hydration",
-  "deployedAt": "2026-02-12T11:04:59.380Z",
+  "deployedAt": "2026-02-13T11:51:40.057Z",
   "maxDiffBps": 500,
   "oracles": {
     "2-POOL-GDOT": {
-      "address": "0xd112C33D2cf4199a764acEab739E493D36c4C6A8",
+      "address": null,
       "token": "0x00000000000000000000000000000001000002b2",
       "primaryFeed": "0xedbD21F476039C6019d2EC3e97f949af98a5c121",
       "secondaryFeed": "0x00000102737461626c657377000003e9000002b2"
     },
     "VDOT": {
-      "address": "0xCe6B5f1AD768915f14B645F5B3e00efBc3f1ADf0",
+      "address": null,
       "token": "0x000000000000000000000000000000010000000f",
       "primaryFeed": "0x2fFa376E0a84606e4Ccb3738071312A34Cebad6C",
       "secondaryFeed": "0x00000102626966726f73746f000000050000000f"
     },
     "HDX": {
-      "address": "0x6e4FDA8dFC82BE465F3eC7A54747BA80dCf2a8c0",
+      "address": null,
       "token": "0x0000000000000000000000000000000100000000",
       "primaryFeed": "0xea63e594ee00590938E856F2134E6C792bA92d13",
       "secondaryFeed": "0x0000010200000000000000000000000a00000000"
     },
     "BNC": {
-      "address": "0x3Fa1eA9cac6c88caCF0A231fF7E26348487b6e89",
+      "address": null,
       "token": "0x000000000000000000000000000000010000000e",
       "primaryFeed": "0xc94c414E8eBF7EA928D9bE555A8eAb719B89bBcE",
       "secondaryFeed": "0x0000010200000000000000000000000a0000000e"
     },
     "2-POOL-GETH": {
-      "address": "0x41D5B60FAfbF582Dcb16F092f7cf721e6c8aab31",
+      "address": null,
       "token": "0x0000000000000000000000000000000100001068",
       "primaryFeed": "0x32CC29cA6924B16077056A7B049663AF153D9E90",
       "secondaryFeed": "0x00000102737461626c657377000003ef00001068"
     },
     "3-POOL": {
-      "address": "0xFA09900A2b871e40ccf8E082b370e9A9baDa3A4e",
+      "address": null,
       "token": "0x0000000000000000000000000000000100000067",
       "primaryFeed": "0xFbD6F083b9e8683fe62B21cF5849f362238610AF",
       "secondaryFeed": "0x00000102737461626c657377000003ea00000067"
     },
     "USDC": {
-      "address": "0x8001B9520eBB312aB888C1eEC737AfA56471dc46",
+      "address": null,
       "token": "0x0000000000000000000000000000000100000016",
       "primaryFeed": "0x17711BE5D63B2Fe8A2C379725DE720773158b954",
       "secondaryFeed": "0x17711BE5D63B2Fe8A2C379725DE720773158b954"
     },
     "USDT": {
-      "address": "0x205c1143d6bE986DBE7a2E389Ac7d42cB6095DC6",
+      "address": null,
       "token": "0x000000000000000000000000000000010000000a",
       "primaryFeed": "0x8b0DDfB8F56690eAde9ECa23a7d90E153C268d5B",
       "secondaryFeed": "0x8b0DDfB8F56690eAde9ECa23a7d90E153C268d5B"
     },
     "WETH": {
-      "address": "0xC646e269A86b783A3c9Cb7cff4Fc931Dc25D51b7",
+      "address": null,
       "token": "0x0000000000000000000000000000000100000014",
       "primaryFeed": "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
       "secondaryFeed": "0x8aEAE0bBf623B0E70732086B8D48A6090C311596"
     },
     "WBTC": {
-      "address": "0xe174F8188C586D0a57CBFA487188B347907d77F6",
+      "address": null,
       "token": "0x0000000000000000000000000000000100000013",
       "primaryFeed": "0xeDD9A7C47A9F91a0F2db93978A88844167B4a04f",
       "secondaryFeed": "0xeDD9A7C47A9F91a0F2db93978A88844167B4a04f"
     },
     "DOT": {
-      "address": "0x5997008BD1e515D3789aCCb18CA67632Be572636",
+      "address": null,
       "token": "0x0000000000000000000000000000000100000005",
       "primaryFeed": "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702",
       "secondaryFeed": "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702"
     },
     "TBTC": {
-      "address": "0x42B8d6326ed7125279493d4889Abc78d9d81E279",
+      "address": null,
       "token": "0x00000000000000000000000000000001000f453d",
       "primaryFeed": "0xe5AcDfB0d5EC5cE34F7448B41ef4a97c4e83D9c1",
       "secondaryFeed": "0xe5AcDfB0d5EC5cE34F7448B41ef4a97c4e83D9c1"
     },
     "ETH": {
-      "address": "0xc4D17436fa0510Fe0efDD9b59B1F3Fc2eFe05b02",
+      "address": null,
       "token": "0x0000000000000000000000000000000100000022",
       "primaryFeed": "0x1AF549Fe19A9B73D094173C41e18BF7F357F594b",
       "secondaryFeed": "0x1AF549Fe19A9B73D094173C41e18BF7F357F594b"
     },
     "WSTETH": {
-      "address": "0x21E165F7EE14cECC0d5c7587590D54a4A3f8d3B6",
+      "address": null,
       "token": "0x00000000000000000000000000000001000f4569",
       "primaryFeed": "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36",
       "secondaryFeed": "0x52bBB0BC38C42D60b24EBF0C617E8218D2aB6d36"
     },
     "WSTETH_ETH": {
-      "address": "0xdC6d1765125D795D79FAe5C9f0a2F1F160D46750",
+      "address": null,
       "token": "0x00000000000000000000000000000001000f4569",
       "primaryFeed": "0xA317cEbdE7F948e132fDD177E5002A1DD2C2cB21",
       "secondaryFeed": "0xA317cEbdE7F948e132fDD177E5002A1DD2C2cB21"
     },
     "2-POOL-HUSDC": {
-      "address": "0x71FB115862D2A8f35a53508A4B2A67b47A2D8D25",
+      "address": null,
       "token": "0x000000000000000000000000000000010000006e",
       "primaryFeed": "0x00000102737461626c657377000000de0000006e",
       "secondaryFeed": "0x00000102737461626c657377000000de0000006e"
     },
     "2-POOL-HUSDT": {
-      "address": "0x1bD38d8a1F43838df3104f84A559a5A35254650a",
+      "address": null,
       "token": "0x000000000000000000000000000000010000006f",
       "primaryFeed": "0x00000102737461626c657377000000de0000006f",
       "secondaryFeed": "0x00000102737461626c657377000000de0000006f"
     },
     "2-POOL-HUSDS": {
-      "address": "0x6CD370B3a01a25F17522E347FBc4345C309A3269",
+      "address": null,
       "token": "0x0000000000000000000000000000000100000070",
       "primaryFeed": "0x00000102737461626c657377000000de00000070",
       "secondaryFeed": "0x00000102737461626c657377000000de00000070"
     },
     "2-POOL-HUSDE": {
-      "address": "0xd2D49a26E8b24266b714Eba4b79BEaEF56a17676",
+      "address": null,
       "token": "0x0000000000000000000000000000000100000071",
       "primaryFeed": "0x00000102737461626c657377000000de00000071",
       "secondaryFeed": "0x00000102737461626c657377000000de00000071"
     },
     "PAXG": {
-      "address": "0x9C7713EB68D465a59A044bF9B4805C77C556994C",
+      "address": null,
       "token": "0x0000000000000000000000000000000100000027",
       "primaryFeed": "0x8fB61B8E81C2f17695F14A136C98b0C4013bc105",
       "secondaryFeed": "0x8fB61B8E81C2f17695F14A136C98b0C4013bc105"

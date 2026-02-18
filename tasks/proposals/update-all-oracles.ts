@@ -1,8 +1,8 @@
 // @ts-nocheck
 import {
   generateProposalV2,
-  aaveManagerCall,
 } from '../../helpers/hydration-proposal.js'
+import { aaveManagerCall } from '../../helpers/lark-proposal.js'
 import { task } from 'hardhat/config'
 import { getBatch, clearBatch } from '../../helpers/transaction-batch'
 import ProposalDecoder from '../../helpers/proposal-decoder'
