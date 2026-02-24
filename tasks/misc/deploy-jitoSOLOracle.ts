@@ -14,8 +14,9 @@ task(`deploy-jitoSOLOracle`, `Deploys the jitoSOLOracle contract`).setAction(
     const artifact = await hre.deployments.deploy(`jitoSOLOracle`, {
       from: deployer,
       contract: "ManagedOracle",
-      args: ["jitoSOL/SOL", 1, admin, 125672373], // TODO: Set correct initial jitoSOL/SOL ratio, from their program https://www.jito.network/staking/?mode=unstake
+      args: ["jitoSOL/SOL", 1, admin, 126317199], // TODO: Set correct initial jitoSOL/SOL ratio, from their program https://www.jito.network/staking/?mode=unstake
     });
+    
 
     console.log("ManagedOracle deployed at:", artifact.address);
     console.log(`\tFinished jitoSOLOracle deployment`);
