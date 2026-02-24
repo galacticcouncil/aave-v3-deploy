@@ -56,7 +56,7 @@ task(`gigasol-launch`, `Generate GIGASOL launch governance proposal`).setAction(
     // Asset IDs - Verified from Hydration chain
     const gSOLReserveName = "2-POOL-GSOL";
     const gSOL = 9001; // GIGASOL aToken asset ID (receipt for depositing 2-Pool-GSOL)
-    const gSOLs = 901; // 2-Pool-GSOL stableswap LP token asset ID
+    const gSOLs = 90001; // 2-Pool-GSOL stableswap LP token asset ID
     const jitoSOL = 40; // jitoSOL asset ID on Hydration
     const aSOL = 1009; // aSOL (Aave deposit token for SOL) - next available after a3-Pool(1008)
     const SOL = 1000752; // SOL asset ID (bridged via MRL/Wormhole)
