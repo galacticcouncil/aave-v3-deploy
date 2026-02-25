@@ -85,7 +85,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDE": tokenAddress(113),
       PAXG: tokenAddress(39),
       SOL: tokenAddress(1000752), 
-      "2-POOL-GSOL": tokenAddress(901),
+      "2-POOL-GSOL": tokenAddress(90001),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -307,14 +307,14 @@ export const HydrationConfig: IAaveConfiguration = {
       },
       // GIGASOL - stableswap price oracle for 2-POOL-GSOL
       "2-POOL-GSOL": {
-        assetToX: "0x00000102737461626c657377000003f100000385", // hydration's chainlink precompile, stableswap 10min., aSOL(1009)/gSOLs(901)
+        assetToX: "0x00000102737461626c657377000003f100015f91", // hydration's chainlink precompile, stableswap 10min., aSOL(1009)/gSOLs(90001)
         xToUSD: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
       },
     },
     [eHydrationNetwork.zombie]: {
       // GIGASOL - stableswap price oracle for 2-POOL-GSOL (same config as mainnet)
       "2-POOL-GSOL": {
-        assetToX: "0x00000102737461626c657377000003f100000385", // hydration's chainlink precompile, stableswap 10min., aSOL(1009)/gSOLs(901)
+        assetToX: "0x00000102737461626c657377000003f100015f91", // hydration's chainlink precompile, stableswap 10min., aSOL(1009)/gSOLs(90001)
         xToUSD: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
       },
     },
