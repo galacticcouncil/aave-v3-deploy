@@ -20,12 +20,14 @@ function padAddress(address) {
 const location = (contract) => ({
   parents: "0",
   interior: {
-    X1: {
-      AccountKey20: {
-        network: null,
-        key: contract,
+    X1: [
+      {
+        AccountKey20: {
+          network: null,
+          key: contract,
+        },
       },
-    },
+    ],
   },
 });
 
@@ -75,6 +77,7 @@ async function generateProposal(
       gasPrice,
       undefined,
       undefined,
+      [],
       []
     );
   const rootEvmCall = ({
@@ -253,6 +256,7 @@ async function aaveManagerCall({
       gasPrice,
       undefined,
       undefined,
+      [],
       []
     )
   );

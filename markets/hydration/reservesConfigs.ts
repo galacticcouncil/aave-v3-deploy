@@ -27,7 +27,7 @@ export const strategyUSDC: IReserveParams = {
   supplyCap,
   borrowCap,
   debtCeiling,
-  borrowableIsolation: true,
+  borrowableIsolation: false,
 };
 
 export const strategyUSDT = strategyUSDC;
@@ -226,5 +226,23 @@ export const strategyPAXG: IReserveParams = {
   supplyCap: "100",
   borrowCap: "70",
   debtCeiling,
+  borrowableIsolation: false,
+};
+
+export const strategyPRIME: IReserveParams = {
+  strategy: rateStrategyVolatileOne,
+  baseLTVAsCollateral: "8500",
+  liquidationThreshold: "8800",
+  liquidationBonus: "10700",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: true,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "6",
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "5000000",
+  borrowCap: "3000000",
+  debtCeiling: "222222200",
   borrowableIsolation: false,
 };
