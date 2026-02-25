@@ -27,6 +27,7 @@ import {
   strategyPRIME,
   strategySOL,
   strategyGSOL,
+  strategySTHDX,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -67,6 +68,7 @@ export const HydrationConfig: IAaveConfiguration = {
     PRIME: strategyPRIME,
     SOL: strategySOL,
     "2-POOL-GSOL": strategyGSOL,
+    STHDX: strategySTHDX,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -89,6 +91,7 @@ export const HydrationConfig: IAaveConfiguration = {
       PRIME: tokenAddress(43),
       SOL: tokenAddress(1000752),
       "2-POOL-GSOL": tokenAddress(90001),
+      STHDX: tokenAddress(670),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -181,6 +184,10 @@ export const HydrationConfig: IAaveConfiguration = {
       SOL: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
       "2-POOL-GSOL": "0xCD3648A48378cBDa915f6be0A30073b76593Ed9A",
       JITOSOL_SOL: "0x5B29bceaCBD1c37FD4A2c32a052b63813ed0D4b8",
+      STHDX: "TODO_DEPLOYED_ORACLE_ADDRESS", // deploy-USDOracleAdapter.ts
+    },
+    [eHydrationNetwork.zombie]: {
+      STHDX: "TODO_DEPLOYED_ORACLE_ADDRESS", // deploy-USDOracleAdapter.ts
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -320,6 +327,16 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-GSOL": {
         assetToX: "0x00000102737461626c657377000003f100015f91", // hydration's chainlink precompile, stableswap 10min., aSOL(1009)/gSOLs(90001)
         xToUSD: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
+      },
+      STHDX: {
+        assetToX: "0x0000010267696761686478730000029e00000000", // gigahdxs source: stHDX(670)/HDX(0) TenMinutes
+        xToUSD: "0xea63e594ee00590938E856F2134E6C792bA92d13", // DIA HDX/USD oracle
+      },
+    },
+    [eHydrationNetwork.zombie]: {
+      STHDX: {
+        assetToX: "0x0000010267696761686478730000029e00000000", // gigahdxs source: stHDX(670)/HDX(0) TenMinutes
+        xToUSD: "0xea63e594ee00590938E856F2134E6C792bA92d13", // DIA HDX/USD oracle
       },
     },
   },
