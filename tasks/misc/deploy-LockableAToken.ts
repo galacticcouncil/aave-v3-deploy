@@ -33,6 +33,7 @@ task(
     from: deployer,
     contract: "LockableAToken",
     args: [pool],
+    gasLimit: 10_000_000,
   });
   console.log("LockableAToken deployed at:", artifact.address);
 });
