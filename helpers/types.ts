@@ -123,6 +123,7 @@ export enum eContractid {
   AToken = "AToken",
   MockAToken = "MockAToken",
   DelegationAwareAToken = "DelegationAwareAToken",
+  LockableAToken = "LockableAToken",
   MockStableDebtToken = "MockStableDebtToken",
   MockVariableDebtToken = "MockVariableDebtToken",
   AaveProtocolDataProvider = "AaveProtocolDataProvider",

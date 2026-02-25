@@ -107,6 +107,7 @@ export const initReservesByHelper = async (
   let strategyAddressPerAsset: Record<string, string> = {};
   let aTokenType: Record<string, string> = {};
   let delegationAwareATokenImplementationAddress = "";
+  let lockableATokenImplementationAddress = "";
   let aTokenImplementationAddress: string;
   let stableDebtTokenImplementationAddress: string;
   let variableDebtTokenImplementationAddress: string;
@@ -131,10 +132,21 @@ export const initReservesByHelper = async (
     ).address;
   }
 
+  const lockableATokenReserves = Object.entries(reservesParams).filter(
+    ([_, { aTokenImpl }]) => aTokenImpl === eContractid.LockableAToken
+  ) as [string, IReserveParams][];
+
+  if (lockableATokenReserves.length > 0) {
+    lockableATokenImplementationAddress = (
+      await hre.deployments.get("LockableAToken-Hydration")
+    ).address;
+  }
+
   const reserves = Object.entries(reservesParams).filter(
     ([_, { aTokenImpl }]) =>
       aTokenImpl === eContractid.DelegationAwareAToken ||
-      aTokenImpl === eContractid.AToken
+      aTokenImpl === eContractid.AToken ||
+      aTokenImpl === eContractid.LockableAToken
   ) as [string, IReserveParams][];
 
   for (let [symbol, params] of reserves) {
@@ -167,6 +179,8 @@ export const initReservesByHelper = async (
       aTokenType[symbol] = "generic";
     } else if (aTokenImpl === eContractid.DelegationAwareAToken) {
       aTokenType[symbol] = "delegation aware";
+    } else if (aTokenImpl === eContractid.LockableAToken) {
+      aTokenType[symbol] = "lockable";
     }
 
     reserveInitDecimals.push(reserveDecimals);
@@ -178,6 +192,8 @@ export const initReservesByHelper = async (
     let aTokenToUse: string;
     if (aTokenType[reserveSymbols[i]] === "generic") {
       aTokenToUse = aTokenImplementationAddress;
+    } else if (aTokenType[reserveSymbols[i]] === "lockable") {
+      aTokenToUse = lockableATokenImplementationAddress;
     } else {
       aTokenToUse = delegationAwareATokenImplementationAddress;
     }

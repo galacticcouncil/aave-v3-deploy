@@ -25,6 +25,7 @@ import {
   strategyHUSDe,
   strategyPAXG,
   strategyPRIME,
+  strategySTHDX,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -63,6 +64,7 @@ export const HydrationConfig: IAaveConfiguration = {
     "2-POOL-HUSDE": strategyHUSDe,
     PAXG: strategyPAXG,
     PRIME: strategyPRIME,
+    STHDX: strategySTHDX,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -83,6 +85,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDE": tokenAddress(113),
       PAXG: tokenAddress(39),
       PRIME: tokenAddress(43),
+      STHDX: tokenAddress(670),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -163,6 +166,10 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDE": "0x00000102737461626c657377000000de00000071", // HOLLAR(222) / 2-POOL-HUSDe(113) 10 min. stablesw
       PAXG: "0x8fB61B8E81C2f17695F14A136C98b0C4013bc105",
       PRIME: "0xDEe587cC569bf1FcBdcD6d1472031d225f34C307",
+      STHDX: "TODO_DEPLOYED_ORACLE_ADDRESS", // deploy-USDOracleAdapter.ts
+    },
+    [eHydrationNetwork.zombie]: {
+      STHDX: "TODO_DEPLOYED_ORACLE_ADDRESS", // deploy-USDOracleAdapter.ts
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -284,6 +291,16 @@ export const HydrationConfig: IAaveConfiguration = {
       "3-POOL": {
         assetToX: "0x00000102737461626c657377000003ea00000067", //hydration's chainlink precompile, stableswap 10min., aUSDT(1002)/3-POOL(103)
         xToUSD: "0x8b0DDfB8F56690eAde9ECa23a7d90E153C268d5B", // DIA USDT/USD oracle
+      },
+      STHDX: {
+        assetToX: "0x0000010267696761686478730000029e00000000", // gigahdxs source: stHDX(670)/HDX(0) TenMinutes
+        xToUSD: "0xea63e594ee00590938E856F2134E6C792bA92d13", // DIA HDX/USD oracle
+      },
+    },
+    [eHydrationNetwork.zombie]: {
+      STHDX: {
+        assetToX: "0x0000010267696761686478730000029e00000000", // gigahdxs source: stHDX(670)/HDX(0) TenMinutes
+        xToUSD: "0xea63e594ee00590938E856F2134E6C792bA92d13", // DIA HDX/USD oracle
       },
     },
   },
