@@ -279,7 +279,7 @@ task(`gigasol-launch`, `Generate GIGASOL launch governance proposal`).setAction(
     console.log("set jitoSOL/SOL oracle price");
     await hre.run("set-oracle-price", {
       oracle: jitoSolSolOracle,
-      price: "125672373", // ~1.2567 jitoSOL/SOL - update before proposal execution
+      price: "126317199", // ~1.2567 jitoSOL/SOL - update before proposal execution
     });
     // Batch oracle price update calls
     for await (const el of getBatch()) {
@@ -310,7 +310,7 @@ task(`gigasol-launch`, `Generate GIGASOL launch governance proposal`).setAction(
     const initialSolAmount = "804_000_000_000" // 804 SOL (9 decimals)
       .replaceAll(".", "")
       .replaceAll("_", "");
-    const initialJitoSolAmount = "640_000_000_000" // 640 jitoSOL (9 decimals)
+    const initialJitoSolAmount = "636_000_000_000" // 640 jitoSOL (9 decimals)
       .replaceAll(".", "")
       .replaceAll("_", "");
 
