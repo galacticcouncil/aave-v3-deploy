@@ -24,6 +24,7 @@ import {
   strategyHUSDS,
   strategyHUSDe,
   strategyPAXG,
+  strategyPRIME,
   strategySOL,
   strategyGSOL,
 } from "./reservesConfigs";
@@ -63,6 +64,7 @@ export const HydrationConfig: IAaveConfiguration = {
     "2-POOL-HUSDS": strategyHUSDS,
     "2-POOL-HUSDE": strategyHUSDe,
     PAXG: strategyPAXG,
+    PRIME: strategyPRIME,
     SOL: strategySOL,
     "2-POOL-GSOL": strategyGSOL,
   },
@@ -84,7 +86,8 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDS": tokenAddress(112),
       "2-POOL-HUSDE": tokenAddress(113),
       PAXG: tokenAddress(39),
-      SOL: tokenAddress(1000752), 
+      PRIME: tokenAddress(43),
+      SOL: tokenAddress(1000752),
       "2-POOL-GSOL": tokenAddress(90001),
     },
     [eHydrationNetwork.nice]: {
@@ -128,7 +131,7 @@ export const HydrationConfig: IAaveConfiguration = {
     },
     DotEMode: {
       id: "2",
-      ltv: "9000",
+      ltv: "8500",
       liquidationThreshold: "9200",
       liquidationBonus: "10450",
       label: "DOT correlated",
@@ -173,6 +176,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDS": "0x00000102737461626c657377000000de00000070", // HOLLAR(222) / 2-POOL-HUSDS(112) 10 min. stablesw
       "2-POOL-HUSDE": "0x00000102737461626c657377000000de00000071", // HOLLAR(222) / 2-POOL-HUSDe(113) 10 min. stablesw
       PAXG: "0x8fB61B8E81C2f17695F14A136C98b0C4013bc105",
+      PRIME: "0xDEe587cC569bf1FcBdcD6d1472031d225f34C307",
       // GIGASOL oracles
       SOL: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
       "2-POOL-GSOL": "0x202df3eDac2775b857ee2f61A3569731E53eC713", // TODO: REPLACE BEFORE CREATING GIGASOL PROPOSAL

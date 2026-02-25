@@ -78,7 +78,7 @@ async function generateProposal(
       undefined,
       undefined,
       [],
-      undefined
+      []
     );
   const rootEvmCall = ({
     from,
@@ -258,7 +258,7 @@ async function aaveManagerCall({
       undefined,
       undefined,
       [],
-      undefined
+      []
     )
   );
 }
