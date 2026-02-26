@@ -184,10 +184,10 @@ export const HydrationConfig: IAaveConfiguration = {
       SOL: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
       "2-POOL-GSOL": "0xCD3648A48378cBDa915f6be0A30073b76593Ed9A",
       JITOSOL_SOL: "0x5B29bceaCBD1c37FD4A2c32a052b63813ed0D4b8",
-      STHDX: "TODO_DEPLOYED_ORACLE_ADDRESS", // deploy-USDOracleAdapter.ts
+      STHDX: "0xbd1108369553bfFBAaa1BA5C8D07a8131EB92F10", // deploy-USDOracleAdapter.ts
     },
     [eHydrationNetwork.zombie]: {
-      STHDX: "TODO_DEPLOYED_ORACLE_ADDRESS", // deploy-USDOracleAdapter.ts
+      STHDX: "0xbd1108369553bfFBAaa1BA5C8D07a8131EB92F10", // deploy-USDOracleAdapter.ts
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
