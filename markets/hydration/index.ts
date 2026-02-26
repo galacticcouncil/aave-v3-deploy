@@ -166,10 +166,10 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDE": "0x00000102737461626c657377000000de00000071", // HOLLAR(222) / 2-POOL-HUSDe(113) 10 min. stablesw
       PAXG: "0x8fB61B8E81C2f17695F14A136C98b0C4013bc105",
       PRIME: "0xDEe587cC569bf1FcBdcD6d1472031d225f34C307",
-      STHDX: "TODO_DEPLOYED_ORACLE_ADDRESS", // deploy-USDOracleAdapter.ts
+      STHDX: "0xbd1108369553bfFBAaa1BA5C8D07a8131EB92F10", // deploy-USDOracleAdapter.ts
     },
     [eHydrationNetwork.zombie]: {
-      STHDX: "TODO_DEPLOYED_ORACLE_ADDRESS", // deploy-USDOracleAdapter.ts
+      STHDX: "0xbd1108369553bfFBAaa1BA5C8D07a8131EB92F10", // deploy-USDOracleAdapter.ts
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
