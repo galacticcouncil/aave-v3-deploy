@@ -279,7 +279,7 @@ task(`gigasol-launch`, `Generate GIGASOL launch governance proposal`).setAction(
     console.log("set jitoSOL/SOL oracle price");
     await hre.run("set-oracle-price", {
       oracle: jitoSolSolOracle,
-      price: "126317199", // ~1.2567 jitoSOL/SOL - update before proposal execution
+      price: "126261663", // ~1.2567 jitoSOL/SOL - update before proposal execution
     });
     // Batch oracle price update calls
     for await (const el of getBatch()) {
@@ -307,10 +307,10 @@ task(`gigasol-launch`, `Generate GIGASOL launch governance proposal`).setAction(
 
     //TODO: fix it with correct values, ask Ben
     // --- Initial liquidity from treasury ---
-    const initialSolAmount = "804_000_000_000" // 804 SOL (9 decimals)
+    const initialSolAmount = "809_000_000_000" // 809 SOL (9 decimals)
       .replaceAll(".", "")
       .replaceAll("_", "");
-    const initialJitoSolAmount = "636_000_000_000" // 640 jitoSOL (9 decimals)
+    const initialJitoSolAmount = "640_732_000_000" // 640 jitoSOL (9 decimals)
       .replaceAll(".", "")
       .replaceAll("_", "");
 
@@ -396,8 +396,9 @@ task(`gigasol-launch`, `Generate GIGASOL launch governance proposal`).setAction(
       )
     );
 
+    
     // --- add GIGASOL to the Omnipool ---
-    const omnipoolPrice = "10_813_704_496_788"
+    const omnipoolPrice = "10_840_229_074_672"
       .replaceAll(".", "")
       .replaceAll("_", "");
 
@@ -413,8 +414,9 @@ task(`gigasol-launch`, `Generate GIGASOL launch governance proposal`).setAction(
       )
     );
 
+    
     // --- Enable as fee payment asset ---
-    const feePaymentPrice = "31_108_910_891_089_100_000"
+    const feePaymentPrice = "30_830_670_926_517_600_000" 
       .replaceAll(".", "")
       .replaceAll("_", "");
       
