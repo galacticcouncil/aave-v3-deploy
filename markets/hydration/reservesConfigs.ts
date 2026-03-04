@@ -27,7 +27,7 @@ export const strategyUSDC: IReserveParams = {
   supplyCap,
   borrowCap,
   debtCeiling,
-  borrowableIsolation: false,
+  borrowableIsolation: true,
 };
 
 export const strategyUSDT = strategyUSDC;
@@ -243,6 +243,6 @@ export const strategyPRIME: IReserveParams = {
   reserveFactor,
   supplyCap: "5000000",
   borrowCap: "3000000",
-  debtCeiling: "222222200",
+  debtCeiling: "400000000",
   borrowableIsolation: false,
 };
