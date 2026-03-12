@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.22;
+
+import "forge-std/Test.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {HDCLVault} from "../../src/HDCLVault.sol";
+import {MockHollar} from "../../src/mocks/MockHollar.sol";
+import {MockDecentralPool} from "../../src/mocks/MockDecentralPool.sol";
+import {MockPoolToken} from "../../src/mocks/MockPoolToken.sol";
+import {Constants} from "./Constants.sol";
+import {Events} from "./Events.sol";
+
+contract BaseTest is Test, Constants, Events {
+    HDCLVault public vault;
+    MockHollar public hollar;
+    MockDecentralPool public pool;
+    MockPoolToken public nft;
+
+    address public admin = makeAddr("admin");
+    address public alice = makeAddr("alice");
+    address public bob = makeAddr("bob");
+    address public charlie = makeAddr("charlie");
+    address public keeper = makeAddr("keeper");
+
+    function setUp() public virtual {
+        // Deploy mocks
+        hollar = new MockHollar();
+        nft = new MockPoolToken();
+        pool = new MockDecentralPool(address(hollar), address(nft), APY_18_PERCENT);
+
+        // Allow pool to mint/burn NFTs
+        nft.setPool(address(pool));
+
+        // Fund mock pool with HOLLAR for yield payouts
+        hollar.mint(address(pool), 10_000_000e18);
+
+        // Deploy vault via proxy
+        HDCLVault implementation = new HDCLVault();
+        bytes memory initData = abi.encodeCall(
+            HDCLVault.initialize,
+            (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, admin)
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
+        vault = HDCLVault(address(proxy));
+
+        // Mint HOLLAR to test users
+        hollar.mint(alice, 100_000e18);
+        hollar.mint(bob, 100_000e18);
+        hollar.mint(charlie, 50_000e18);
+
+        // Users approve vault
+        vm.prank(alice);
+        hollar.approve(address(vault), type(uint256).max);
+        vm.prank(bob);
+        hollar.approve(address(vault), type(uint256).max);
+        vm.prank(charlie);
+        hollar.approve(address(vault), type(uint256).max);
+    }
+
+    // ─── Test Helpers ───
+
+    function _deposit(address user, uint256 amount) internal returns (uint256 hdclMinted) {
+        vm.prank(user);
+        return vault.deposit(amount);
+    }
+
+    function _requestRedeem(address user, uint256 amount) internal returns (uint256 requestId) {
+        vm.prank(user);
+        return vault.requestRedeem(amount);
+    }
+
+    function _processPositionFull(uint256 positionIndex) internal {
+        // Step 1: Active -> YieldWithdrawalRequested (must be past maturity)
+        vault.processPosition(positionIndex);
+
+        // Step 2: Approve yield on mock, then execute yield withdrawal
+        (uint256 tokenId,,,,, ) = vault.getPosition(positionIndex);
+        pool.approveYieldWithdrawal(tokenId);
+        vault.processPosition(positionIndex);
+
+        // Step 3: YieldClaimed -> PrincipalWithdrawalRequested happens in the same
+        //         processPosition call that claimed yield. Now we need to approve
+        //         principal and warp past the 48-hour delay.
+        pool.approvePrincipalWithdrawal(tokenId);
+        vm.warp(block.timestamp + FORTY_EIGHT_HOURS + 1);
+        vault.processPosition(positionIndex);
+    }
+
+    function _warpDays(uint256 days_) internal {
+        vm.warp(block.timestamp + days_ * SECONDS_PER_DAY);
+    }
+}
