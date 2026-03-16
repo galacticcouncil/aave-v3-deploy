@@ -283,3 +283,27 @@ export const strategyGSOL: IReserveParams = {
   debtCeiling,
   borrowableIsolation: false,
 };
+
+// HEURC reserve configurations
+export const strategyEURC: IReserveParams = {
+  strategy: rateStrategyStables80,
+  baseLTVAsCollateral: "7500",
+  liquidationThreshold: "8500",
+  liquidationBonus: "10500",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: true,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "6", // EURC has 6 decimals
+  aTokenImpl: eContractid.AToken,
+  reserveFactor: "1000",
+  supplyCap: "500,000".replace(/,/g, ""),
+  borrowCap: "350,000".replace(/,/g, ""),
+  debtCeiling,
+  borrowableIsolation: true,
+};
+
+export const strategyHEURC: IReserveParams = {
+  ...strategyHtoken,
+  supplyCap: "4,000,000".replace(/,/g, ""),
+};
