@@ -54,7 +54,7 @@ export const strategyWBTC = {
   ...strategyWETH,
   baseLTVAsCollateral: "6000",
   liquidationThreshold: "7000",
-  supplyCap: "33",
+  supplyCap: "1",
   borrowCap: "10",
   reserveDecimals: "8",
 };
