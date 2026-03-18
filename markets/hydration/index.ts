@@ -189,7 +189,7 @@ export const HydrationConfig: IAaveConfiguration = {
       JITOSOL_SOL: "0x5B29bceaCBD1c37FD4A2c32a052b63813ed0D4b8",
       // HEURC oracles
       EURC: "0xaa47a5662269270D3DF33Ae08F806e383611575c", // DIA EUR/USD oracle
-      "2-POOL-HEURC": "0xaa47a5662269270D3DF33Ae08F806e383611575c", // TODO: replace with USDOracleAdapter address after deploying: npx hardhat deploy-USDOracleAdapter --oracle 2-POOL-HEURC --network hydration
+      "2-POOL-HEURC": "0x71691b7EE575a2842b242cE8E0AEcdB0e031B725",
       EURUSD: "0xaa47a5662269270D3DF33Ae08F806e383611575c", // DIA EUR/USD oracle (used for HEURC pool drifting peg)
     },
     [eHydrationNetwork.nice]: {
