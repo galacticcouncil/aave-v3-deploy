@@ -2,7 +2,7 @@ import { rateStrategyVolatileOne } from "./../aave/rateStrategies";
 import { eContractid, IReserveParams } from "../../helpers/types";
 import {
   rateStrategyDOT,
-  rateStrategyDOT10,
+  rateStrategyDOT5,
   rateStrategyStables,
   rateStrategyStables80,
 } from "./rateStrategies";
@@ -60,7 +60,7 @@ export const strategyWBTC = {
 };
 
 export const strategyDOT: IReserveParams = {
-  strategy: rateStrategyDOT10,
+  strategy: rateStrategyDOT5,
   baseLTVAsCollateral: "8000",
   liquidationThreshold: "8500",
   liquidationBonus: "10700",
