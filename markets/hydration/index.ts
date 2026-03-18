@@ -159,6 +159,14 @@ export const HydrationConfig: IAaveConfiguration = {
       label: "SOL correlated",
       assets: ["SOL", "2-Pool-GSOL"],
     },
+    EurozoneEMode: {
+      id: "5",
+      ltv: "8000",
+      liquidationThreshold: "8500",
+      liquidationBonus: "10300",
+      label: "EUROZONE",
+      assets: ["EURC", "2-POOL-HEURC"],
+    },
   },
   ChainlinkAggregator: {
     [eHydrationNetwork.hydration]: {
@@ -294,9 +302,9 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HEURC": [
         {
           emissionPerSecond: BigNumber.from(
-            "402,815,628,912,290".replace(/,/g, "")
-          ).mul(3),
-          distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
+            "3,044,902,607,709,750".replace(/,/g, "")
+          ),
+          distributionEnd: Date.parse("18 May 2026 00:00:00 GMT") / 1000,
           reserve: "2-Pool-HEURC",
           ...gdotSupplyIncentive,
         },

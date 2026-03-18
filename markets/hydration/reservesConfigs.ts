@@ -288,8 +288,8 @@ export const strategyGSOL: IReserveParams = {
 export const strategyEURC: IReserveParams = {
   strategy: rateStrategyStables80,
   baseLTVAsCollateral: "7500",
-  liquidationThreshold: "8500",
-  liquidationBonus: "10500",
+  liquidationThreshold: "8000",
+  liquidationBonus: "10300",
   liquidationProtocolFee: "1000",
   borrowingEnabled: true,
   stableBorrowRateEnabled: false,
@@ -297,13 +297,13 @@ export const strategyEURC: IReserveParams = {
   reserveDecimals: "6", // EURC has 6 decimals
   aTokenImpl: eContractid.AToken,
   reserveFactor: "1000",
-  supplyCap: "500,000".replace(/,/g, ""),
-  borrowCap: "350,000".replace(/,/g, ""),
+  supplyCap: "4,000,000".replace(/,/g, ""),
+  borrowCap: "3,500,000".replace(/,/g, ""),
   debtCeiling,
-  borrowableIsolation: true,
+  borrowableIsolation: false,
 };
 
 export const strategyHEURC: IReserveParams = {
   ...strategyHtoken,
-  supplyCap: "4,000,000".replace(/,/g, ""),
+  supplyCap: "8,000,000".replace(/,/g, ""),
 };

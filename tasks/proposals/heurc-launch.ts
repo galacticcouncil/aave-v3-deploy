@@ -35,7 +35,7 @@ task(
   `heurc-launch`,
   `Generate HEURC (aEURC/HOLLAR) stablepool launch governance proposal`
 ).setAction(async function (_, hre) {
-  const { utils } = hre.ethers;
+  const { utils, constants } = hre.ethers;
   const config = await loadPoolConfig(MARKET_NAME as ConfigNames);
   const { poolAdmin } = await hre.getNamedAccounts();
   const signer = await hre.ethers.getSigner(poolAdmin);
@@ -83,31 +83,6 @@ task(
   const txs = [];
   const last = [];
 
-  // ===== Prerequisite: USDOracleAdapter must be deployed before submitting this proposal =====
-  // evm.create2 via governance fails (AaveManager EVM address has no EVM balance for contract creation).
-  // Deploy externally first: MARKET_NAME=Hydration npx hardhat deploy-USDOracleAdapter --oracle 2-POOL-HEURC --network hydration
-  // Then update ChainlinkAggregator["2-POOL-HEURC"] in markets/hydration/index.ts to the deployed address.
-  const usdAdapterAddress = chainlinkConf[heurcReserveName];
-  if (!usdAdapterAddress || usdAdapterAddress === eurUsdOracle) {
-    console.log(
-      chalk.yellow(`⚠️  WARNING: '${network}.2-POOL-HEURC' oracle is still the EUR/USD placeholder.`)
-    );
-    console.log(
-      chalk.yellow(`   The generated proposal will use the placeholder address — update it before submitting!`)
-    );
-    console.log(
-      chalk.yellow(`   Deploy USDOracleAdapter first:`)
-    );
-    console.log(
-      chalk.yellow(`     MARKET_NAME=Hydration npx hardhat deploy-USDOracleAdapter --oracle 2-POOL-HEURC --network hydration`)
-    );
-    console.log(
-      chalk.yellow(`   Then update ChainlinkAggregator["2-POOL-HEURC"] in markets/hydration/index.ts with the deployed address.`)
-    );
-  } else {
-    console.log("USDOracleAdapter address:", usdAdapterAddress);
-  }
-
   // ===== Register assets in Hydration asset registry =====
   console.log("---------> register assets");
   let deployerAddress;
@@ -134,7 +109,7 @@ task(
         id: aEURC_ID,
         name: "aEURC",
         assetType: "Erc20",
-        existentialDeposit: "1000000", // 1 EURC (6 decimals)
+        existentialDeposit: "11596",
         symbol: "aEURC",
         decimals: 6,
         location: location(aEurcToken),
@@ -158,7 +133,7 @@ task(
         id: HEURC_ID,
         name: "Hydrated EURC",
         assetType: "Erc20",
-        existentialDeposit: utils.parseEther("0.033").toString(),
+        existentialDeposit: "8620689655172410",
         symbol: "HEURC",
         decimals: 18,
         location: location(heurcToken),
@@ -180,7 +155,7 @@ task(
         symbol: "2-Pool-HEURC",
         decimals: 18,
         location: null,
-        xcmRateLimit: null,
+        xcmRateLimit: utils.parseEther("700000").toString(),
         isSufficient: true,
       })
     )
@@ -238,6 +213,32 @@ task(
   }
   clearBatch();
 
+  // ===== Set EUROZONE eMode category (id=5) =====
+  // Deferred to later block via addTransaction so reserves are fully committed first
+  console.log("---------> set EUROZONE eMode");
+  {
+    const tx = await poolConfigurator.populateTransaction.setEModeCategory(
+      5, 8000, 8500, 10300, constants.AddressZero, "EUROZONE"
+    );
+    tx.from = admin;
+    tx.gasLimit = 400000;
+    addTransaction(tx, "setEModeCategory EUROZONE (id=5)");
+  }
+  {
+    const eurcAddr = config.ReserveAssets[network]["EURC"];
+    const tx = await poolConfigurator.populateTransaction.setAssetEModeCategory(eurcAddr, 5);
+    tx.from = admin;
+    tx.gasLimit = 100000;
+    addTransaction(tx, "setAssetEModeCategory EURC → eMode 5");
+  }
+  {
+    const heurcPoolAddr = config.ReserveAssets[network][heurcReserveName];
+    const tx = await poolConfigurator.populateTransaction.setAssetEModeCategory(heurcPoolAddr, 5);
+    tx.from = admin;
+    tx.gasLimit = 100000;
+    addTransaction(tx, "setAssetEModeCategory 2-POOL-HEURC → eMode 5");
+  }
+
   // ===== Create stableswap pool with drifting peg =====
   // Pool: aEURC(1044) + HOLLAR(222), LP token = 2-Pool-HEURC(10044)
   // HOLLAR pegged 1:1 (base), aEURC drifts with EUR/USD oracle
@@ -247,38 +248,41 @@ task(
       ...Object.values({
         shareAsset: HEURC_POOL,
         assets: [HOLLAR, aEURC_ID], // Sorted by asset ID: HOLLAR(222) < aEURC(1044)
-        amplification: 100,
-        fee: 690, // 0.069% fee
+        amplification: 50,
+        fee: 500, // 0.05% fee
         pegSource: [
           { value: [1, 1] }, // HOLLAR: fixed 1:1 peg (base reference)
           { MMOracle: eurUsdOracle }, // aEURC: drifting peg via EUR/USD DIA oracle
         ],
-        maxPegUpdate: 200, // EUR/USD drifts more than ETH/wstETH but less than volatile assets
+        maxPegUpdate: 800, // EUR/USD peg update limit in perbill
       })
     )
   );
 
   // ===== Fee payment registration =====
   console.log("---------> register fee payment assets");
-  const feePaymentPrice = "11,190,000,000,000,000,000,000".replace(/,/g, "");
+  const aEurcFeePrice  = "2576530612";
+  const heurcFeePrice  = "1915517241379310000000";
+  const heurcPoolPrice = "1915517241379310000000";
+
+  // Allow aEURC (1044) as fee payment asset
+  txs.push(
+    hydrationTx.multiTransactionPayment.addCurrency(
+      ...Object.values({ asset: aEURC_ID, price: aEurcFeePrice })
+    )
+  );
 
   // Allow HEURC (4444) as fee payment asset
   txs.push(
     hydrationTx.multiTransactionPayment.addCurrency(
-      ...Object.values({
-        asset: HEURC_ID,
-        price: feePaymentPrice,
-      })
+      ...Object.values({ asset: HEURC_ID, price: heurcFeePrice })
     )
   );
 
   // Allow 2-Pool-HEURC (10044) LP token as fee payment asset
   txs.push(
     hydrationTx.multiTransactionPayment.addCurrency(
-      ...Object.values({
-        asset: HEURC_POOL,
-        price: feePaymentPrice,
-      })
+      ...Object.values({ asset: HEURC_POOL, price: heurcPoolPrice })
     )
   );
 
@@ -295,20 +299,16 @@ task(
     incentivize: heurcToken,
   });
 
-  // Transfer gDOT rewards to PotRewardsStrategy
+  // Transfer gDOT rewards to PotRewardsStrategy directly from treasury
   console.log("transfer incentives to the pot");
   const pot = padAddress((await getPotRewardsStrategy())?.address);
   last.push(
     await dispatchAs(
       treasury,
-      hydrationTx.proxy.proxy(
-        incentiveProxy,
-        null,
-        hydrationTx.currencies.transfer(
-          pot,
-          69, // gDOT reward token
-          utils.parseEther("5000").toString() // 5000 gDOT — adjust as needed
-        )
+      hydrationTx.currencies.transfer(
+        pot,
+        69, // gDOT reward token
+        utils.parseEther("16000").toString() // 16000 gDOT over ~2 months
       )
     )
   );
