@@ -269,9 +269,9 @@ task(
 
   // ===== Fee payment registration =====
   console.log("---------> register fee payment assets");
-  const aEurcFeePrice  = "2576530612";
-  const heurcFeePrice  = "1915517241379310000000";
-  const heurcPoolPrice = "1915517241379310000000";
+  const aEurcFeePrice   = "2576530612";
+  const heurcATokenPrice = "1915517241379310000000";
+  const heurcLPPrice     = "1915517241379310000000";
 
   // Allow aEURC (1044) as fee payment asset
   txs.push(
@@ -283,14 +283,14 @@ task(
   // Allow HEURC (4444) as fee payment asset
   txs.push(
     hydrationTx.multiTransactionPayment.addCurrency(
-      ...Object.values({ asset: HEURC_ID, price: heurcFeePrice })
+      ...Object.values({ asset: HEURC_ID, price: heurcATokenPrice })
     )
   );
 
   // Allow 2-Pool-HEURC (10044) LP token as fee payment asset
   txs.push(
     hydrationTx.multiTransactionPayment.addCurrency(
-      ...Object.values({ asset: HEURC_POOL, price: heurcPoolPrice })
+      ...Object.values({ asset: HEURC_POOL, price: heurcLPPrice })
     )
   );
 
