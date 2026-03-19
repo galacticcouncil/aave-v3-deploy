@@ -73,12 +73,20 @@ task(
   const HOLLAR = 222; // HOLLAR stablecoin
   const heurcReserveName = "2-POOL-HEURC";
 
-  // EUR/USD DIA oracle — for EURC reserve price and stableswap drifting peg
-  const eurUsdOracle = "0xaa47a5662269270D3DF33Ae08F806e383611575c";
+  // EUR/USD DIA oracle — read from ChainlinkAggregator config (same address used for EURC price feed)
+  const eurUsdOracle = chainlinkConf["EURUSD"];
+  if (!eurUsdOracle || eurUsdOracle === constants.AddressZero) {
+    console.log(chalk.red("error: EURUSD oracle not configured in ChainlinkAggregator"));
+    exit(1);
+  }
+
+  const heurcOracle = chainlinkConf[heurcReserveName];
+  if (!heurcOracle || heurcOracle === constants.AddressZero) {
+    console.log(chalk.red(`error: oracle for '${heurcReserveName}' not configured in ChainlinkAggregator`));
+    exit(1);
+  }
 
   const treasury = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
-  const incentiveProxy =
-    "13NWq5jfYPMthrdBpGsj4EaiJi21vDUUMeExcMVEVzzZzuVh";
 
   const txs = [];
   const last = [];
@@ -109,7 +117,7 @@ task(
         id: aEURC_ID,
         name: "aEURC",
         assetType: "Erc20",
-        existentialDeposit: "11596",
+        existentialDeposit: "17241",
         symbol: "aEURC",
         decimals: 6,
         location: location(aEurcToken),
@@ -133,7 +141,7 @@ task(
         id: HEURC_ID,
         name: "Hydrated EURC",
         assetType: "Erc20",
-        existentialDeposit: "8620689655172410",
+        existentialDeposit: "17241379310344828",
         symbol: "HEURC",
         decimals: 18,
         location: location(heurcToken),
@@ -151,11 +159,11 @@ task(
         id: HEURC_POOL,
         name: "2-Pool-HEURC",
         assetType: "StableSwap",
-        existentialDeposit: 1000,
+        existentialDeposit: "17241379310344828",
         symbol: "2-Pool-HEURC",
         decimals: 18,
         location: null,
-        xcmRateLimit: utils.parseEther("700000").toString(),
+        xcmRateLimit: utils.parseEther("1500000").toString(),
         isSufficient: true,
       })
     )
