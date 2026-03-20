@@ -15,10 +15,13 @@ import {
 } from "../../helpers";
 import requirePoolAdmin from "../../helpers/utilities/require-pool-admin";
 import ProposalDecoder from "../../helpers/proposal-decoder";
+import { EMERGENCY_ADMIN } from "../../helpers/constants";
+import { eHydrationNetwork } from "../../helpers/types";
 
-const EMERGENCY_ADMIN_ADDRESS = "0xaa7e0000000000000000000000000000000aa7e1";
+const NEW_EMERGENCY_ADMIN = EMERGENCY_ADMIN[eHydrationNetwork.hydration];
+const OLD_EMERGENCY_ADMIN = "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b";
 
-task(`add-emergency-admin`, `Register TC emergency admin in Aave ACLManager`)
+task(`add-emergency-admin`, `Replace TC emergency admin in Aave ACLManager`)
   .addFlag("whitelisted", "Generate a whitelisted proposal")
   .setAction(async function ({ whitelisted }, hre) {
     const admin = await requirePoolAdmin(hre);
@@ -30,7 +33,13 @@ task(`add-emergency-admin`, `Register TC emergency admin in Aave ACLManager`)
 
     addTransaction(
       await aclManager.populateTransaction.addEmergencyAdmin(
-        EMERGENCY_ADMIN_ADDRESS
+        NEW_EMERGENCY_ADMIN
+      )
+    );
+
+    addTransaction(
+      await aclManager.populateTransaction.removeEmergencyAdmin(
+        OLD_EMERGENCY_ADMIN
       )
     );
 
