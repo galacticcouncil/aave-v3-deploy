@@ -4,8 +4,8 @@ pragma solidity ^0.8.22;
 import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -33,6 +33,7 @@ contract HDCLVault is
     //                            CONSTANTS
     // ═══════════════════════════════════════════════════════════════════════
 
+    uint256 public constant WAD = 1e18;
     uint256 public constant INVESTMENT_PERIOD = 60 days;
     uint256 public constant WITHDRAWAL_DELAY = 48 hours;
     uint256 public constant SECONDS_PER_YEAR = 365 days;
@@ -91,6 +92,8 @@ contract HDCLVault is
     IPoolToken public poolToken;
     /// @notice HOLLAR stablecoin
     IERC20 public hollar;
+    /// @notice Chainlink-compatible oracle for wDCL/HOLLAR price
+    IAggregatorV3Interface public oracle;
 
     // ═══════════════════════════════════════════════════════════════════════
     //                        MUTABLE CONFIGURATION
@@ -110,7 +113,9 @@ contract HDCLVault is
     /// @notice APY (WAD) → accounting bucket
     mapping(uint256 => APYBucket) public apyBuckets;
     /// @notice List of distinct APY values with non-zero totalPrincipal
-    uint256[] public activeAPYs;
+    uint256[] public activeAPYList;
+    /// @notice O(1) existence check for active APYs
+    mapping(uint256 => bool) public isActiveAPY;
     /// @notice Sum of principal across all buckets
     uint256 public totalInvestedPrincipal;
     /// @notice HOLLAR in vault available for queue fulfillment or reinvestment
@@ -150,18 +155,35 @@ contract HDCLVault is
         uint256 tokenId
     );
     event QueueClearedOnDeposit(uint256 hollarUsedForQueue, uint256 hdclBurned);
-    event RedemptionRequested(uint256 indexed requestId, address indexed user, uint256 hdclAmount);
+    event RedemptionRequested(
+        uint256 indexed requestId,
+        address indexed user,
+        uint256 hdclAmount
+    );
     event RedemptionCancelled(uint256 indexed requestId, uint256 hdclReturned);
     event RedemptionFulfilled(
-        uint256 indexed requestId, address indexed user, uint256 hollarAmount, uint256 hdclBurned
+        uint256 indexed requestId,
+        address indexed user,
+        uint256 hollarAmount,
+        uint256 hdclBurned
     );
     event RedemptionPartiallyFulfilled(
-        uint256 indexed requestId, address indexed user, uint256 hollarAmount, uint256 hdclBurned
+        uint256 indexed requestId,
+        address indexed user,
+        uint256 hollarAmount,
+        uint256 hdclBurned
     );
     event Reinvested(uint256 hollarAmount, uint256 tokenId);
-    event PositionProcessed(uint256 indexed positionIndex, uint256 tokenId, uint8 newState);
+    event PositionProcessed(
+        uint256 indexed positionIndex,
+        uint256 tokenId,
+        uint8 newState
+    );
     event PositionRedeemed(
-        uint256 indexed positionIndex, uint256 tokenId, uint256 yieldReceived, uint256 principalReceived
+        uint256 indexed positionIndex,
+        uint256 tokenId,
+        uint256 yieldReceived,
+        uint256 principalReceived
     );
     event PositionMarkedStale(uint256 indexed positionIndex);
     event PositionUnmarkedStale(uint256 indexed positionIndex);
@@ -169,7 +191,11 @@ contract HDCLVault is
     event DepositsUnpaused();
     event TvlCapUpdated(uint256 newCap);
     event MinReinvestAmountUpdated(uint256 newAmount);
-    event WithdrawalDelayed(uint256 indexed positionIndex, uint256 delaySeconds);
+    event OracleUpdated(address indexed oracle);
+    event WithdrawalDelayed(
+        uint256 indexed positionIndex,
+        uint256 delaySeconds
+    );
 
     // ═══════════════════════════════════════════════════════════════════════
     //                            ERRORS
@@ -209,7 +235,7 @@ contract HDCLVault is
         uint256 _tvlCap,
         address _admin
     ) external initializer {
-        __ERC20_init("Hydrated Decentral", "HDCL");
+        __ERC20_init("Wrapped Decentral", "wDCL");
         __AccessControl_init();
         __UUPSUpgradeable_init();
         __Pausable_init();
@@ -224,9 +250,6 @@ contract HDCLVault is
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(ADMIN_ROLE, _admin);
         _grantRole(UPGRADER_ROLE, _admin);
-
-        // Max approve HOLLAR to Decentral for gas efficiency
-        hollar.approve(address(decentralPool), type(uint256).max);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -237,29 +260,34 @@ contract HDCLVault is
     /// @return Total assets including invested principal, accrued yield, idle HOLLAR, and stale value
     function totalAssets() public view returns (uint256) {
         uint256 accruedYield = 0;
-        uint256 len = activeAPYs.length;
-        for (uint256 i = 0; i < len;) {
-            uint256 apyWad = activeAPYs[i];
+        uint256 len = activeAPYList.length;
+        for (uint256 i = 0; i < len; ) {
+            uint256 apyWad = activeAPYList[i];
             APYBucket storage bucket = apyBuckets[apyWad];
-            // yield = apyWad * (now * totalPrincipal - weightedYieldStart) / (SECONDS_PER_YEAR * 1e18)
+            // yield = apyWad * (now * totalPrincipal - weightedYieldStart) / (SECONDS_PER_YEAR * WAD)
             uint256 nowTimesPrincipal = block.timestamp * bucket.totalPrincipal;
             if (nowTimesPrincipal > bucket.weightedYieldStart) {
                 accruedYield +=
-                    apyWad * (nowTimesPrincipal - bucket.weightedYieldStart) / (SECONDS_PER_YEAR * 1e18);
+                    (apyWad * (nowTimesPrincipal - bucket.weightedYieldStart)) /
+                    (SECONDS_PER_YEAR * WAD);
             }
             unchecked {
                 ++i;
             }
         }
-        return totalInvestedPrincipal + accruedYield + idleHollar + totalStaleValue;
+        return
+            totalInvestedPrincipal +
+            accruedYield +
+            idleHollar +
+            totalStaleValue;
     }
 
     /// @notice Current HDCL/HOLLAR exchange rate (18 decimals)
     /// @return Rate in WAD (1e18 = 1:1)
     function exchangeRate() public view returns (uint256) {
         uint256 supply = totalSupply();
-        if (supply == 0) return 1e18;
-        return totalAssets() * 1e18 / supply;
+        if (supply == 0) return WAD;
+        return (totalAssets() * WAD) / supply;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -269,10 +297,13 @@ contract HDCLVault is
     /// @notice Deposit HOLLAR and receive HDCL
     /// @param hollarAmount Amount of HOLLAR to deposit
     /// @return hdclMinted Amount of HDCL minted to caller
-    function deposit(uint256 hollarAmount) external nonReentrant whenNotPaused returns (uint256 hdclMinted) {
+    function deposit(
+        uint256 hollarAmount
+    ) external nonReentrant whenNotPaused returns (uint256 hdclMinted) {
         if (depositsPaused) revert DepositsArePaused();
         if (hollarAmount == 0) revert ZeroAmount();
-        if (totalInvestedPrincipal + idleHollar + hollarAmount > tvlCap) revert ExceedsTvlCap();
+        if (totalInvestedPrincipal + idleHollar + hollarAmount > tvlCap)
+            revert ExceedsTvlCap();
 
         // Calculate HDCL to mint at current rate BEFORE any queue processing
         uint256 supply = totalSupply();
@@ -284,81 +315,66 @@ contract HDCLVault is
             _mint(msg.sender, hdclMinted);
         } else {
             uint256 assets = totalAssets();
-            hdclMinted = hollarAmount * supply / assets;
+            // TODO: need to have return checks here
+            hdclMinted = (hollarAmount * supply) / assets;
             hollar.safeTransferFrom(msg.sender, address(this), hollarAmount);
             _mint(msg.sender, hdclMinted);
         }
 
-        // Track deposited HOLLAR in idleHollar so _processQueueWithHollar can
-        // safely decrement it. Any portion not used for queue or DecentralPool
-        // stays as idleHollar; portions invested are subtracted below.
-        idleHollar += hollarAmount;
+        uint256 apyWad = getAPYWad();
+        hollar.approve(address(decentralPool), hollarAmount);
+        uint256 tokenId = decentralPool.deposit(hollarAmount);
+        decentalAmount = remaining;
 
-        // Clear redemption queue with deposit HOLLAR
-        uint256 remaining = hollarAmount;
-        uint256 hollarUsedForQueue = 0;
-        uint256 hdclBurnedForQueue = 0;
+        positions.push(
+            NFTPosition({
+                tokenId: tokenId,
+                principal: hollarAmount,
+                apyWad: apyWad,
+                depositTime: block.timestamp,
+                maturityTime: block.timestamp + INVESTMENT_PERIOD,
+                yieldStartTime: block.timestamp,
+                state: NFTState.Active,
+                isStale: false,
+                stalePrincipal: 0,
+                staleYield: 0
+            })
+        );
 
-        if (totalQueuedHdcl > 0) {
-            uint256 rate = exchangeRate();
-            (uint256 used, uint256 burned) = _processQueueWithHollar(remaining, rate);
-            hollarUsedForQueue = used;
-            hdclBurnedForQueue = burned;
-            remaining -= used;
-        }
+        _addToBucket(apyWad, remaining, block.timestamp);
 
-        if (hollarUsedForQueue > 0) {
-            emit QueueClearedOnDeposit(hollarUsedForQueue, hdclBurnedForQueue);
-        }
-
-        // Deposit remainder into Decentral
-        uint256 tokenId = 0;
-        uint256 decentalAmount = 0;
-
-        if (remaining >= minReinvestAmount) {
-            uint256 apyWad = decentralPool.fixedAPYWad();
-            tokenId = decentralPool.deposit(remaining);
-            decentalAmount = remaining;
-
-            positions.push(
-                NFTPosition({
-                    tokenId: tokenId,
-                    principal: remaining,
-                    apyWad: apyWad,
-                    depositTime: block.timestamp,
-                    maturityTime: block.timestamp + INVESTMENT_PERIOD,
-                    yieldStartTime: block.timestamp,
-                    state: NFTState.Active,
-                    isStale: false,
-                    stalePrincipal: 0,
-                    staleYield: 0
-                })
-            );
-
-            _addToActiveAPYsIfNew(apyWad);
-            apyBuckets[apyWad].totalPrincipal += remaining;
-            apyBuckets[apyWad].weightedYieldStart += remaining * block.timestamp;
-            totalInvestedPrincipal += remaining;
-            idleHollar -= remaining; // Invested portion leaves idle
-        }
-        // else: remaining stays in idleHollar (already added above)
-
-        emit Deposited(msg.sender, hollarAmount, hdclMinted, decentalAmount, tokenId);
+        emit Deposited(
+            msg.sender,
+            hollarAmount,
+            hdclMinted,
+            decentalAmount,
+            tokenId
+        );
     }
 
     /// @notice Queue HDCL for redemption to HOLLAR
     /// @param hdclAmount Amount of HDCL to redeem
     /// @return requestId ID of the redemption request
-    function requestRedeem(uint256 hdclAmount) external nonReentrant returns (uint256 requestId) {
+    function requestRedeem(
+        uint256 hdclAmount
+    ) external nonReentrant returns (uint256 requestId) {
         if (hdclAmount == 0) revert ZeroAmount();
-        require(balanceOf(msg.sender) >= hdclAmount, "Insufficient HDCL balance");
+        require(
+            balanceOf(msg.sender) >= hdclAmount,
+            "Insufficient HDCL balance"
+        );
 
         // Escrow HDCL in the vault (not burned yet)
         _transfer(msg.sender, address(this), hdclAmount);
 
         requestId = redemptionQueue.length;
         redemptionQueue.push(
-            RedemptionRequest({user: msg.sender, hdclAmount: hdclAmount, hdclFulfilled: 0, active: true})
+            RedemptionRequest({
+                user: msg.sender,
+                hdclAmount: hdclAmount,
+                hdclFulfilled: 0,
+                active: true
+            })
         );
         totalQueuedHdcl += hdclAmount;
 
@@ -393,21 +409,32 @@ contract HDCLVault is
         if (pos.state == NFTState.Redeemed) revert PositionAlreadyRedeemed();
 
         // Active → YieldWithdrawalRequested
-        if (pos.state == NFTState.Active && block.timestamp >= pos.maturityTime) {
+        if (
+            pos.state == NFTState.Active && block.timestamp >= pos.maturityTime
+        ) {
             decentralPool.requestYieldWithdrawal(pos.tokenId);
             pos.state = NFTState.YieldWithdrawalRequested;
-            emit PositionProcessed(positionIndex, pos.tokenId, uint8(pos.state));
+            emit PositionProcessed(
+                positionIndex,
+                pos.tokenId,
+                uint8(pos.state)
+            );
         }
 
         // YieldWithdrawalRequested → YieldClaimed
         if (pos.state == NFTState.YieldWithdrawalRequested) {
             uint256 balBefore = hollar.balanceOf(address(this));
             try decentralPool.executeYieldWithdrawal(pos.tokenId) {
-                uint256 yieldReceived = hollar.balanceOf(address(this)) - balBefore;
+                uint256 yieldReceived = hollar.balanceOf(address(this)) -
+                    balBefore;
                 _adjustBucketOnYieldClaim(pos);
                 idleHollar += yieldReceived;
                 pos.state = NFTState.YieldClaimed;
-                emit PositionProcessed(positionIndex, pos.tokenId, uint8(pos.state));
+                emit PositionProcessed(
+                    positionIndex,
+                    pos.tokenId,
+                    uint8(pos.state)
+                );
             } catch {
                 // Not yet approved by Decentral — no-op, retry next cycle
                 return;
@@ -418,14 +445,19 @@ contract HDCLVault is
         if (pos.state == NFTState.YieldClaimed) {
             decentralPool.requestPrincipalWithdrawal(pos.tokenId);
             pos.state = NFTState.PrincipalWithdrawalRequested;
-            emit PositionProcessed(positionIndex, pos.tokenId, uint8(pos.state));
+            emit PositionProcessed(
+                positionIndex,
+                pos.tokenId,
+                uint8(pos.state)
+            );
         }
 
         // PrincipalWithdrawalRequested → Redeemed
         if (pos.state == NFTState.PrincipalWithdrawalRequested) {
             uint256 balBefore = hollar.balanceOf(address(this));
             try decentralPool.executePrincipalWithdrawal(pos.tokenId) {
-                uint256 principalReceived = hollar.balanceOf(address(this)) - balBefore;
+                uint256 principalReceived = hollar.balanceOf(address(this)) -
+                    balBefore;
 
                 if (!pos.isStale) {
                     _adjustBucketOnPrincipalRedemption(pos);
@@ -438,7 +470,12 @@ contract HDCLVault is
                 pos.state = NFTState.Redeemed;
                 _advancePositionHead();
 
-                emit PositionRedeemed(positionIndex, pos.tokenId, 0, principalReceived);
+                emit PositionRedeemed(
+                    positionIndex,
+                    pos.tokenId,
+                    0,
+                    principalReceived
+                );
 
                 // Distribute available HOLLAR to queue
                 if (totalQueuedHdcl > 0 && idleHollar > 0) {
@@ -474,7 +511,8 @@ contract HDCLVault is
         }
         require(amount > 0, "Nothing to reinvest");
 
-        uint256 apyWad = decentralPool.fixedAPYWad();
+        uint256 apyWad = getAPYWad();
+        hollar.approve(address(decentralPool), amount);
         uint256 tokenId = decentralPool.deposit(amount);
 
         positions.push(
@@ -492,10 +530,7 @@ contract HDCLVault is
             })
         );
 
-        _addToActiveAPYsIfNew(apyWad);
-        apyBuckets[apyWad].totalPrincipal += amount;
-        apyBuckets[apyWad].weightedYieldStart += amount * block.timestamp;
-        totalInvestedPrincipal += amount;
+        _addToBucket(apyWad, amount, block.timestamp);
         idleHollar -= amount;
 
         emit Reinvested(amount, tokenId);
@@ -506,22 +541,28 @@ contract HDCLVault is
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice Preview how much HDCL a HOLLAR deposit would mint
-    function previewDeposit(uint256 hollarAmount) external view returns (uint256 hdclAmount) {
+    function previewDeposit(
+        uint256 hollarAmount
+    ) external view returns (uint256 hdclAmount) {
         uint256 supply = totalSupply();
         if (supply == 0) return hollarAmount - DEAD_SHARES;
-        return hollarAmount * supply / totalAssets();
+        return (hollarAmount * supply) / totalAssets();
     }
 
     /// @notice Preview the HOLLAR value of a HDCL redemption at current rate
-    function previewRedeem(uint256 hdclAmount) external view returns (uint256 hollarAmount) {
+    function previewRedeem(
+        uint256 hdclAmount
+    ) external view returns (uint256 hollarAmount) {
         uint256 supply = totalSupply();
         if (supply == 0) return 0;
-        return hdclAmount * totalAssets() / supply;
+        return (hdclAmount * totalAssets()) / supply;
     }
 
     /// @notice Get estimated wait time for a redemption request
     /// @return estimatedSeconds Seconds until expected full fulfillment
-    function getEstimatedWaitTime(uint256 requestId) external view returns (uint256 estimatedSeconds) {
+    function getEstimatedWaitTime(
+        uint256 requestId
+    ) external view returns (uint256 estimatedSeconds) {
         RedemptionRequest storage request = redemptionQueue[requestId];
         if (!request.active) return 0;
 
@@ -533,7 +574,7 @@ contract HDCLVault is
             RedemptionRequest storage r = redemptionQueue[i];
             if (!r.active) continue;
             uint256 remainingHdcl = r.hdclAmount - r.hdclFulfilled;
-            hollarNeeded += remainingHdcl * rate / 1e18;
+            hollarNeeded += (remainingHdcl * rate) / WAD;
         }
 
         // Subtract currently available idle HOLLAR
@@ -548,8 +589,10 @@ contract HDCLVault is
             if (pos.isStale) continue;
 
             // Expected return: principal + yield
-            uint256 expectedYield =
-                pos.principal * pos.apyWad * (pos.maturityTime - pos.yieldStartTime) / (SECONDS_PER_YEAR * 1e18);
+            uint256 expectedYield = (pos.principal *
+                pos.apyWad *
+                (pos.maturityTime - pos.yieldStartTime)) /
+                (SECONDS_PER_YEAR * WAD);
             accumulated += pos.principal + expectedYield;
 
             if (accumulated >= hollarNeeded) {
@@ -566,17 +609,26 @@ contract HDCLVault is
     }
 
     /// @notice Get redemption request details
-    function getRedemptionRequest(uint256 requestId)
+    function getRedemptionRequest(
+        uint256 requestId
+    )
         external
         view
-        returns (address user, uint256 hdclAmount, uint256 hdclFulfilled, bool active)
+        returns (
+            address user,
+            uint256 hdclAmount,
+            uint256 hdclFulfilled,
+            bool active
+        )
     {
         RedemptionRequest storage r = redemptionQueue[requestId];
         return (r.user, r.hdclAmount, r.hdclFulfilled, r.active);
     }
 
     /// @notice Get NFT position details
-    function getPosition(uint256 positionIndex)
+    function getPosition(
+        uint256 positionIndex
+    )
         external
         view
         returns (
@@ -589,7 +641,14 @@ contract HDCLVault is
         )
     {
         NFTPosition storage pos = positions[positionIndex];
-        return (pos.tokenId, pos.principal, pos.apyWad, pos.depositTime, pos.maturityTime, uint8(pos.state));
+        return (
+            pos.tokenId,
+            pos.principal,
+            pos.apyWad,
+            pos.depositTime,
+            pos.maturityTime,
+            uint8(pos.state)
+        );
     }
 
     /// @notice Total number of positions (including redeemed)
@@ -612,14 +671,19 @@ contract HDCLVault is
         return idleHollar;
     }
 
+    /// @notice Current fixed APY from the Decentral pool
+    function getAPYWad() public view returns (uint256) {
+        return decentralPool.fixedAPYWad();
+    }
+
     /// @notice Number of active APY buckets
     function getActiveAPYCount() external view returns (uint256) {
-        return activeAPYs.length;
+        return activeAPYList.length;
     }
 
     /// @notice Get active APY at index
     function getActiveAPY(uint256 index) external view returns (uint256) {
-        return activeAPYs[index];
+        return activeAPYList[index];
     }
 
     /// @notice Total number of redemption requests
@@ -632,39 +696,13 @@ contract HDCLVault is
         return queueHead;
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    //                  ORACLE (AggregatorV3Interface)
-    // ═══════════════════════════════════════════════════════════════════════
-
-    /// @notice HDCL/HOLLAR price (18 decimals, matching ERC-20 decimals)
-    /// @dev Implements Chainlink AggregatorV3Interface. Since ERC-20 decimals() returns 18,
-    ///      the oracle answer is also in 18 decimals. If Aave requires 8 decimals,
-    ///      deploy a thin HDCLOracle adapter contract.
-    function latestRoundData()
-        external
-        view
-        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
-    {
-        return (uint80(block.number), int256(exchangeRate()), block.timestamp, block.timestamp, uint80(block.number));
-    }
-
-    /// @notice Historical round data (returns same as latestRoundData since oracle is computed)
-    function getRoundData(uint80)
-        external
-        view
-        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
-    {
-        return (uint80(block.number), int256(exchangeRate()), block.timestamp, block.timestamp, uint80(block.number));
-    }
-
-    /// @notice Oracle description
-    function oracleDescription() external pure returns (string memory) {
-        return "HDCL / HOLLAR";
-    }
-
-    /// @notice Oracle version
-    function oracleVersion() external pure returns (uint256) {
-        return 1;
+    /// @notice Get wDCL/HOLLAR price from the oracle, returned in 18 decimals
+    function getOraclePrice() external view returns (uint256) {
+        require(address(oracle) != address(0), "Oracle not set");
+        (, int256 answer, , , ) = oracle.latestRoundData();
+        require(answer > 0, "Invalid oracle price");
+        uint8 oracleDecimals = oracle.decimals();
+        return (uint256(answer) * WAD) / (10 ** oracleDecimals);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -700,21 +738,33 @@ contract HDCLVault is
     }
 
     /// @notice Update minimum reinvestment threshold
-    function setMinReinvestAmount(uint256 amount) external onlyRole(ADMIN_ROLE) {
+    function setMinReinvestAmount(
+        uint256 amount
+    ) external onlyRole(ADMIN_ROLE) {
         minReinvestAmount = amount;
         emit MinReinvestAmountUpdated(amount);
     }
 
+    /// @notice Set the oracle address
+    function setOracle(address _oracle) external onlyRole(ADMIN_ROLE) {
+        require(_oracle != address(0), "Zero address");
+        oracle = IAggregatorV3Interface(_oracle);
+        emit OracleUpdated(_oracle);
+    }
+
     /// @notice Cap yield for a stuck position
     /// @dev Removes from active yield calculation, freezes value at current level
-    function markPositionStale(uint256 positionIndex) external onlyRole(ADMIN_ROLE) {
+    function markPositionStale(
+        uint256 positionIndex
+    ) external onlyRole(ADMIN_ROLE) {
         NFTPosition storage pos = positions[positionIndex];
         if (pos.isStale) revert PositionAlreadyStale();
         if (pos.state == NFTState.Redeemed) revert PositionAlreadyRedeemed();
 
         // Calculate current yield for this position
-        uint256 currentYield = pos.principal * pos.apyWad * (block.timestamp - pos.yieldStartTime)
-            / (SECONDS_PER_YEAR * 1e18);
+        uint256 currentYield = (pos.principal *
+            pos.apyWad *
+            (block.timestamp - pos.yieldStartTime)) / (SECONDS_PER_YEAR * WAD);
 
         // Remove from APY bucket
         APYBucket storage bucket = apyBuckets[pos.apyWad];
@@ -736,7 +786,9 @@ contract HDCLVault is
     }
 
     /// @notice Restore normal yield calculation for a position
-    function unmarkPositionStale(uint256 positionIndex) external onlyRole(ADMIN_ROLE) {
+    function unmarkPositionStale(
+        uint256 positionIndex
+    ) external onlyRole(ADMIN_ROLE) {
         NFTPosition storage pos = positions[positionIndex];
         if (!pos.isStale) revert PositionNotStale();
 
@@ -747,10 +799,7 @@ contract HDCLVault is
         pos.isStale = false;
         pos.yieldStartTime = block.timestamp;
 
-        _addToActiveAPYsIfNew(pos.apyWad);
-        apyBuckets[pos.apyWad].totalPrincipal += pos.principal;
-        apyBuckets[pos.apyWad].weightedYieldStart += pos.principal * block.timestamp;
-        totalInvestedPrincipal += pos.principal;
+        _addToBucket(pos.apyWad, pos.principal, block.timestamp);
 
         pos.stalePrincipal = 0;
         pos.staleYield = 0;
@@ -763,7 +812,12 @@ contract HDCLVault is
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice Accept NFTs from Decentral's _safeMint
-    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
+    function onERC721Received(
+        address,
+        address,
+        uint256,
+        bytes calldata
+    ) external pure returns (bytes4) {
         return IERC721Receiver.onERC721Received.selector;
     }
 
@@ -776,10 +830,10 @@ contract HDCLVault is
     /// @param rate Current exchange rate (WAD)
     /// @return hollarUsed Total HOLLAR distributed
     /// @return hdclBurned Total HDCL burned from escrow
-    function _processQueueWithHollar(uint256 available, uint256 rate)
-        internal
-        returns (uint256 hollarUsed, uint256 hdclBurned)
-    {
+    function _processQueueWithHollar(
+        uint256 available,
+        uint256 rate
+    ) internal returns (uint256 hollarUsed, uint256 hdclBurned) {
         while (available > 0 && queueHead < redemptionQueue.length) {
             RedemptionRequest storage request = redemptionQueue[queueHead];
 
@@ -789,7 +843,7 @@ contract HDCLVault is
             }
 
             uint256 remainingHdcl = request.hdclAmount - request.hdclFulfilled;
-            uint256 hollarValue = remainingHdcl * rate / 1e18;
+            uint256 hollarValue = (remainingHdcl * rate) / WAD;
 
             if (available >= hollarValue) {
                 // Fully fulfill this request
@@ -804,11 +858,16 @@ contract HDCLVault is
                 hdclBurned += remainingHdcl;
                 available -= hollarValue;
 
-                emit RedemptionFulfilled(queueHead, request.user, hollarValue, remainingHdcl);
+                emit RedemptionFulfilled(
+                    queueHead,
+                    request.user,
+                    hollarValue,
+                    remainingHdcl
+                );
                 queueHead++;
             } else {
                 // Partially fulfill
-                uint256 hdclToBurn = available * 1e18 / rate;
+                uint256 hdclToBurn = (available * WAD) / rate;
                 if (hdclToBurn == 0) break; // Dust amount, stop
 
                 _burn(address(this), hdclToBurn);
@@ -817,7 +876,12 @@ contract HDCLVault is
                 request.hdclFulfilled += hdclToBurn;
                 totalQueuedHdcl -= hdclToBurn;
 
-                emit RedemptionPartiallyFulfilled(queueHead, request.user, available, hdclToBurn);
+                emit RedemptionPartiallyFulfilled(
+                    queueHead,
+                    request.user,
+                    available,
+                    hdclToBurn
+                );
 
                 hollarUsed += available;
                 hdclBurned += hdclToBurn;
@@ -840,7 +904,9 @@ contract HDCLVault is
     }
 
     /// @dev Adjust APY bucket when principal is redeemed from a position
-    function _adjustBucketOnPrincipalRedemption(NFTPosition storage pos) internal {
+    function _adjustBucketOnPrincipalRedemption(
+        NFTPosition storage pos
+    ) internal {
         APYBucket storage bucket = apyBuckets[pos.apyWad];
         bucket.totalPrincipal -= pos.principal;
         bucket.weightedYieldStart -= pos.principal * pos.yieldStartTime;
@@ -853,30 +919,42 @@ contract HDCLVault is
 
     /// @dev Advance positionHead past redeemed positions
     function _advancePositionHead() internal {
-        while (positionHead < positions.length && positions[positionHead].state == NFTState.Redeemed) {
+        while (
+            positionHead < positions.length &&
+            positions[positionHead].state == NFTState.Redeemed
+        ) {
             positionHead++;
         }
     }
 
-    /// @dev Add an APY to activeAPYs if not already present
-    function _addToActiveAPYsIfNew(uint256 apyWad) internal {
-        uint256 len = activeAPYs.length;
-        for (uint256 i = 0; i < len;) {
-            if (activeAPYs[i] == apyWad) return;
-            unchecked {
-                ++i;
-            }
-        }
-        activeAPYs.push(apyWad);
+    /// @dev Add principal to an APY bucket and update global accounting
+    function _addToBucket(
+        uint256 apyWad,
+        uint256 principal,
+        uint256 yieldStartTime
+    ) internal {
+        _addToActiveAPYsIfNew(apyWad);
+        apyBuckets[apyWad].totalPrincipal += principal;
+        apyBuckets[apyWad].weightedYieldStart += principal * yieldStartTime;
+        totalInvestedPrincipal += principal;
     }
 
-    /// @dev Remove an APY from activeAPYs (swap-and-pop)
+    /// @dev Add an APY to activeAPYList if not already present
+    function _addToActiveAPYsIfNew(uint256 apyWad) internal {
+        if (isActiveAPY[apyWad]) return;
+        isActiveAPY[apyWad] = true;
+        activeAPYList.push(apyWad);
+    }
+
+    /// @dev Remove an APY from activeAPYList (swap-and-pop)
     function _removeFromActiveAPYs(uint256 apyWad) internal {
-        uint256 len = activeAPYs.length;
-        for (uint256 i = 0; i < len;) {
-            if (activeAPYs[i] == apyWad) {
-                activeAPYs[i] = activeAPYs[len - 1];
-                activeAPYs.pop();
+        if (!isActiveAPY[apyWad]) return;
+        isActiveAPY[apyWad] = false;
+        uint256 len = activeAPYList.length;
+        for (uint256 i = 0; i < len; ) {
+            if (activeAPYList[i] == apyWad) {
+                activeAPYList[i] = activeAPYList[len - 1];
+                activeAPYList.pop();
                 return;
             }
             unchecked {
@@ -886,5 +964,7 @@ contract HDCLVault is
     }
 
     /// @dev Authorize UUPS upgrade — only UPGRADER_ROLE
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyRole(UPGRADER_ROLE) {}
 }
