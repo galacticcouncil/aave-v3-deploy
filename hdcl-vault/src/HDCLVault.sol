@@ -116,6 +116,10 @@ contract HDCLVault is
     mapping(uint256 => bool) public isActiveAPY;
     /// @notice Sum of principal across all buckets
     uint256 public totalInvestedPrincipal;
+    /// @notice Aggregate: sum(apyWad_i * totalPrincipal_i) for O(1) yield calc
+    uint256 public yieldRateSum;
+    /// @notice Aggregate: sum(apyWad_i * weightedYieldStart_i) for O(1) yield calc
+    uint256 public yieldOffsetSum;
     /// @notice HOLLAR in vault available for queue fulfillment or reinvestment
     uint256 public idleHollar;
     /// @notice Sum of (stalePrincipal + staleYield) for stale positions
@@ -231,7 +235,7 @@ contract HDCLVault is
         uint256 _tvlCap,
         address _admin
     ) external initializer {
-        __ERC20_init("Wrapped Decentral", "wDCL");
+        __ERC20_init("Hydrated Decentral", "HDCL");
         __AccessControl_init();
         __UUPSUpgradeable_init();
         __Pausable_init();
@@ -256,19 +260,12 @@ contract HDCLVault is
     /// @return Total assets including invested principal, accrued yield, idle HOLLAR, and stale value
     function totalAssets() public view returns (uint256) {
         uint256 accruedYield = 0;
-        uint256 len = activeAPYList.length;
-        for (uint256 i = 0; i < len; ) {
-            uint256 apyWad = activeAPYList[i];
-            APYBucket storage bucket = apyBuckets[apyWad];
-            // yield = apyWad * (now * totalPrincipal - weightedYieldStart) / (SECONDS_PER_YEAR * WAD)
-            uint256 nowTimesPrincipal = block.timestamp * bucket.totalPrincipal;
-            if (nowTimesPrincipal > bucket.weightedYieldStart) {
-                accruedYield +=
-                    (apyWad * (nowTimesPrincipal - bucket.weightedYieldStart)) /
+        if (yieldRateSum > 0) {
+            uint256 gross = block.timestamp * yieldRateSum;
+            if (gross > yieldOffsetSum) {
+                accruedYield =
+                    (gross - yieldOffsetSum) /
                     (SECONDS_PER_YEAR * WAD);
-            }
-            unchecked {
-                ++i;
             }
         }
         return
@@ -757,14 +754,7 @@ contract HDCLVault is
             (block.timestamp - pos.yieldStartTime)) / (SECONDS_PER_YEAR * WAD);
 
         // Remove from APY bucket
-        APYBucket storage bucket = apyBuckets[pos.apyWad];
-        bucket.totalPrincipal -= pos.principal;
-        bucket.weightedYieldStart -= pos.principal * pos.yieldStartTime;
-        totalInvestedPrincipal -= pos.principal;
-
-        if (bucket.totalPrincipal == 0) {
-            _removeFromActiveAPYs(pos.apyWad);
-        }
+        _removeFromBucket(pos.apyWad, pos.principal, pos.yieldStartTime);
 
         // Record stale values
         pos.isStale = true;
@@ -885,11 +875,15 @@ contract HDCLVault is
         if (pos.isStale) return; // Stale positions are not in active accounting
 
         APYBucket storage bucket = apyBuckets[pos.apyWad];
-        // Remove old weighted yield start contribution
-        bucket.weightedYieldStart -= pos.principal * pos.yieldStartTime;
-        // Add new weighted yield start (reset to now)
-        bucket.weightedYieldStart += pos.principal * block.timestamp;
-        // Update position
+        uint256 oldStart = pos.principal * pos.yieldStartTime;
+        uint256 newStart = pos.principal * block.timestamp;
+
+        bucket.weightedYieldStart -= oldStart;
+        bucket.weightedYieldStart += newStart;
+
+        yieldOffsetSum -= pos.apyWad * oldStart;
+        yieldOffsetSum += pos.apyWad * newStart;
+
         pos.yieldStartTime = block.timestamp;
     }
 
@@ -897,14 +891,7 @@ contract HDCLVault is
     function _adjustBucketOnPrincipalRedemption(
         NFTPosition storage pos
     ) internal {
-        APYBucket storage bucket = apyBuckets[pos.apyWad];
-        bucket.totalPrincipal -= pos.principal;
-        bucket.weightedYieldStart -= pos.principal * pos.yieldStartTime;
-        totalInvestedPrincipal -= pos.principal;
-
-        if (bucket.totalPrincipal == 0) {
-            _removeFromActiveAPYs(pos.apyWad);
-        }
+        _removeFromBucket(pos.apyWad, pos.principal, pos.yieldStartTime);
     }
 
     /// @dev Advance positionHead past redeemed positions
@@ -927,6 +914,28 @@ contract HDCLVault is
         apyBuckets[apyWad].totalPrincipal += principal;
         apyBuckets[apyWad].weightedYieldStart += principal * yieldStartTime;
         totalInvestedPrincipal += principal;
+
+        yieldRateSum += apyWad * principal;
+        yieldOffsetSum += apyWad * principal * yieldStartTime;
+    }
+
+    /// @dev Remove principal from an APY bucket and update global accounting
+    function _removeFromBucket(
+        uint256 apyWad,
+        uint256 principal,
+        uint256 yieldStartTime
+    ) internal {
+        APYBucket storage bucket = apyBuckets[apyWad];
+        bucket.totalPrincipal -= principal;
+        bucket.weightedYieldStart -= principal * yieldStartTime;
+        totalInvestedPrincipal -= principal;
+
+        yieldRateSum -= apyWad * principal;
+        yieldOffsetSum -= apyWad * principal * yieldStartTime;
+
+        if (bucket.totalPrincipal == 0) {
+            _removeFromActiveAPYs(apyWad);
+        }
     }
 
     /// @dev Add an APY to activeAPYList if not already present
