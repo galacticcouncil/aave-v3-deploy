@@ -262,7 +262,7 @@ task(
           { value: [1, 1] }, // HOLLAR: fixed 1:1 peg (base reference)
           { MMOracle: eurUsdOracle }, // aEURC: drifting peg via EUR/USD DIA oracle
         ],
-        maxPegUpdate: 800, // EUR/USD peg update limit in perbill
+        maxPegUpdate: 10000, // EUR/USD peg update (0.6%/h, 14.4%/day)
       })
     )
   );
@@ -323,8 +323,8 @@ task(
 
   // ===== Seed initial liquidity from treasury =====
   console.log("---------> seed initial liquidity");
-  const eurcAmount = utils.parseUnits("250000", 6).toString(); // 250,000 EURC (6 decimals)
-  const hollarAmount = utils.parseEther("290000").toString(); // 290,000 HOLLAR (18 decimals)
+  const eurcAmount = utils.parseUnits("215517", 6).toString(); // 215,517 EURC (6 decimals)
+  const hollarAmount = utils.parseEther("250000").toString(); // 250,000 HOLLAR (18 decimals)
 
   // Treasury swaps EURC → aEURC via Aave
   last.push(
@@ -377,6 +377,38 @@ task(
           route: [
             { pool: "Aave", assetIn: HEURC_POOL, assetOut: HEURC_ID },
           ],
+        })
+      )
+    )
+  );
+
+  // Treasury DCA: EURC → HEURC (9,000 EURC/period × 3 orders = 27,000 EURC total)
+  last.push(
+    await dispatchAs(
+      treasury,
+      hydrationTx.dca.schedule(
+        ...Object.values({
+          schedule: {
+            owner: treasury,
+            period: 6,
+            maxRetries: { Some: 5 },
+            totalAmount: utils.parseUnits("27000", 6).toString(),
+            slippage: 30000,
+            order: {
+              Sell: {
+                assetIn: EURC,
+                assetOut: HEURC_ID,
+                amountIn: utils.parseUnits("9000", 6).toString(),
+                minAmountOut: "10046411949393178290388",
+                route: [
+                  { pool: { Aave: null }, assetIn: EURC, assetOut: aEURC_ID },
+                  { pool: { Stableswap: HEURC_POOL }, assetIn: aEURC_ID, assetOut: HEURC_POOL },
+                  { pool: { Aave: null }, assetIn: HEURC_POOL, assetOut: HEURC_ID },
+                ],
+              },
+            },
+          },
+          startExecutionBlock: null,
         })
       )
     )
