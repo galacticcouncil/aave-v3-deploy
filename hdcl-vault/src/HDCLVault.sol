@@ -34,8 +34,6 @@ contract HDCLVault is
     // ═══════════════════════════════════════════════════════════════════════
 
     uint256 public constant WAD = 1e18;
-    uint256 public constant INVESTMENT_PERIOD = 60 days;
-    uint256 public constant WITHDRAWAL_DELAY = 48 hours;
     uint256 public constant SECONDS_PER_YEAR = 365 days;
 
     /// @dev Dead shares minted on first deposit to mitigate inflation attack
@@ -332,7 +330,7 @@ contract HDCLVault is
                 principal: hollarAmount,
                 apyWad: apyWad,
                 depositTime: block.timestamp,
-                maturityTime: block.timestamp + INVESTMENT_PERIOD,
+                maturityTime: block.timestamp + _investmentPeriod(),
                 yieldStartTime: block.timestamp,
                 state: NFTState.Active,
                 isStale: false,
@@ -521,7 +519,7 @@ contract HDCLVault is
                 principal: amount,
                 apyWad: apyWad,
                 depositTime: block.timestamp,
-                maturityTime: block.timestamp + INVESTMENT_PERIOD,
+                maturityTime: block.timestamp + _investmentPeriod(),
                 yieldStartTime: block.timestamp,
                 state: NFTState.Active,
                 isStale: false,
@@ -596,7 +594,7 @@ contract HDCLVault is
             accumulated += pos.principal + expectedYield;
 
             if (accumulated >= hollarNeeded) {
-                uint256 maturityWithDelay = pos.maturityTime + WITHDRAWAL_DELAY;
+                uint256 maturityWithDelay = pos.maturityTime + _withdrawalDelay();
                 if (maturityWithDelay > block.timestamp) {
                     return maturityWithDelay - block.timestamp;
                 }
@@ -961,6 +959,16 @@ contract HDCLVault is
                 ++i;
             }
         }
+    }
+
+    /// @dev Returns the minimum investment period from Decentral pool
+    function _investmentPeriod() internal view returns (uint256) {
+        return decentralPool.minimumInvestmentPeriodSeconds();
+    }
+
+    /// @dev Returns the principal withdrawal delay from Decentral pool
+    function _withdrawalDelay() internal view returns (uint256) {
+        return decentralPool.principalWithdrawalDelaySeconds();
     }
 
     /// @dev Authorize UUPS upgrade — only UPGRADER_ROLE
