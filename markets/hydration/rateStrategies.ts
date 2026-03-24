@@ -78,3 +78,4 @@ export const rateStrategyStables80: IInterestRateStrategyParams = {
   stableRateExcessOffset: parseUnits("0.08", 27).toString(),
   optimalStableToTotalDebtRatio: parseUnits("0.2", 27).toString(),
 };
+
