@@ -241,9 +241,9 @@ export const strategyPRIME: IReserveParams = {
   reserveDecimals: "6",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "5000000",
+  supplyCap: "10000000",
   borrowCap: "3000000",
-  debtCeiling: "400000000",
+  debtCeiling: "800000000",
   borrowableIsolation: false,
 };
 
