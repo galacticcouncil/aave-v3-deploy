@@ -323,7 +323,7 @@ task(
 
   // ===== Seed initial liquidity from treasury =====
   console.log("---------> seed initial liquidity");
-  const eurcAmount = utils.parseUnits("215517", 6).toString(); // 215,517 EURC (6 decimals)
+  const eurcAmount = utils.parseUnits("215150", 6).toString(); // 215,150 EURC (6 decimals)
   const hollarAmount = utils.parseEther("250000").toString(); // 250,000 HOLLAR (18 decimals)
 
   // Treasury swaps EURC → aEURC via Aave
@@ -382,7 +382,7 @@ task(
     )
   );
 
-  // Treasury DCA: EURC → HEURC (9,000 EURC/period × 3 orders = 27,000 EURC total)
+  // Treasury DCA: EURC → HEURC (8,666.666666 EURC/period × 3 orders = 26,000 EURC total)
   last.push(
     await dispatchAs(
       treasury,
@@ -392,14 +392,14 @@ task(
             owner: treasury,
             period: 6,
             maxRetries: { Some: 5 },
-            totalAmount: utils.parseUnits("27000", 6).toString(),
+            totalAmount: utils.parseUnits("26000", 6).toString(),
             slippage: 30000,
             order: {
               Sell: {
                 assetIn: EURC,
                 assetOut: HEURC_ID,
-                amountIn: utils.parseUnits("9000", 6).toString(),
-                minAmountOut: "10046411949393178290388",
+                amountIn: utils.parseUnits("8666.666666", 6).toString(),
+                minAmountOut: "9677649718102442203705",
                 route: [
                   { pool: { Aave: null }, assetIn: EURC, assetOut: aEURC_ID },
                   { pool: { Stableswap: HEURC_POOL }, assetIn: aEURC_ID, assetOut: HEURC_POOL },
