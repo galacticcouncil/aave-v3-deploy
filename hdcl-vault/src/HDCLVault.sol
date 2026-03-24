@@ -77,7 +77,6 @@ contract HDCLVault is
         address user;
         uint256 hdclAmount;
         uint256 hdclFulfilled;
-        bool active;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -213,6 +212,7 @@ contract HDCLVault is
     error PositionNotMature();
     error NotRequestOwner();
     error RequestNotActive();
+    error InvalidRequestId();
     error QueueNotEmpty();
     error InsufficientIdleHollar();
     error PositionNotStale();
@@ -360,8 +360,7 @@ contract HDCLVault is
         redemptionQueue[requestId] = RedemptionRequest({
             user: msg.sender,
             hdclAmount: hdclAmount,
-            hdclFulfilled: 0,
-            active: true
+            hdclFulfilled: 0
         });
         queueTail++;
         totalQueuedHdcl += hdclAmount;
@@ -372,18 +371,19 @@ contract HDCLVault is
     /// @notice Cancel a pending redemption request
     /// @param requestId ID of the request to cancel
     function cancelRedeem(uint256 requestId) external nonReentrant {
+        if (requestId >= queueTail) revert InvalidRequestId();
         RedemptionRequest storage request = redemptionQueue[requestId];
+        if (request.user == address(0)) revert RequestNotActive();
         if (request.user != msg.sender) revert NotRequestOwner();
-        if (!request.active) revert RequestNotActive();
 
         uint256 remaining = request.hdclAmount - request.hdclFulfilled;
-        request.active = false;
         totalQueuedHdcl -= remaining;
 
         // Return escrowed HDCL
         _transfer(address(this), msg.sender, remaining);
 
         emit RedemptionCancelled(requestId, remaining);
+        delete redemptionQueue[requestId];
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -552,7 +552,7 @@ contract HDCLVault is
         uint256 requestId
     ) external view returns (uint256 estimatedSeconds) {
         RedemptionRequest storage request = redemptionQueue[requestId];
-        if (!request.active) return 0;
+        if (request.user == address(0)) return 0;
 
         uint256 rate = exchangeRate();
 
@@ -560,7 +560,7 @@ contract HDCLVault is
         uint256 hollarNeeded = 0;
         for (uint256 i = queueHead; i <= requestId; i++) {
             RedemptionRequest storage r = redemptionQueue[i];
-            if (!r.active) continue;
+            if (r.user == address(0)) continue;
             uint256 remainingHdcl = r.hdclAmount - r.hdclFulfilled;
             hollarNeeded += (remainingHdcl * rate) / WAD;
         }
@@ -611,7 +611,7 @@ contract HDCLVault is
         )
     {
         RedemptionRequest storage r = redemptionQueue[requestId];
-        return (r.user, r.hdclAmount, r.hdclFulfilled, r.active);
+        return (r.user, r.hdclAmount, r.hdclFulfilled, r.user != address(0));
     }
 
     /// @notice Get NFT position details
@@ -832,8 +832,7 @@ contract HDCLVault is
         while (available > 0 && queueHead < queueTail) {
             RedemptionRequest storage request = redemptionQueue[queueHead];
 
-            if (!request.active) {
-                delete redemptionQueue[queueHead];
+            if (request.user == address(0)) {
                 queueHead++;
                 continue;
             }
