@@ -223,8 +223,8 @@ export const strategyPAXG: IReserveParams = {
   reserveDecimals: "18",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "100",
-  borrowCap: "70",
+  supplyCap: "250",
+  borrowCap: "175",
   debtCeiling,
   borrowableIsolation: false,
 };
