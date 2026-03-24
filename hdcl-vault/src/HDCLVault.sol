@@ -103,6 +103,8 @@ contract HDCLVault is
     bool public depositsPaused;
     /// @notice Minimum HOLLAR for reinvestment
     uint256 public minReinvestAmount;
+    /// @notice Minimum HDCL to request redemption
+    uint256 public minRedeemAmount;
 
     // ═══════════════════════════════════════════════════════════════════════
     //                          ACCOUNTING STATE
@@ -139,9 +141,11 @@ contract HDCLVault is
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice FIFO queue of pending redemptions
-    RedemptionRequest[] public redemptionQueue;
+    mapping(uint256 => RedemptionRequest) public redemptionQueue;
     /// @notice Index of the first active (unfulfilled) request
     uint256 public queueHead;
+    /// @notice Index of the next request to be created
+    uint256 public queueTail;
     /// @notice Total HDCL across all active queue entries
     uint256 public totalQueuedHdcl;
 
@@ -191,6 +195,7 @@ contract HDCLVault is
     event DepositsUnpaused();
     event TvlCapUpdated(uint256 newCap);
     event MinReinvestAmountUpdated(uint256 newAmount);
+    event MinRedeemAmountUpdated(uint256 newAmount);
     event OracleUpdated(address indexed oracle);
     event WithdrawalDelayed(
         uint256 indexed positionIndex,
@@ -211,6 +216,7 @@ contract HDCLVault is
     error QueueNotEmpty();
     error InsufficientIdleHollar();
     error PositionNotStale();
+    error BelowMinimumRedeem();
     error PositionAlreadyStale();
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -246,6 +252,7 @@ contract HDCLVault is
         hollar = IERC20(_hollar);
         tvlCap = _tvlCap;
         minReinvestAmount = 10e18; // 10 HOLLAR
+        minRedeemAmount = 1e18; // 1 HDCL
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(ADMIN_ROLE, _admin);
@@ -344,24 +351,19 @@ contract HDCLVault is
     function requestRedeem(
         uint256 hdclAmount
     ) external nonReentrant returns (uint256 requestId) {
-        if (hdclAmount == 0) revert ZeroAmount();
-        require(
-            balanceOf(msg.sender) >= hdclAmount,
-            "Insufficient HDCL balance"
-        );
+        if (hdclAmount < minRedeemAmount) revert BelowMinimumRedeem();
 
-        // Escrow HDCL in the vault (not burned yet)
+        // Escrow HDCL in the vault (not burned yet — _transfer reverts on insufficient balance)
         _transfer(msg.sender, address(this), hdclAmount);
 
-        requestId = redemptionQueue.length;
-        redemptionQueue.push(
-            RedemptionRequest({
-                user: msg.sender,
-                hdclAmount: hdclAmount,
-                hdclFulfilled: 0,
-                active: true
-            })
-        );
+        requestId = queueTail;
+        redemptionQueue[requestId] = RedemptionRequest({
+            user: msg.sender,
+            hdclAmount: hdclAmount,
+            hdclFulfilled: 0,
+            active: true
+        });
+        queueTail++;
         totalQueuedHdcl += hdclAmount;
 
         emit RedemptionRequested(requestId, msg.sender, hdclAmount);
@@ -673,9 +675,14 @@ contract HDCLVault is
         return activeAPYList[index];
     }
 
-    /// @notice Total number of redemption requests
+    /// @notice Total number of redemption requests ever created
     function getRedemptionQueueLength() external view returns (uint256) {
-        return redemptionQueue.length;
+        return queueTail;
+    }
+
+    /// @notice Number of pending (unprocessed) queue entries
+    function getRedemptionQueuePending() external view returns (uint256) {
+        return queueTail - queueHead;
     }
 
     /// @notice Queue head index
@@ -730,6 +737,14 @@ contract HDCLVault is
     ) external onlyRole(ADMIN_ROLE) {
         minReinvestAmount = amount;
         emit MinReinvestAmountUpdated(amount);
+    }
+
+    /// @notice Update minimum redemption amount
+    function setMinRedeemAmount(
+        uint256 amount
+    ) external onlyRole(ADMIN_ROLE) {
+        minRedeemAmount = amount;
+        emit MinRedeemAmountUpdated(amount);
     }
 
     /// @notice Set the oracle address
@@ -814,10 +829,11 @@ contract HDCLVault is
         uint256 available,
         uint256 rate
     ) internal returns (uint256 hollarUsed, uint256 hdclBurned) {
-        while (available > 0 && queueHead < redemptionQueue.length) {
+        while (available > 0 && queueHead < queueTail) {
             RedemptionRequest storage request = redemptionQueue[queueHead];
 
             if (!request.active) {
+                delete redemptionQueue[queueHead];
                 queueHead++;
                 continue;
             }
@@ -830,8 +846,6 @@ contract HDCLVault is
                 _burn(address(this), remainingHdcl);
                 idleHollar -= hollarValue;
                 hollar.safeTransfer(request.user, hollarValue);
-                request.hdclFulfilled = request.hdclAmount;
-                request.active = false;
                 totalQueuedHdcl -= remainingHdcl;
 
                 hollarUsed += hollarValue;
@@ -844,6 +858,7 @@ contract HDCLVault is
                     hollarValue,
                     remainingHdcl
                 );
+                delete redemptionQueue[queueHead];
                 queueHead++;
             } else {
                 // Partially fulfill
