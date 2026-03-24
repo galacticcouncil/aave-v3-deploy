@@ -149,10 +149,8 @@ contract HDCLVault is
         address indexed user,
         uint256 hollarAmount,
         uint256 hdclMinted,
-        uint256 decentalAmount,
         uint256 tokenId
     );
-    event QueueClearedOnDeposit(uint256 hollarUsedForQueue, uint256 hdclBurned);
     event RedemptionRequested(
         uint256 indexed requestId,
         address indexed user,
@@ -306,23 +304,22 @@ contract HDCLVault is
         // Calculate HDCL to mint at current rate BEFORE any queue processing
         uint256 supply = totalSupply();
         if (supply == 0) {
-            // First deposit: 1:1 rate, mint dead shares for inflation protection
+            require(hollarAmount > DEAD_SHARES, "Deposit too small");
             hdclMinted = hollarAmount - DEAD_SHARES;
             hollar.safeTransferFrom(msg.sender, address(this), hollarAmount);
             _mint(DEAD_ADDRESS, DEAD_SHARES);
             _mint(msg.sender, hdclMinted);
         } else {
             uint256 assets = totalAssets();
-            // TODO: need to have return checks here
             hdclMinted = (hollarAmount * supply) / assets;
+            require(hdclMinted > 0, "Deposit too small");
             hollar.safeTransferFrom(msg.sender, address(this), hollarAmount);
             _mint(msg.sender, hdclMinted);
         }
 
         uint256 apyWad = getAPYWad();
-        hollar.approve(address(decentralPool), hollarAmount);
+        hollar.safeApprove(address(decentralPool), hollarAmount);
         uint256 tokenId = decentralPool.deposit(hollarAmount);
-        decentalAmount = remaining;
 
         positions.push(
             NFTPosition({
@@ -339,15 +336,9 @@ contract HDCLVault is
             })
         );
 
-        _addToBucket(apyWad, remaining, block.timestamp);
+        _addToBucket(apyWad, hollarAmount, block.timestamp);
 
-        emit Deposited(
-            msg.sender,
-            hollarAmount,
-            hdclMinted,
-            decentalAmount,
-            tokenId
-        );
+        emit Deposited(msg.sender, hollarAmount, hdclMinted, tokenId);
     }
 
     /// @notice Queue HDCL for redemption to HOLLAR
@@ -510,7 +501,7 @@ contract HDCLVault is
         require(amount > 0, "Nothing to reinvest");
 
         uint256 apyWad = getAPYWad();
-        hollar.approve(address(decentralPool), amount);
+        hollar.safeApprove(address(decentralPool), amount);
         uint256 tokenId = decentralPool.deposit(amount);
 
         positions.push(
@@ -594,7 +585,8 @@ contract HDCLVault is
             accumulated += pos.principal + expectedYield;
 
             if (accumulated >= hollarNeeded) {
-                uint256 maturityWithDelay = pos.maturityTime + _withdrawalDelay();
+                uint256 maturityWithDelay = pos.maturityTime +
+                    _withdrawalDelay();
                 if (maturityWithDelay > block.timestamp) {
                     return maturityWithDelay - block.timestamp;
                 }
