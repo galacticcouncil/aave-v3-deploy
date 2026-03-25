@@ -1,0 +1,279 @@
+{
+  "meta": {
+    "repo": "/Users/yashsharma/Workspace/Hydration/aave-v3-deploy/hdcl-vault",
+    "src_dir": "src",
+    "generated_at": "2026-03-25T22:23:31.957981+00:00",
+    "git_head": "f0c4eac",
+    "git_branch": "feat/hdcl-vault",
+    "total_commits": 365,
+    "total_source_files": 9,
+    "analysis_time_ms": 795
+  },
+  "repo_shape": {
+    "classification": "squashed_import",
+    "total_commits": 365,
+    "source_touching_commits": 0,
+    "bulk_import_sha": null,
+    "date_spread_days": 1220,
+    "first_commit_date": "2022-11-22",
+    "last_commit_date": "2026-03-26",
+    "signals": [
+      "Only 1 commit touches source files",
+      "Date spread: 1220 days",
+      "0 commits touch source files out of 365 total"
+    ]
+  },
+  "fix_candidates": [
+    {
+      "sha": "f0c4eac",
+      "full_sha": "f0c4eac160e86ac051f4c88b36484f08ef9e7f5b",
+      "date": "2026-03-26",
+      "author": "Yash Sharma",
+      "subject": "- zero-address checks in initialize - oracle reverts when vault is paused - fix stale yield double-count for stale positions on yield claim - guard setTvlCap from lowering below current totalAssets - fix _reinvest TVL cap underflow by early return when cap exhausted",
+      "score": 10,
+      "reasons": [
+        "explicit security language",
+        "involves oracle/pricing"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "f2e2f10",
+      "full_sha": "f2e2f10e05b7b5d6195e7a7b2753152a1f5463c9",
+      "date": "2026-03-24",
+      "author": "Yash Sharma",
+      "subject": "-fixed interafces - max hollar approval removed for security reasons - better function getters from Decentral contract - removed processQueue from deposit - other small optimzations",
+      "score": 8,
+      "reasons": [
+        "explicit security language"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "fed5dd1",
+      "full_sha": "fed5dd1ff11e87e2f53c34cd009399dbf7efcb17",
+      "date": "2026-02-10",
+      "author": "dmoka",
+      "subject": "fix liquidation threshold according to params",
+      "score": 6,
+      "reasons": [
+        "bug fix",
+        "involves oracle/pricing"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "13c0653",
+      "full_sha": "13c06533fb7cd474a4369fa55467197c2e1e0431",
+      "date": "2025-06-06",
+      "author": "martinfridrich",
+      "subject": "gigaety-launch: fix ETH oracle setup and add ETH e-mode setup",
+      "score": 6,
+      "reasons": [
+        "bug fix",
+        "involves oracle/pricing"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "aa75553",
+      "full_sha": "aa75553e48b95ded80a75f93a7b1823cdd4cea89",
+      "date": "2025-04-16",
+      "author": "mrq",
+      "subject": "emergency supply cap increase",
+      "score": 6,
+      "reasons": [
+        "urgent/critical fix"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "580aeb6",
+      "full_sha": "580aeb63b3114c207785ea5ed624961b0e474beb",
+      "date": "2025-03-20",
+      "author": "dmoka",
+      "subject": "fix tbtc fallback price",
+      "score": 6,
+      "reasons": [
+        "bug fix",
+        "involves oracle/pricing"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "9a61afa",
+      "full_sha": "9a61afa27f76f43d6b438265104acc2579fae4da",
+      "date": "2025-01-21",
+      "author": "mrq",
+      "subject": "renounce emergency admin task",
+      "score": 6,
+      "reasons": [
+        "urgent/critical fix"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "059689c",
+      "full_sha": "059689cc336b4c8f8cdc208ae8fb3a23c51d3e1e",
+      "date": "2026-02-25",
+      "author": "dmoka",
+      "subject": "fix zombienet rpc url for our local fork url",
+      "score": 4,
+      "reasons": [
+        "bug fix"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "137f0bb",
+      "full_sha": "137f0bbcd8ce787a31e5fbdc345820e5e20b636a",
+      "date": "2026-02-24",
+      "author": "dmoka",
+      "subject": "fix id of gSOLs",
+      "score": 4,
+      "reasons": [
+        "bug fix"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "9664757",
+      "full_sha": "9664757598f126cac0147a08f00851950356c36a",
+      "date": "2026-02-18",
+      "author": "dmoka",
+      "subject": "fix compilation error due new runtime version",
+      "score": 4,
+      "reasons": [
+        "bug fix"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    }
+  ],
+  "dangerous_area_changes": {},
+  "late_changes": {
+    "window_days": 30,
+    "cutoff_date": "2026-02-24",
+    "latest_commit_date": "2026-03-26",
+    "late_commits": [],
+    "source_without_test_count": 0,
+    "total_late_source_commits": 0
+  },
+  "forked_deps": {
+    "detected_libs": [
+      {
+        "name": "openzeppelin-contracts",
+        "path": "lib/openzeppelin-contracts",
+        "known_upstream": "OpenZeppelin",
+        "is_submodule": true,
+        "is_internalized": false,
+        "sol_file_count": 324,
+        "pragma_versions": [
+          ">0.5.0 <0.9.0",
+          ">=0.4.21 <0.9.0",
+          ">=0.4.22 <0.9.0",
+          ">=0.5.0",
+          ">=0.6.0 <0.9.0",
+          ">=0.6.2",
+          ">=0.6.2 <0.9.0",
+          ">=0.6.9 <0.9.0",
+          ">=0.7.0 <0.9.0",
+          ">=0.8.0 <0.9.0",
+          "^0.8.0",
+          "^0.8.1",
+          "^0.8.19",
+          "^0.8.2",
+          "^0.8.4",
+          "^0.8.8",
+          "^0.8.9"
+        ],
+        "notes": [
+          "Pragma '>0.5.0 <0.9.0' differs from expected upstream versions",
+          "Pragma '>=0.4.21 <0.9.0' differs from expected upstream versions",
+          "Pragma '>=0.4.22 <0.9.0' differs from expected upstream versions",
+          "Pragma '>=0.5.0' differs from expected upstream versions",
+          "Pragma '>=0.6.0 <0.9.0' differs from expected upstream versions",
+          "Pragma '>=0.6.2' differs from expected upstream versions",
+          "Pragma '>=0.6.2 <0.9.0' differs from expected upstream versions",
+          "Pragma '>=0.6.9 <0.9.0' differs from expected upstream versions",
+          "Pragma '>=0.7.0 <0.9.0' differs from expected upstream versions"
+        ]
+      },
+      {
+        "name": "openzeppelin-contracts-upgradeable",
+        "path": "lib/openzeppelin-contracts-upgradeable",
+        "known_upstream": "OpenZeppelin",
+        "is_submodule": true,
+        "is_internalized": false,
+        "sol_file_count": 320,
+        "pragma_versions": [
+          ">0.5.0 <0.9.0",
+          ">=0.4.21 <0.9.0",
+          ">=0.4.22 <0.9.0",
+          ">=0.5.0",
+          ">=0.6.0 <0.9.0",
+          ">=0.6.2",
+          ">=0.6.2 <0.9.0",
+          ">=0.6.9 <0.9.0",
+          ">=0.7 <0.9",
+          ">=0.7.0 <0.9.0",
+          ">=0.8.0 <0.9.0",
+          "^0.8.0",
+          "^0.8.1",
+          "^0.8.19",
+          "^0.8.2",
+          "^0.8.4",
+          "^0.8.8",
+          "^0.8.9"
+        ],
+        "notes": [
+          "Pragma '>0.5.0 <0.9.0' differs from expected upstream versions",
+          "Pragma '>=0.4.21 <0.9.0' differs from expected upstream versions",
+          "Pragma '>=0.4.22 <0.9.0' differs from expected upstream versions",
+          "Pragma '>=0.5.0' differs from expected upstream versions",
+          "Pragma '>=0.6.0 <0.9.0' differs from expected upstream versions",
+          "Pragma '>=0.6.2' differs from expected upstream versions",
+          "Pragma '>=0.6.2 <0.9.0' differs from expected upstream versions",
+          "Pragma '>=0.6.9 <0.9.0' differs from expected upstream versions",
+          "Pragma '>=0.7 <0.9' differs from expected upstream versions",
+          "Pragma '>=0.7.0 <0.9.0' differs from expected upstream versions"
+        ]
+      }
+    ],
+    "removed_submodules": []
+  },
+  "tech_debt": {
+    "total_count": 0,
+    "items": [],
+    "files_with_debt": 0,
+    "capped": false
+  },
+  "dev_patterns": {
+    "test_co_change_rate": 0.0,
+    "fix_without_test_rate": 1.0,
+    "avg_commit_size": 0.0,
+    "avg_commit_size_note": null,
+    "single_developer_pct": 0.0,
+    "top_contributor": "unknown",
+    "contributor_breakdown": []
+  }
+}

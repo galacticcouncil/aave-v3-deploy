@@ -24,7 +24,7 @@ contract ReinvestTest is BaseTest {
         uint256 positionCountBefore = vault.getPositionCount();
 
         // 3. Reinvest
-        vault.reinvest();
+        vault.pokeQueue();
 
         // New position should be created
         uint256 positionCountAfter = vault.getPositionCount();
@@ -61,7 +61,7 @@ contract ReinvestTest is BaseTest {
 
         // 3. Reinvest should revert because queue is not empty
         vm.expectRevert(HDCLVault.QueueNotEmpty.selector);
-        vault.reinvest();
+        vault.pokeQueue();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -88,7 +88,7 @@ contract ReinvestTest is BaseTest {
 
         // 4. Reinvest should revert
         vm.expectRevert(HDCLVault.InsufficientIdleHollar.selector);
-        vault.reinvest();
+        vault.pokeQueue();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -114,7 +114,7 @@ contract ReinvestTest is BaseTest {
         vault.setTvlCap(halfIdle);
 
         // 4. Reinvest -- should only reinvest up to TVL cap
-        vault.reinvest();
+        vault.pokeQueue();
 
         // New position principal should be capped at tvlCap
         (, uint256 principal, , , , ) = vault.getPosition(1);
@@ -141,7 +141,7 @@ contract ReinvestTest is BaseTest {
 
         uint256 idle = vault.idleHollar();
         uint256 investedBefore = vault.totalInvestedPrincipal();
-        vault.reinvest();
+        vault.pokeQueue();
 
         // totalInvestedPrincipal should increase by the reinvested amount
         uint256 investedAfter = vault.totalInvestedPrincipal();
@@ -167,7 +167,7 @@ contract ReinvestTest is BaseTest {
 
         uint256 rateBefore = vault.exchangeRate();
 
-        vault.reinvest();
+        vault.pokeQueue();
 
         uint256 rateAfter = vault.exchangeRate();
 

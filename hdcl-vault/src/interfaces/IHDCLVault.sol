@@ -148,17 +148,17 @@ interface IHDCLVault {
     /// @dev Anyone can call this to progress a position from Active through to Redeemed.
     ///      Each call moves the position one step forward in the NFTState enum.
     /// @param positionIndex The index of the position in the vault's position array.
-    function processPosition(uint256 positionIndex) external;
+    function pokeDecentral(uint256 positionIndex) external;
 
     /// @notice Processes the redemption queue using available idle stablecoins.
     /// @dev Anyone can call this. Iterates through pending redemption requests in FIFO order,
     ///      fulfilling them with idle stablecoins held by the vault.
-    function processQueue() external;
+    function pokeQueue() external;
 
     /// @notice Reinvests idle stablecoins into a new Decentral pool position.
     /// @dev Anyone can call this when the idle balance exceeds the minimum reinvest amount
     ///      and there are no pending redemption requests that should be fulfilled first.
-    function reinvest() external;
+    
 
     // ──────────────────────────────────────────────
     //  View Functions

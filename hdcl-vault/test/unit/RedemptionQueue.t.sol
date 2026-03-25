@@ -139,7 +139,7 @@ contract RedemptionQueueTest is BaseTest {
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
 
         // 4. processQueue() -> Alice receives HOLLAR
-        vault.processQueue();
+        vault.pokeQueue();
 
         assertEq(vault.totalQueuedHdcl(), 0, "Queue should be fully fulfilled");
 
@@ -213,7 +213,7 @@ contract RedemptionQueueTest is BaseTest {
             uint256 hollarBeforeAlice = hollar.balanceOf(alice);
             uint256 hollarBeforeBob = hollar.balanceOf(bob);
 
-            vault.processQueue();
+            vault.pokeQueue();
 
             // At least one of them should have received something
             bool aliceGot = hollar.balanceOf(alice) > hollarBeforeAlice;
@@ -244,7 +244,7 @@ contract RedemptionQueueTest is BaseTest {
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
         uint256 bobHollarBefore = hollar.balanceOf(bob);
 
-        vault.processQueue();
+        vault.pokeQueue();
 
         // Both should be fulfilled (idle is large enough)
         assertEq(vault.totalQueuedHdcl(), 0, "Queue should be empty after processing");
@@ -272,7 +272,7 @@ contract RedemptionQueueTest is BaseTest {
 
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
 
-        vault.processQueue();
+        vault.pokeQueue();
 
         // Request 0 is inactive (cancelled), request 1 should be fulfilled
         (, , , bool active0) = vault.getRedemptionRequest(request0);
@@ -300,7 +300,7 @@ contract RedemptionQueueTest is BaseTest {
         uint256 supplyBefore = vault.totalSupply();
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
 
-        vault.processQueue();
+        vault.pokeQueue();
 
         uint256 supplyAfter = vault.totalSupply();
         uint256 aliceHollarAfter = hollar.balanceOf(alice);
@@ -335,7 +335,7 @@ contract RedemptionQueueTest is BaseTest {
 
         uint256 rateBefore = vault.exchangeRate();
 
-        vault.processQueue();
+        vault.pokeQueue();
 
         uint256 rateAfter = vault.exchangeRate();
 
@@ -412,7 +412,7 @@ contract RedemptionQueueTest is BaseTest {
         _processPositionFull(0);
 
         // processQueue to fulfill it
-        vault.processQueue();
+        vault.pokeQueue();
 
         // If fulfilled, wait time = 0 (inactive request returns 0)
         uint256 waitAfter = vault.getEstimatedWaitTime(requestId);

@@ -124,12 +124,12 @@ contract ExchangeRateTest is BaseTest {
         uint256 rateBefore = vault.exchangeRate();
 
         // Process position: request yield withdrawal
-        vault.processPosition(0);
+        vault.pokeDecentral(0);
 
         // Approve and execute yield withdrawal
         (uint256 tokenId,,,,, ) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
-        vault.processPosition(0);
+        vault.pokeDecentral(0);
 
         // After yield claim, the rate should be approximately preserved
         // because the yield moved from "accrued" to "idleHollar" and

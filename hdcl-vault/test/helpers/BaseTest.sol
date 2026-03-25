@@ -71,19 +71,19 @@ contract BaseTest is Test, Constants, Events {
 
     function _processPositionFull(uint256 positionIndex) internal {
         // Step 1: Active -> YieldWithdrawalRequested (must be past maturity)
-        vault.processPosition(positionIndex);
+        vault.pokeDecentral(positionIndex);
 
         // Step 2: Approve yield on mock, then execute yield withdrawal
         (uint256 tokenId,,,,, ) = vault.getPosition(positionIndex);
         pool.approveYieldWithdrawal(tokenId);
-        vault.processPosition(positionIndex);
+        vault.pokeDecentral(positionIndex);
 
         // Step 3: YieldClaimed -> PrincipalWithdrawalRequested happens in the same
         //         processPosition call that claimed yield. Now we need to approve
         //         principal and warp past the 48-hour delay.
         pool.approvePrincipalWithdrawal(tokenId);
         vm.warp(block.timestamp + FORTY_EIGHT_HOURS + 1);
-        vault.processPosition(positionIndex);
+        vault.pokeDecentral(positionIndex);
     }
 
     function _warpDays(uint256 days_) internal {
