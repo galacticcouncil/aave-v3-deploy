@@ -243,6 +243,11 @@ contract HDCLVault is
         uint256 _tvlCap,
         address _admin
     ) external initializer {
+        require(_decentralPool != address(0), "Zero decentralPool");
+        require(_poolToken != address(0), "Zero poolToken");
+        require(_hollar != address(0), "Zero hollar");
+        require(_admin != address(0), "Zero admin");
+
         __ERC20_init("Hydrated Decentral", "HDCL");
         __AccessControl_init();
         __UUPSUpgradeable_init();
@@ -421,6 +426,12 @@ contract HDCLVault is
                     balBefore;
                 _adjustBucketOnYieldClaim(pos);
                 idleHollar += yieldReceived;
+                // For stale positions: deduct staleYield from totalStaleValue
+                // since the real yield is now in idleHollar
+                if (pos.isStale) {
+                    totalStaleValue -= pos.staleYield;
+                    pos.staleYield = 0;
+                }
                 pos.state = NFTState.YieldClaimed;
                 emit PositionProcessed(
                     positionIndex,
@@ -508,11 +519,11 @@ contract HDCLVault is
     function _reinvest() internal {
         uint256 amount = idleHollar;
 
-        // Respect TVL cap
-        if (totalInvestedPrincipal + amount > tvlCap) {
-            amount = tvlCap - totalInvestedPrincipal;
+        // Respect TVL cap (including stale value)
+        if (totalInvestedPrincipal + totalStaleValue + amount > tvlCap) {
+            amount = tvlCap - totalInvestedPrincipal - totalStaleValue;
         }
-        if (amount == 0) return;
+        if (amount < minReinvestAmount) return;
 
         uint256 apyWad = getAPYWad();
         hollar.safeApprove(address(decentralPool), 0);
@@ -743,6 +754,7 @@ contract HDCLVault is
 
     /// @notice Update TVL cap
     function setTvlCap(uint256 newCap) external onlyRole(ADMIN_ROLE) {
+        require(newCap >= totalAssets(), "Cap below current assets");
         tvlCap = newCap;
         emit TvlCapUpdated(newCap);
     }
