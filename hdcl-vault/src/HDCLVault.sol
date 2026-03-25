@@ -40,6 +40,8 @@ contract HDCLVault is
     uint256 private constant DEAD_SHARES = 1000;
     address private constant DEAD_ADDRESS = address(0xdead);
 
+    uint256 public constant MAX_QUEUE_ITERATIONS = 50;
+
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
@@ -302,7 +304,7 @@ contract HDCLVault is
     ) external nonReentrant whenNotPaused returns (uint256 hdclMinted) {
         if (depositsPaused) revert DepositsArePaused();
         if (hollarAmount == 0) revert ZeroAmount();
-        if (totalInvestedPrincipal + idleHollar + hollarAmount > tvlCap)
+        if (totalInvestedPrincipal + idleHollar + totalStaleValue + hollarAmount > tvlCap)
             revert ExceedsTvlCap();
 
         // Calculate HDCL to mint at current rate BEFORE any queue processing
@@ -322,6 +324,7 @@ contract HDCLVault is
         }
 
         uint256 apyWad = getAPYWad();
+        hollar.safeApprove(address(decentralPool), 0);
         hollar.safeApprove(address(decentralPool), hollarAmount);
         uint256 tokenId = decentralPool.deposit(hollarAmount);
 
@@ -350,7 +353,7 @@ contract HDCLVault is
     /// @return requestId ID of the redemption request
     function requestRedeem(
         uint256 hdclAmount
-    ) external nonReentrant returns (uint256 requestId) {
+    ) external nonReentrant whenNotPaused returns (uint256 requestId) {
         if (hdclAmount < minRedeemAmount) revert BelowMinimumRedeem();
 
         // Escrow HDCL in the vault (not burned yet — _transfer reverts on insufficient balance)
@@ -391,8 +394,9 @@ contract HDCLVault is
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice Advance a position through its Decentral withdrawal lifecycle
+    /// @dev Callable by anyone (bot or user). Claims mature NFT yield/principal from Decentral.
     /// @param positionIndex Index in the positions array
-    function processPosition(uint256 positionIndex) external nonReentrant {
+    function pokeDecentral(uint256 positionIndex) external nonReentrant whenNotPaused {
         NFTPosition storage pos = positions[positionIndex];
         if (pos.state == NFTState.Redeemed) revert PositionAlreadyRedeemed();
 
@@ -450,7 +454,6 @@ contract HDCLVault is
                 if (!pos.isStale) {
                     _adjustBucketOnPrincipalRedemption(pos);
                 } else {
-                    // Stale position: adjust totalStaleValue with actual received
                     totalStaleValue -= (pos.stalePrincipal + pos.staleYield);
                 }
 
@@ -477,29 +480,42 @@ contract HDCLVault is
         }
     }
 
-    /// @notice Distribute available HOLLAR to queued redemption requests
-    function processQueue() external nonReentrant {
-        if (totalQueuedHdcl > 0 && idleHollar > 0) {
-            uint256 rate = exchangeRate();
+    /// @notice Process queued redemptions, then reinvest remaining idle HOLLAR
+    /// @dev Callable by anyone (bot or user). Processes first MAX_QUEUE_ITERATIONS withdrawals,
+    ///      then reinvests remaining idle HOLLAR if queue is empty.
+    function pokeQueue() external nonReentrant whenNotPaused {
+        // Step 1: Process pending redemptions (skip if dust can't burn even 1 HDCL)
+        uint256 rate = exchangeRate();
+        bool queueCanProgress = totalQueuedHdcl > 0 &&
+            idleHollar > 0 &&
+            (idleHollar * WAD) / rate > 0;
+
+        if (queueCanProgress) {
             _processQueueWithHollar(idleHollar, rate);
+        }
+
+        // Step 2: Reinvest if queue is empty OR queue can't make progress
+        if (
+            !queueCanProgress &&
+            idleHollar >= minReinvestAmount &&
+            !depositsPaused
+        ) {
+            _reinvest();
         }
     }
 
-    /// @notice Reinvest idle HOLLAR into Decentral (only if queue is empty)
-    function reinvest() external nonReentrant {
-        if (totalQueuedHdcl > 0) revert QueueNotEmpty();
-        if (idleHollar < minReinvestAmount) revert InsufficientIdleHollar();
-        if (depositsPaused) revert DepositsArePaused();
-
+    /// @dev Internal reinvest logic
+    function _reinvest() internal {
         uint256 amount = idleHollar;
 
         // Respect TVL cap
         if (totalInvestedPrincipal + amount > tvlCap) {
             amount = tvlCap - totalInvestedPrincipal;
         }
-        require(amount > 0, "Nothing to reinvest");
+        if (amount == 0) return;
 
         uint256 apyWad = getAPYWad();
+        hollar.safeApprove(address(decentralPool), 0);
         hollar.safeApprove(address(decentralPool), amount);
         uint256 tokenId = decentralPool.deposit(amount);
 
@@ -829,7 +845,9 @@ contract HDCLVault is
         uint256 available,
         uint256 rate
     ) internal returns (uint256 hollarUsed, uint256 hdclBurned) {
-        while (available > 0 && queueHead < queueTail) {
+        uint256 iterations;
+        while (available > 0 && queueHead < queueTail && iterations < MAX_QUEUE_ITERATIONS) {
+            iterations++;
             RedemptionRequest storage request = redemptionQueue[queueHead];
 
             if (request.user == address(0)) {
