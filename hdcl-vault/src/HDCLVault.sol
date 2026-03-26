@@ -92,8 +92,6 @@ contract HDCLVault is
     IPoolToken public poolToken;
     /// @notice HOLLAR stablecoin
     IERC20 public hollar;
-    /// @notice Chainlink-compatible oracle for wDCL/HOLLAR price
-    IAggregatorV3Interface public oracle;
 
     // ═══════════════════════════════════════════════════════════════════════
     //                        MUTABLE CONFIGURATION
@@ -109,6 +107,8 @@ contract HDCLVault is
     uint256 public minRedeemAmount;
     /// @notice Time a position must be stuck in withdrawal-requested state before it can be marked stale
     uint256 public withdrawalDelay;
+    /// @notice Chainlink-compatible oracle for wDCL/HOLLAR price
+    IAggregatorV3Interface public oracle;
 
     // ═══════════════════════════════════════════════════════════════════════
     //                          ACCOUNTING STATE
@@ -317,8 +317,7 @@ contract HDCLVault is
     ) external nonReentrant whenNotPaused returns (uint256 hdclMinted) {
         if (depositsPaused) revert DepositsArePaused();
         if (hollarAmount == 0) revert ZeroAmount();
-        if (totalInvestedPrincipal + idleHollar + totalStaleValue + hollarAmount > tvlCap)
-            revert ExceedsTvlCap();
+        if (totalAssets() + hollarAmount > tvlCap) revert ExceedsTvlCap();
 
         // Calculate HDCL to mint at current rate BEFORE any queue processing
         uint256 supply = totalSupply();
@@ -410,7 +409,9 @@ contract HDCLVault is
     /// @notice Advance a position through its Decentral withdrawal lifecycle
     /// @dev Callable by anyone (bot or user). Claims mature NFT yield/principal from Decentral.
     /// @param positionIndex Index in the positions array
-    function pokeDecentral(uint256 positionIndex) external nonReentrant whenNotPaused {
+    function pokeDecentral(
+        uint256 positionIndex
+    ) external nonReentrant whenNotPaused {
         NFTPosition storage pos = positions[positionIndex];
         if (pos.state == NFTState.Redeemed) revert PositionAlreadyRedeemed();
 
@@ -436,11 +437,16 @@ contract HDCLVault is
                     balBefore;
                 _adjustBucketOnYieldClaim(pos);
                 idleHollar += yieldReceived;
-                // For stale positions: deduct staleYield from totalStaleValue
-                // since the real yield is now in idleHollar
+                // For stale positions: deduct only what actually arrived from totalStaleValue.
+                // If Decentral paid less than the frozen estimate, keep the shortfall
+                // in totalStaleValue to be reconciled at principal redemption.
                 if (pos.isStale) {
-                    totalStaleValue -= pos.staleYield;
-                    pos.staleYield = 0;
+                    uint256 staleYieldDeduction = pos.staleYield <=
+                        yieldReceived
+                        ? pos.staleYield
+                        : yieldReceived;
+                    totalStaleValue -= staleYieldDeduction;
+                    pos.staleYield -= staleYieldDeduction;
                 }
                 pos.state = NFTState.YieldClaimed;
                 pos.stateChangedAt = block.timestamp;
@@ -451,20 +457,40 @@ contract HDCLVault is
                 );
             } catch {
                 // Not yet approved by Decentral — no-op, retry next cycle
+                if (
+                    block.timestamp - pos.stateChangedAt > 2 * withdrawalDelay
+                ) {
+                    emit WithdrawalDelayed(
+                        positionIndex,
+                        block.timestamp - pos.stateChangedAt
+                    );
+                }
                 return;
             }
         }
 
         // YieldClaimed → PrincipalWithdrawalRequested
         if (pos.state == NFTState.YieldClaimed) {
-            decentralPool.requestPrincipalWithdrawal(pos.tokenId);
-            pos.state = NFTState.PrincipalWithdrawalRequested;
-            pos.stateChangedAt = block.timestamp;
-            emit PositionProcessed(
-                positionIndex,
-                pos.tokenId,
-                uint8(pos.state)
-            );
+            try decentralPool.requestPrincipalWithdrawal(pos.tokenId) {
+                pos.state = NFTState.PrincipalWithdrawalRequested;
+                pos.stateChangedAt = block.timestamp;
+                emit PositionProcessed(
+                    positionIndex,
+                    pos.tokenId,
+                    uint8(pos.state)
+                );
+            } catch {
+                // Decentral pool may be paused or broken — no-op, retry next cycle
+                if (
+                    block.timestamp - pos.stateChangedAt > 2 * withdrawalDelay
+                ) {
+                    emit WithdrawalDelayed(
+                        positionIndex,
+                        block.timestamp - pos.stateChangedAt
+                    );
+                }
+                return;
+            }
         }
 
         // PrincipalWithdrawalRequested → Redeemed
@@ -498,6 +524,14 @@ contract HDCLVault is
                 }
             } catch {
                 // Not yet approved or delay not elapsed — no-op
+                if (
+                    block.timestamp - pos.stateChangedAt > 2 * withdrawalDelay
+                ) {
+                    emit WithdrawalDelayed(
+                        positionIndex,
+                        block.timestamp - pos.stateChangedAt
+                    );
+                }
                 return;
             }
         }
@@ -530,6 +564,9 @@ contract HDCLVault is
     /// @dev Internal reinvest logic
     function _reinvest() internal {
         uint256 amount = idleHollar;
+
+        // Early return if stale marking pushed sum past cap (prevents underflow)
+        if (totalInvestedPrincipal + totalStaleValue >= tvlCap) return;
 
         // Respect TVL cap (including stale value)
         if (totalInvestedPrincipal + totalStaleValue + amount > tvlCap) {
@@ -781,9 +818,7 @@ contract HDCLVault is
     }
 
     /// @notice Update minimum redemption amount
-    function setMinRedeemAmount(
-        uint256 amount
-    ) external onlyRole(ADMIN_ROLE) {
+    function setMinRedeemAmount(uint256 amount) external onlyRole(ADMIN_ROLE) {
         minRedeemAmount = amount;
         emit MinRedeemAmountUpdated(amount);
     }
@@ -805,18 +840,31 @@ contract HDCLVault is
         if (pos.isStale) revert PositionAlreadyStale();
         if (pos.state == NFTState.Redeemed) revert PositionAlreadyRedeemed();
 
-        // Guard: position must be stuck in a withdrawal-requested state
+        // Guard: position must be stuck in a withdrawal-requested or yield-claimed state
         if (
             pos.state != NFTState.YieldWithdrawalRequested &&
+            pos.state != NFTState.YieldClaimed &&
             pos.state != NFTState.PrincipalWithdrawalRequested
         ) revert PositionNotStuckLongEnough();
         if (block.timestamp - pos.stateChangedAt < withdrawalDelay)
             revert PositionNotStuckLongEnough();
 
-        // Calculate current yield for this position
-        uint256 currentYield = (pos.principal *
-            pos.apyWad *
-            (block.timestamp - pos.yieldStartTime)) / (SECONDS_PER_YEAR * WAD);
+        // Calculate current yield for this position.
+        // For PrincipalWithdrawalRequested/YieldClaimed: yield was already claimed,
+        // Decentral is no longer accruing yield — set to 0 to avoid phantom inflation.
+        uint256 currentYield;
+        if (
+            pos.state == NFTState.PrincipalWithdrawalRequested ||
+            pos.state == NFTState.YieldClaimed
+        ) {
+            currentYield = 0;
+        } else {
+            currentYield =
+                (pos.principal *
+                    pos.apyWad *
+                    (block.timestamp - pos.yieldStartTime)) /
+                (SECONDS_PER_YEAR * WAD);
+        }
 
         // Remove from APY bucket
         _removeFromBucket(pos.apyWad, pos.principal, pos.yieldStartTime);
@@ -847,7 +895,12 @@ contract HDCLVault is
 
         pos.isStale = false;
 
-        if (backtrackYield && pos.staleYield > 0 && pos.principal > 0 && pos.apyWad > 0) {
+        if (
+            backtrackYield &&
+            pos.staleYield > 0 &&
+            pos.principal > 0 &&
+            pos.apyWad > 0
+        ) {
             // Back-calculate yieldStartTime so the active formula reproduces staleYield:
             // staleYield = principal * apyWad * elapsed / (SECONDS_PER_YEAR * WAD)
             // elapsed = staleYield * SECONDS_PER_YEAR * WAD / (principal * apyWad)
@@ -903,7 +956,11 @@ contract HDCLVault is
         uint256 rate
     ) internal returns (uint256 hollarUsed, uint256 hdclBurned) {
         uint256 iterations;
-        while (available > 0 && queueHead < queueTail && iterations < MAX_QUEUE_ITERATIONS) {
+        while (
+            available > 0 &&
+            queueHead < queueTail &&
+            iterations < MAX_QUEUE_ITERATIONS
+        ) {
             iterations++;
             RedemptionRequest storage request = redemptionQueue[queueHead];
 
@@ -1065,4 +1122,11 @@ contract HDCLVault is
     function _authorizeUpgrade(
         address newImplementation
     ) internal override onlyRole(UPGRADER_ROLE) {}
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //                         STORAGE GAP
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @dev Reserved storage slots for future upgrades.
+    uint256[50] private __gap;
 }
