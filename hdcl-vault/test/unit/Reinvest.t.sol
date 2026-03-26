@@ -49,26 +49,33 @@ contract ReinvestTest is BaseTest {
     //          REVERTS WHEN QUEUE NOT EMPTY
     // ═══════════════════════════════════════════════════════════════════════
 
-    function test_reinvest_revertsQueueNotEmpty() public {
+    function test_reinvest_skippedWhenQueueNotEmpty() public {
         // 1. Deposit and mature
         uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
 
+        uint256 idleBefore = vault.idleHollar();
+        assertGt(idleBefore, 0, "Should have idle HOLLAR");
+
         // 2. Alice requests redeem (queue is not empty)
         _requestRedeem(alice, aliceHdcl / 4);
         assertGt(vault.totalQueuedHdcl(), 0, "Queue should have entries");
 
-        // 3. Reinvest should revert because queue is not empty
-        vm.expectRevert(HDCLVault.QueueNotEmpty.selector);
+        // 3. pokeQueue processes queue first, then reinvests remaining idle.
+        //    Since queue has entries and idle can fulfill them, it processes the queue.
+        //    After queue is cleared, remaining idle may be reinvested.
         vault.pokeQueue();
+
+        // Queue should be processed (fulfilled)
+        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be fulfilled after pokeQueue");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
     //           REVERTS BELOW MIN AMOUNT
     // ═══════════════════════════════════════════════════════════════════════
 
-    function test_reinvest_revertsBelowMinAmount() public {
+    function test_reinvest_skippedBelowMinAmount() public {
         // 1. First deposit
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
@@ -76,9 +83,7 @@ contract ReinvestTest is BaseTest {
         vm.prank(admin);
         vault.setMinReinvestAmount(100_000e18);
 
-        // 3. Small deposit to idleHollar (below minReinvestAmount)
-        //    We need idle HOLLAR but below the threshold.
-        //    Process the position to get idle, but it won't be > 100k.
+        // 3. Process the position to get idle HOLLAR, but it won't be > 100k.
         _warpDays(61);
         _processPositionFull(0);
 
@@ -86,9 +91,17 @@ contract ReinvestTest is BaseTest {
         assertGt(idle, 0, "Should have some idle");
         assertLt(idle, 100_000e18, "Idle should be less than minReinvestAmount");
 
-        // 4. Reinvest should revert
-        vm.expectRevert(HDCLVault.InsufficientIdleHollar.selector);
+        uint256 posCountBefore = vault.getPositionCount();
+
+        // 4. pokeQueue should NOT revert — it just skips reinvestment when below min amount
         vault.pokeQueue();
+
+        // No new position should be created (reinvestment was skipped)
+        uint256 posCountAfter = vault.getPositionCount();
+        assertEq(posCountAfter, posCountBefore, "No new position should be created when below minReinvestAmount");
+
+        // Idle HOLLAR should remain unchanged
+        assertEq(vault.idleHollar(), idle, "Idle HOLLAR should remain unchanged when reinvestment is skipped");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -96,35 +109,56 @@ contract ReinvestTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_reinvest_respectsTvlCap() public {
-        // 1. Deposit
+        // 1. Set a TVL cap that allows the initial deposit but will cap reinvestment.
+        //    After processing a 10,000 HOLLAR position with yield, idle will be ~10,000 + yield.
+        //    We set the cap so that reinvestment can only use part of the idle.
+        //    totalAssets after processing: idle = principal + yield (~10,295 for 61 days at 18%).
+        //    totalInvestedPrincipal = 0 (position is redeemed), totalStaleValue = 0.
+        //    _reinvest caps: totalInvestedPrincipal + totalStaleValue + amount <= tvlCap
+        //    So cap = half of idle means reinvest amount = cap (since invested = 0).
+        vm.prank(admin);
+        vault.setTvlCap(TEN_THOUSAND_HOLLAR); // enough for the deposit
+
+        // 2. Deposit
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
-        // 2. Process position fully
+        // 3. Process position fully -> idle HOLLAR (principal + yield)
         _warpDays(61);
         _processPositionFull(0);
 
         uint256 idle = vault.idleHollar();
         assertGt(idle, 0, "Should have idle HOLLAR");
+        // idle > TEN_THOUSAND_HOLLAR because it includes yield
+        assertGt(idle, TEN_THOUSAND_HOLLAR, "Idle should include yield on top of principal");
 
-        // 3. Set TVL cap to just above current invested (0) + small portion of idle
-        //    After processing, totalInvestedPrincipal = 0, idle is principal + yield.
-        //    Set cap to half of idle so reinvest is capped.
-        uint256 halfIdle = idle / 2;
-        vm.prank(admin);
-        vault.setTvlCap(halfIdle);
+        // 4. Now set a tvlCap that is less than idle but >= totalAssets.
+        //    totalAssets = totalInvestedPrincipal(0) + accruedYield(0) + idle + totalStaleValue(0) = idle
+        //    So we can only set cap >= idle. But we want to CAP reinvestment.
+        //    _reinvest caps: totalInvestedPrincipal + totalStaleValue + amount <= tvlCap
+        //    After full processing, totalInvestedPrincipal = 0, so amount <= tvlCap.
+        //    Setting tvlCap = idle/2 would fail the setTvlCap check.
+        //    Instead, keep the cap at TEN_THOUSAND_HOLLAR (which is < idle = ~10,295).
+        //    Wait — setTvlCap requires newCap >= totalAssets(). totalAssets = idle here.
+        //    So we can't set it below idle. But we CAN keep the existing cap if it was set before.
+        //    The current tvlCap is already TEN_THOUSAND_HOLLAR which is < idle.
+        //    The _reinvest check is: totalInvestedPrincipal + totalStaleValue + amount > tvlCap
+        //    => 0 + 0 + amount > 10,000 => amount capped at 10,000.
+        //    Since idle > 10,000, the reinvest should only use 10,000.
 
-        // 4. Reinvest -- should only reinvest up to TVL cap
+        uint256 posCountBefore = vault.getPositionCount();
+
+        // 5. Reinvest -- should be capped at tvlCap
         vault.pokeQueue();
 
         // New position principal should be capped at tvlCap
-        (, uint256 principal, , , , ) = vault.getPosition(1);
-        assertEq(principal, halfIdle, "Reinvested principal should be capped at TVL cap");
+        (, uint256 principal, , , , ) = vault.getPosition(posCountBefore);
+        assertEq(principal, TEN_THOUSAND_HOLLAR, "Reinvested principal should be capped at TVL cap");
 
-        // idle should still have remainder
+        // idle should still have remainder (the yield portion beyond the cap)
         uint256 idleAfter = vault.idleHollar();
         assertApproxEqRel(
             idleAfter,
-            idle - halfIdle,
+            idle - TEN_THOUSAND_HOLLAR,
             0.01e18,
             "Remaining idle should be idle minus capped reinvest amount"
         );

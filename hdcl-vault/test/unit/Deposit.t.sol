@@ -89,7 +89,7 @@ contract DepositTest is BaseTest {
     //                    QUEUE CLEARING TESTS
     // ═══════════════════════════════════════════════════════════════════════
 
-    function test_deposit_clearsQueueFirst() public {
+    function test_deposit_doesNotClearQueue() public {
         // 1. Alice deposits to create a position
         uint256 aliceDeposit = TEN_THOUSAND_HOLLAR;
         uint256 aliceHdcl = _deposit(alice, aliceDeposit);
@@ -108,15 +108,18 @@ contract DepositTest is BaseTest {
         _requestRedeem(alice, redeemAmount);
         assertEq(vault.totalQueuedHdcl(), redeemAmount, "Queue should have Alice's request");
 
-        // 5. Bob deposits -- should clear Alice's queue entry using idleHollar
+        // 5. Bob deposits -- deposits go directly to Decentral, queue is NOT cleared
         uint256 bobDeposit = TEN_THOUSAND_HOLLAR;
-        uint256 aliceHollarBefore = hollar.balanceOf(alice);
         _deposit(bob, bobDeposit);
 
-        // Queue should be empty after Bob's deposit cleared it
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be cleared after Bob's deposit");
+        // Queue should still have Alice's request (deposit does not clear queue)
+        assertEq(vault.totalQueuedHdcl(), redeemAmount, "Queue should still have Alice's request after Bob's deposit");
 
-        // Alice should have received HOLLAR from the queue fulfillment
+        // 6. pokeQueue should clear the queue using idleHollar
+        uint256 aliceHollarBefore = hollar.balanceOf(alice);
+        vault.pokeQueue();
+
+        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be cleared after pokeQueue");
         uint256 aliceHollarAfter = hollar.balanceOf(alice);
         assertGt(aliceHollarAfter, aliceHollarBefore, "Alice should have received HOLLAR from queue");
     }
@@ -147,19 +150,24 @@ contract DepositTest is BaseTest {
     //                    IDLE HOLLAR / MIN REINVEST
     // ═══════════════════════════════════════════════════════════════════════
 
-    function test_deposit_remainderBelowMinReinvest() public {
+    function test_deposit_alwaysGoesToDecentral() public {
         // First, do a normal deposit so we're past the dead-shares branch
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
-        // minReinvestAmount defaults to 10e18 (10 HOLLAR)
-        // Deposit less than minReinvestAmount: the deposit goes to idleHollar
+        // Even a small deposit goes directly to Decentral (creates a new position)
         uint256 smallDeposit = 5e18; // 5 HOLLAR
         _deposit(bob, smallDeposit);
 
-        // The small deposit should go to idleHollar instead of creating a new position
-        assertGt(vault.idleHollar(), 0, "Idle HOLLAR should increase for sub-minReinvest deposit");
-        // Only 1 position from Alice's deposit
-        assertEq(vault.getPositionCount(), 1, "Should still have just 1 position");
+        // Deposit goes directly to Decentral, so idleHollar remains 0
+        assertEq(vault.idleHollar(), 0, "Idle HOLLAR should remain 0 after deposits");
+        // Both deposits create positions
+        assertEq(vault.getPositionCount(), 2, "Should have 2 positions (one per deposit)");
+        // totalInvestedPrincipal should include both deposits
+        assertEq(
+            vault.totalInvestedPrincipal(),
+            TEN_THOUSAND_HOLLAR + smallDeposit,
+            "Total invested should be sum of both deposits"
+        );
     }
 
     // ═══════════════════════════════════════════════════════════════════════

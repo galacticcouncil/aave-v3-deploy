@@ -3,7 +3,7 @@ pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
 import {HDCLVault} from "../../src/HDCLVault.sol";
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 contract AdminTest is BaseTest {
     /// @dev Helper to calculate expected yield: principal * apyWad * days / 365 / 1e18
@@ -15,19 +15,23 @@ contract AdminTest is BaseTest {
         return principal * apyWad * days_ * SECONDS_PER_DAY / (365 days * 1e18);
     }
 
+    /// @dev Build OZ v4 AccessControl revert string
+    function _accessControlRevert(address account, bytes32 role) internal pure returns (bytes memory) {
+        return bytes(string(abi.encodePacked(
+            "AccessControl: account ",
+            Strings.toHexString(account),
+            " is missing role ",
+            Strings.toHexString(uint256(role), 32)
+        )));
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     //                     PAUSE DEPOSITS
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_pauseDeposits_onlyAdmin() public {
         // Non-admin should revert
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                alice,
-                vault.ADMIN_ROLE()
-            )
-        );
+        vm.expectRevert(_accessControlRevert(alice, vault.ADMIN_ROLE()));
         vm.prank(alice);
         vault.pauseDeposits();
     }
@@ -68,13 +72,7 @@ contract AdminTest is BaseTest {
     }
 
     function test_setTvlCap_onlyAdmin() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                alice,
-                vault.ADMIN_ROLE()
-            )
-        );
+        vm.expectRevert(_accessControlRevert(alice, vault.ADMIN_ROLE()));
         vm.prank(alice);
         vault.setTvlCap(1e18);
     }
@@ -190,18 +188,12 @@ contract AdminTest is BaseTest {
         HDCLVault newImpl = new HDCLVault();
 
         // Non-upgrader should revert
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                alice,
-                vault.UPGRADER_ROLE()
-            )
-        );
+        vm.expectRevert(_accessControlRevert(alice, vault.UPGRADER_ROLE()));
         vm.prank(alice);
-        vault.upgradeToAndCall(address(newImpl), "");
+        vault.upgradeTo(address(newImpl));
 
         // Admin (who has UPGRADER_ROLE) should succeed
         vm.prank(admin);
-        vault.upgradeToAndCall(address(newImpl), "");
+        vault.upgradeTo(address(newImpl));
     }
 }

@@ -127,6 +127,11 @@ contract MockDecentralPool {
         poolToken.burn(tokenId);
     }
 
+    // ── View helpers ──────────────────────────────────────────────────────
+    function minimumInvestmentPeriodSeconds() external pure returns (uint256) {
+        return MIN_INVESTMENT_PERIOD;
+    }
+
     // ── Admin helpers for tests ──────────────────────────────────────────
     function setAPY(uint256 newAPY) external {
         fixedAPYWad = newAPY;

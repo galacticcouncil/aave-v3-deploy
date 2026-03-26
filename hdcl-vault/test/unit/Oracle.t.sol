@@ -2,10 +2,15 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
+import {WDCLOracle} from "../../src/WDCLOracle.sol";
 
 contract OracleTest is BaseTest {
+    WDCLOracle public oracle;
+
     function setUp() public override {
         super.setUp();
+        // Deploy oracle pointing at the vault
+        oracle = new WDCLOracle(address(vault));
         // Seed the vault with a deposit so totalSupply > 0 and exchange rate is meaningful
         _deposit(alice, TEN_THOUSAND_HOLLAR);
     }
@@ -13,23 +18,22 @@ contract OracleTest is BaseTest {
     // ─── latestRoundData ─────────────────────────────────────────────────
 
     function test_latestRoundData_answerMatchesExchangeRate() public view {
-        (, int256 answer,,,) = vault.latestRoundData();
+        (, int256 answer,,,) = oracle.latestRoundData();
         uint256 rate = vault.exchangeRate();
-        assertEq(uint256(answer), rate, "answer should equal exchangeRate()");
+        // Oracle returns rate / 1e10 (8 decimals)
+        assertEq(uint256(answer), rate / 1e10, "answer should equal exchangeRate / 1e10");
     }
 
     function test_latestRoundData_updatedAtMatchesBlockTimestamp() public {
-        // Warp to a known timestamp so we can check
         vm.warp(1_700_000_000);
-        (,, uint256 startedAt, uint256 updatedAt,) = vault.latestRoundData();
+        (,, uint256 startedAt, uint256 updatedAt,) = oracle.latestRoundData();
         assertEq(updatedAt, block.timestamp, "updatedAt should equal block.timestamp");
         assertEq(startedAt, block.timestamp, "startedAt should equal block.timestamp");
     }
 
     function test_latestRoundData_roundIdMatchesBlockNumber() public {
-        // Roll to a known block so we can check
         vm.roll(42);
-        (uint80 roundId,,,, uint80 answeredInRound) = vault.latestRoundData();
+        (uint80 roundId,,,, uint80 answeredInRound) = oracle.latestRoundData();
         assertEq(uint256(roundId), block.number, "roundId should equal block.number");
         assertEq(uint256(answeredInRound), block.number, "answeredInRound should equal block.number");
     }
@@ -37,12 +41,11 @@ contract OracleTest is BaseTest {
     // ─── getRoundData ────────────────────────────────────────────────────
 
     function test_getRoundData_returnsSameAsLatestRoundData() public view {
-        // getRoundData ignores the roundId parameter and returns current state
         (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) =
-            vault.getRoundData(999);
+            oracle.getRoundData(999);
 
         (uint80 latestRoundId, int256 latestAnswer, uint256 latestStartedAt, uint256 latestUpdatedAt, uint80 latestAnsweredInRound) =
-            vault.latestRoundData();
+            oracle.latestRoundData();
 
         assertEq(roundId, latestRoundId, "roundId should match");
         assertEq(answer, latestAnswer, "answer should match");
@@ -51,27 +54,38 @@ contract OracleTest is BaseTest {
         assertEq(answeredInRound, latestAnsweredInRound, "answeredInRound should match");
     }
 
-    // ─── oracleDescription & oracleVersion ───────────────────────────────
+    // ─── Oracle metadata ────────────────────────────────────────────────
 
-    function test_oracleDescription_returnsCorrectString() public view {
-        string memory desc = vault.oracleDescription();
-        assertEq(desc, "HDCL / HOLLAR", "oracle description should be 'HDCL / HOLLAR'");
+    function test_oracleDecimals() public view {
+        assertEq(oracle.decimals(), 8, "oracle decimals should be 8");
     }
 
-    function test_oracleVersion_returnsOne() public view {
-        uint256 v = vault.oracleVersion();
-        assertEq(v, 1, "oracle version should be 1");
+    function test_oracleDescription() public view {
+        assertEq(oracle.description(), "wDCL / HOLLAR", "oracle description should be 'wDCL / HOLLAR'");
+    }
+
+    function test_oracleVersion() public view {
+        assertEq(oracle.version(), 1, "oracle version should be 1");
     }
 
     // ─── Exchange rate appreciation reflects in oracle ────────────────────
 
     function test_latestRoundData_rateAppreciatesWithTime() public {
-        (, int256 answerBefore,,,) = vault.latestRoundData();
+        (, int256 answerBefore,,,) = oracle.latestRoundData();
 
-        // Warp forward 30 days so yield accrues
         _warpDays(30);
 
-        (, int256 answerAfter,,,) = vault.latestRoundData();
+        (, int256 answerAfter,,,) = oracle.latestRoundData();
         assertGt(uint256(answerAfter), uint256(answerBefore), "exchange rate should increase after time passes");
+    }
+
+    // ─── Reverts when vault is paused ────────────────────────────────────
+
+    function test_latestRoundData_revertsWhenPaused() public {
+        vm.prank(admin);
+        vault.pause();
+
+        vm.expectRevert("Vault paused");
+        oracle.latestRoundData();
     }
 }

@@ -148,25 +148,22 @@ contract ExchangeRateTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_exchangeRate_includesIdleHollar() public {
-        // First deposit creates a position
+        // Deposit creates a position in Decentral
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
-        // Set minReinvestAmount very high so deposit goes to idleHollar
-        vm.prank(admin);
-        vault.setMinReinvestAmount(100_000e18);
+        // Warp past maturity and process position fully to get idle HOLLAR
+        // (deposits go directly to Decentral, so idle only comes from matured positions)
+        _warpDays(61);
+        _processPositionFull(0);
 
-        // Second deposit goes entirely to idleHollar
-        uint256 idleDeposit = HUNDRED_HOLLAR;
-        _deposit(bob, idleDeposit);
-
-        // Verify idleHollar is tracked
-        assertEq(vault.idleHollar(), idleDeposit, "Idle HOLLAR should equal Bob's deposit");
+        uint256 idle = vault.idleHollar();
+        assertGt(idle, 0, "Idle HOLLAR should be > 0 after processing matured position");
 
         // totalAssets should include idle HOLLAR
         uint256 totalAssets = vault.totalAssets();
         assertGe(
             totalAssets,
-            TEN_THOUSAND_HOLLAR + idleDeposit,
+            idle,
             "Total assets should include idle HOLLAR"
         );
     }

@@ -352,7 +352,7 @@ contract RedemptionQueueTest is BaseTest {
     //            QUEUE CLEARING ON DEPOSIT
     // ═══════════════════════════════════════════════════════════════════════
 
-    function test_queueClearingOnDeposit() public {
+    function test_queueClearingViaPokeQueue() public {
         // 1. Alice deposits, matures, processes -> idle HOLLAR
         uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
@@ -366,17 +366,17 @@ contract RedemptionQueueTest is BaseTest {
 
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
 
-        // 3. Bob deposits -- should clear queue entries using existing idle HOLLAR
-        _deposit(bob, TEN_THOUSAND_HOLLAR);
+        // 3. Deposits do NOT clear the queue; use pokeQueue instead
+        vault.pokeQueue();
 
         // Queue should be cleared
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be cleared after Bob's deposit");
+        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be cleared after pokeQueue");
 
         // Alice should have received HOLLAR
         assertGt(
             hollar.balanceOf(alice),
             aliceHollarBefore,
-            "Alice should receive HOLLAR from queue clearing on deposit"
+            "Alice should receive HOLLAR from queue clearing via pokeQueue"
         );
     }
 
@@ -385,6 +385,14 @@ contract RedemptionQueueTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_estimatedWaitTime() public {
+        // Mock the principalWithdrawalDelaySeconds function on the pool
+        // (the mock doesn't implement it but the vault's getEstimatedWaitTime needs it)
+        vm.mockCall(
+            address(pool),
+            abi.encodeWithSignature("principalWithdrawalDelaySeconds()"),
+            abi.encode(FORTY_EIGHT_HOURS)
+        );
+
         // Alice deposits -- creates position with 60 day maturity
         uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
 
