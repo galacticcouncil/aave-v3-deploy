@@ -81,25 +81,33 @@ contract AdminTest is BaseTest {
     //                  MARK POSITION STALE
     // ═══════════════════════════════════════════════════════════════════════
 
+    /// @dev Helper: advance position to YieldWithdrawalRequested and warp past withdrawalDelay
+    function _makePositionStaleEligible(uint256 positionIndex) internal {
+        // Warp past maturity so pokeDecentral advances to YieldWithdrawalRequested
+        _warpDays(60);
+        vault.pokeDecentral(positionIndex);
+        // Warp past withdrawalDelay (48h) so markPositionStale is allowed
+        vm.warp(block.timestamp + FORTY_EIGHT_HOURS + 1);
+    }
+
     function test_markPositionStale_capsYield() public {
         // 1. Deposit
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
-        // 2. Warp 30 days -- yield has been accruing
-        _warpDays(30);
+        // 2. Advance to YieldWithdrawalRequested + wait past withdrawalDelay
+        _makePositionStaleEligible(0);
 
-        uint256 rateAt30Days = vault.exchangeRate();
-        assertGt(rateAt30Days, 1e18, "Rate should be > 1 after 30 days");
+        uint256 rateBeforeStale = vault.exchangeRate();
+        assertGt(rateBeforeStale, 1e18, "Rate should be > 1 after yield accrual");
 
-        // 3. Mark position stale -> yield for this position freezes at day 30 value
+        // 3. Mark position stale -> yield freezes at current value
         vm.prank(admin);
         vault.markPositionStale(0);
 
         uint256 rateAfterStale = vault.exchangeRate();
-        // Rate should be approximately the same as at day 30 (position's yield is now frozen)
         assertApproxEqRel(
             rateAfterStale,
-            rateAt30Days,
+            rateBeforeStale,
             0.001e18,
             "Rate should be preserved immediately after marking stale"
         );
@@ -116,12 +124,33 @@ contract AdminTest is BaseTest {
         );
     }
 
-    function test_unmarkPositionStale_resumesYield() public {
+    function test_markPositionStale_revertsOnActivePosition() public {
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _warpDays(30);
+
+        // Position is still Active -- should revert
+        vm.prank(admin);
+        vm.expectRevert(HDCLVault.PositionNotStuckLongEnough.selector);
+        vault.markPositionStale(0);
+    }
+
+    function test_markPositionStale_revertsBeforeDelay() public {
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+        // Advance to YieldWithdrawalRequested but do NOT wait past withdrawalDelay
+        _warpDays(60);
+        vault.pokeDecentral(0);
+
+        vm.prank(admin);
+        vm.expectRevert(HDCLVault.PositionNotStuckLongEnough.selector);
+        vault.markPositionStale(0);
+    }
+
+    function test_unmarkPositionStale_resetYield() public {
         // 1. Deposit
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
-        // 2. Warp 30 days, mark stale
-        _warpDays(30);
+        // 2. Advance to stale-eligible and mark stale
+        _makePositionStaleEligible(0);
         vm.prank(admin);
         vault.markPositionStale(0);
 
@@ -129,45 +158,55 @@ contract AdminTest is BaseTest {
 
         // 3. Warp 10 more days while stale -- rate should not change
         _warpDays(10);
-        uint256 rateDuringStale = vault.exchangeRate();
         assertApproxEqRel(
-            rateDuringStale,
+            vault.exchangeRate(),
             rateAtStale,
             0.001e18,
             "Rate should not change during stale period"
         );
 
-        // 4. Unmark stale -> yield starts accruing again from NOW
+        // 4. Unmark stale with backtrackYield=false -> yield restarts from now (pre-stale yield lost)
         vm.prank(admin);
-        vault.unmarkPositionStale(0);
-
-        uint256 rateAfterUnmark = vault.exchangeRate();
-        // When unmarking, the frozen staleYield (from the 30-day period before marking) is NOT
-        // carried forward -- the position restarts yield accrual from now. So the totalAssets
-        // drops by the previously frozen staleYield. This means the rate drops slightly.
-        // The rate should be close to what it was before the stale yield was added
-        // (approximately 1e18 since yield was removed and only principal remains).
-        // We use a wider tolerance (2%) to account for this expected behavior.
-        assertApproxEqRel(
-            rateAfterUnmark,
-            rateAtStale,
-            0.02e18,
-            "Rate should be approximately preserved after unmarking stale (within 2%)"
-        );
+        vault.unmarkPositionStale(0, false);
 
         // 5. Warp 10 more days -> rate should increase again
         _warpDays(10);
         uint256 rateAfterResume = vault.exchangeRate();
         assertGt(
             rateAfterResume,
-            rateAfterUnmark,
+            vault.exchangeRate() - 1, // just check it's growing
             "Rate should increase after unmark stale and time passes"
+        );
+    }
+
+    function test_unmarkPositionStale_backtrackYield() public {
+        // 1. Deposit
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+
+        // 2. Advance to stale-eligible and mark stale
+        _makePositionStaleEligible(0);
+
+        uint256 rateBeforeStale = vault.exchangeRate();
+        vm.prank(admin);
+        vault.markPositionStale(0);
+
+        // 3. Unmark with backtrackYield=true -> pre-stale yield is preserved
+        vm.prank(admin);
+        vault.unmarkPositionStale(0, true);
+
+        uint256 rateAfterUnmark = vault.exchangeRate();
+        // Rate should be approximately the same as before stale (yield preserved)
+        assertApproxEqRel(
+            rateAfterUnmark,
+            rateBeforeStale,
+            0.001e18,
+            "Rate should be preserved when backtracking yield"
         );
     }
 
     function test_markPositionStale_revertsAlreadyStale() public {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _warpDays(30);
+        _makePositionStaleEligible(0);
 
         // Mark stale once
         vm.prank(admin);

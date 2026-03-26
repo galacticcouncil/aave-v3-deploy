@@ -259,5 +259,5 @@ interface IHDCLVault {
     /// @notice Removes the stale mark from a position, returning it to normal processing.
     /// @dev Restricted to admin role. Used when a previously stale position becomes responsive.
     /// @param positionIndex The index of the position to unmark.
-    function unmarkPositionStale(uint256 positionIndex) external;
+    function unmarkPositionStale(uint256 positionIndex, bool backtrackYield) external;
 }

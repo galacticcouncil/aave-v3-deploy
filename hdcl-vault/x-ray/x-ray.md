@@ -1,18 +1,19 @@
 # X-Ray Report
 
 > HDCL Vault (Hydrated Decentral) | 677 nSLOC | a4f73f9 (`feat/hdcl-vault`) | Foundry | 26/03/26
+> Spec: `.claude/HDCL-vault-specification.md` v0.1 (2026-03-10)
 
 ---
 
 ## 1. Protocol Overview
 
-**What it does:** A fungible ERC-20 yield-bearing wrapper around Decentral Protocol's fixed-rate NFT lending positions, converting illiquid time-locked NFTs into liquid HDCL tokens.
+**What it does:** A fungible ERC-20 yield-bearing wrapper around Decentral Protocol's fixed-rate NFT lending positions, converting illiquid time-locked NFTs into a single liquid HDCL token (per spec §1).
 
 - **Users**: Depositors provide HOLLAR stablecoin and receive HDCL tokens; redeemers queue HDCL for async conversion back to HOLLAR
-- **Core flow**: Deposit HOLLAR → vault deposits into Decentral Pool → receives NFT position → mints HDCL at current exchange rate → yield accrues → exchange rate appreciates
-- **Key mechanism**: Non-rebasing share-token model. `totalAssets()` computed as `totalInvestedPrincipal + accruedYield + idleHollar + totalStaleValue`. Exchange rate = `totalAssets * WAD / totalSupply`
-- **Token model**: HDCL is the vault share token (ERC-20). HOLLAR is the underlying stablecoin. Decentral positions are NFTs held by the vault
-- **Admin model**: Single `ADMIN_ROLE` controls all configuration (TVL cap, oracle, pause, stale marking). Separate `UPGRADER_ROLE` for UUPS upgrades. All admin actions are instant — no timelock or multisig enforced on-chain
+- **Core flow**: Deposit HOLLAR → vault deposits into Decentral → receives NFT position → mints HDCL at current exchange rate → yield accrues → exchange rate appreciates (per spec §2)
+- **Key mechanism**: Non-rebasing exchange rate model (per spec: "like Bifrost's vDOT"). `totalAssets()` computed in O(1) via aggregated accumulators `yieldRateSum`/`yieldOffsetSum`. Decentral uses simple interest, same formula mirrored in vault (per spec §4.3)
+- **Token model**: HDCL is the vault share token (ERC-20, 18 decimals matching HOLLAR). HOLLAR is the underlying stablecoin. Decentral positions are NFTs held by the vault (per spec §3)
+- **Admin model**: Single `ADMIN_ROLE` (per spec: "governance EOA managed through Hydration governance") controls all configuration. Separate `UPGRADER_ROLE` for UUPS upgrades. All admin actions instant — no timelock or multisig enforced on-chain. (Per spec §4.8): "There is no admin function to withdraw vault funds or NFTs. The only way HOLLAR leaves the vault is through the redemption queue or reinvestment into Decentral."
 
 For a visual overview of the protocol's architecture, see the [architecture diagram](architecture.svg).
 
@@ -23,9 +24,35 @@ For a visual overview of the protocol's architecture, see the [architecture diag
 | Vault Core | HDCLVault.sol | 621 | ERC-20 token + vault logic + deposit/redeem/queue processing + position lifecycle |
 | Oracle | WDCLOracle.sol | 56 | Chainlink-compatible price feed exposing HDCL exchange rate for external consumers |
 
+### Spec Deviations
+
+The following are differences between the spec (v0.1, 2026-03-10) and the current code at `a4f73f9`. These represent design decisions made post-spec — auditors should verify each is intentional.
+
+1. **Oracle split into separate contract** — Spec §4.1 says vault inherits `AggregatorV3Interface`. Code splits oracle into standalone `WDCLOracle` contract. This resolves the `decimals()` conflict (ERC-20 returns 18, oracle needs 8) noted in the prior review. *Improvement over spec.*
+
+2. **Function merges: `pokeDecentral` / `pokeQueue`** — Spec §4.5/§4.6/§4.7 defines three separate functions: `processPosition()`, `processQueue()`, `reinvest()`. Code merges these into `pokeDecentral(positionIndex)` and `pokeQueue()` (queue + reinvest). *Behavioral change — reinvest logic now runs when queue can't progress, not only when `totalQueuedHdcl == 0`.*
+
+3. **`markPositionStale` has no withdrawal-delay guard** — Spec §4.5 requires position to be "stuck in a withdrawal-requested state for longer than `WITHDRAWAL_DELAY`". Code allows admin to mark ANY non-redeemed position stale. *Weaker guard than spec.*
+
+4. **`totalAssets` includes `totalStaleValue`** — Spec §4.3: `totalAssets = totalInvestedPrincipal + accruedYield + idleHollar`. Code adds `+ totalStaleValue` to account for stale positions removed from active yield calculation. *New feature not in spec.*
+
+5. **`setTvlCap` enforces `newCap >= totalAssets()`** — Spec §4.8: "Can be decreased (no forced withdrawals)". Code prevents setting cap below current totalAssets. *Stricter guard than spec — prevents cap from being meaningless.*
+
+6. **Dynamic investment period** — Spec §4.1 hardcodes `INVESTMENT_PERIOD = 5,184,000`. Code reads from `decentralPool.minimumInvestmentPeriodSeconds()` dynamically. *More flexible.*
+
+7. **`minRedeemAmount` added** — Not in spec. Code requires minimum 1 HDCL to request redemption, protecting from DoS via dust requests.
+
+8. **`setOracle()` added** — Not in spec. Allows admin to change oracle address at any time.
+
+9. **Queue uses mapping with head/tail** — Spec §4.6 uses array with `.active` field. Code uses `mapping(uint256 => RedemptionRequest)` with `queueHead`/`queueTail` pattern. *Gas optimization.*
+
+10. **`WithdrawalDelayed` event defined but never emitted** — Spec §4.8 says vault should emit this when positions are stuck > 96 hours. Event exists in code but no logic triggers it.
+
+11. **TVL cap check in deposit includes `totalStaleValue`** — Spec §4.2: `totalInvestedPrincipal + idleHollar + hollarAmount <= tvlCap`. Code: `totalInvestedPrincipal + idleHollar + totalStaleValue + hollarAmount > tvlCap`. *Accounts for stale value in cap — tighter.*
+
 ### How It Fits Together
 
-The core trick: The vault abstracts Decentral Protocol's fixed-rate NFT positions into a fungible token by tracking all positions' principal and APY in aggregate buckets, computing yield in O(1) via `yieldRateSum` and `yieldOffsetSum`.
+The core trick: The vault abstracts Decentral Protocol's fixed-rate NFT positions into a fungible token by tracking all positions' principal and APY in aggregate buckets, computing yield in O(1) via `yieldRateSum` and `yieldOffsetSum` (per spec §4.3: "This is exact, not an approximation, because Decentral uses simple interest").
 
 ### Deposit Flow
 
@@ -41,7 +68,7 @@ User
    ├─ positions.push(new NFTPosition)
    └─ _addToBucket(apyWad, principal, timestamp)
 ```
-*First deposit mints DEAD_SHARES (1000) to 0xdead to mitigate share inflation.*
+*First deposit mints DEAD_SHARES (1000) to 0xdead to mitigate share inflation (per spec §4.2: "first deposit mints dead shares for inflation protection").*
 
 ### Position Lifecycle (pokeDecentral)
 
@@ -57,12 +84,12 @@ Anyone
    ├─ YieldClaimed → PrincipalWithdrawalRequested
    │  └─ DecentralPool.requestPrincipalWithdrawal(tokenId)
    └─ PrincipalWithdrawalRequested → Redeemed
-      ├─ DecentralPool.executePrincipalWithdrawal(tokenId)  ◄── requires approval + delay
+      ├─ DecentralPool.executePrincipalWithdrawal(tokenId)  ◄── requires approval + 48h delay
       ├─ _adjustBucketOnPrincipalRedemption(pos)
       ├─ idleHollar += principalReceived
       └─ _processQueueWithHollar(idleHollar, rate)
 ```
-*Each `try` block silently returns on failure — positions retry on next call.*
+*(Per spec §4.4): "Yield MUST be claimed before principal. If `executePrincipalWithdrawal()` is called without first claiming yield, the NFT is burned by Decentral and all accrued yield is permanently lost." — enforced by the state machine.*
 
 ### Redemption Queue (pokeQueue)
 
@@ -73,11 +100,11 @@ Anyone
    │  ├─ FIFO: iterate queueHead → queueTail (max 50)
    │  ├─ Full fulfillment: _burn(escrowedHdcl), hollar.safeTransfer(user)
    │  └─ Partial fulfillment: burn proportional HDCL, transfer proportional HOLLAR
-   └─ If queue empty + idleHollar >= minReinvestAmount → _reinvest()
+   └─ If queue can't progress + idleHollar >= minReinvestAmount → _reinvest()
       ├─ DecentralPool.deposit(amount) → new position
       └─ _addToBucket(apyWad, amount, timestamp)
 ```
-*Reinvestment only happens when queue cannot make progress or is empty.*
+*(Per spec §4.6): HDCL escrowed but NOT burned at request time — "The exchange rate is unaffected by queueing. The user continues to earn yield proportionally while waiting."*
 
 ---
 
@@ -87,126 +114,134 @@ Anyone
 
 > Protocol classified as: **Yield Aggregator** with **Liquid Staking** characteristics
 
-The vault follows the yield aggregator pattern (deposit underlying → receive share token → yield accrues → exchange rate increases) but without ERC-4626 compliance. The withdrawal queue and exchange-rate-based derivative token add liquid staking characteristics.
+The vault follows the yield aggregator pattern (deposit underlying → receive share token → yield accrues → exchange rate increases) but without ERC-4626 compliance. The withdrawal queue and exchange-rate-based derivative token add liquid staking characteristics. (Per spec §1): designed for composability as Aave V3 collateral and stableswap pool token.
 
 ### Actors & Adversary Model
 
 | Actor | Trust Level | Capabilities |
 |-------|-------------|-------------|
 | User | Untrusted | Deposit HOLLAR, request/cancel redemptions, transfer HDCL. Escrowed HDCL held by vault during pending redemptions |
-| Keeper Bot | Untrusted | Call `pokeDecentral()` and `pokeQueue()` — both permissionless. Drives position lifecycle and queue processing |
-| ADMIN_ROLE | Trusted | All operational functions instant: pause/unpause, pauseDeposits/unpauseDeposits, setTvlCap, setMinReinvestAmount, setMinRedeemAmount, setOracle, markPositionStale/unmarkPositionStale. No on-chain timelock on any action |
+| Keeper Bot | Untrusted | Call `pokeDecentral()` and `pokeQueue()` — permissionless (per spec §5: "no special role needed"). Multiple keepers can run concurrently |
+| ADMIN_ROLE | Trusted | All operational functions instant: pause/unpause, pauseDeposits/unpauseDeposits, setTvlCap, setMinReinvestAmount, setMinRedeemAmount, setOracle, markPositionStale/unmarkPositionStale. (Per spec §4.8): "No admin function to withdraw vault funds or NFTs" — extraction limited to indirect manipulation |
 | UPGRADER_ROLE | Trusted | Authorize UUPS proxy upgrades — instant, no timelock. Can change all contract logic |
-| DEFAULT_ADMIN_ROLE | Trusted | Grant/revoke ADMIN_ROLE and UPGRADER_ROLE. Inherited from AccessControlUpgradeable |
+| DEFAULT_ADMIN_ROLE | Trusted | Grant/revoke ADMIN_ROLE and UPGRADER_ROLE |
 
 **Adversary Ranking** (ordered by threat level):
 
-1. **Compromised admin/upgrader** — Holds instant, unrestricted power to change oracle, mark positions stale, pause operations, or upgrade the entire contract. No timelock buffer exists.
-2. **Share inflation attacker (first depositor)** — Canonical vault attack. Mitigated by DEAD_SHARES but relevant to verify the mitigation's completeness.
-3. **Exchange rate manipulator** — Manipulates `totalAssets()` to inflate/deflate share price. The vault uses internal accounting (not `balanceOf`) for invested principal, reducing direct donation attack surface. However, `idleHollar` is an internal counter — discrepancies between it and actual HOLLAR balance could arise.
-4. **Queue front-runner** — Exploits timing between exchange rate changes and queue processing to receive HOLLAR at favorable rates.
-5. **Decentral Pool failure** — If the external Decentral Pool is compromised, paused, or becomes insolvent, all vault principal is at risk with no diversification or emergency withdrawal mechanism.
+1. **Compromised admin/upgrader** — Holds instant, unrestricted power to change oracle, mark positions stale, pause operations, or upgrade the entire contract. (Per spec §6.2): flash loans disabled on Hydration, so instant oracle manipulation through flash loans is not possible, but compromised admin key remains the top threat.
+2. **Share inflation attacker (first depositor)** — Canonical vault attack. (Per spec §6.2): mitigated by "dead shares" on first deposit. Code implements DEAD_SHARES = 1000.
+3. **Exchange rate manipulator** — Manipulates `totalAssets()` to inflate/deflate share price. (Per spec §6.2): "idleHollar is tracked as state variable, not derived from balanceOf(). Donated HOLLAR does not affect the exchange rate." (per code) — verified correct.
+4. **Queue front-runner** — Exploits timing between exchange rate changes and queue processing. (Per spec §6.2): "Front-running processPosition() has no economic benefit" — but this doesn't address front-running queue processing at favorable rates.
+5. **Decentral Pool failure** — (Per spec §7.1): "If Decentral shuts down permanently, all pending withdrawal requests should still be processable." If Decentral fails to approve within SLA, admin marks stale and pauses deposits.
 
 See [entry-points.md](entry-points.md) for the full permissionless entry point map.
 
 ### Trust Boundaries
 
-1. **Vault ↔ Decentral Pool**: The vault fully trusts DecentralPool to correctly handle deposits, yield calculations, approval flows, and principal returns. If Decentral withholds approvals, positions become stuck (mitigated by `markPositionStale`). If Decentral returns less principal/yield than expected, `idleHollar` tracking diverges from actual balance.
+1. **Vault ↔ Decentral Pool**: The vault fully trusts DecentralPool. (Per spec §6.2): "Legal SLA guarantees 48-hour turnaround. Automatic deposit pause if delayed > 96 hours." Code does NOT implement automatic pause — it relies on keeper bot monitoring (spec deviation #10: `WithdrawalDelayed` event never emitted).
 
-2. **Admin boundary**: ADMIN_ROLE controls oracle address (instant change), TVL cap, stale marking, and pause. All operations execute instantly with no delay. `markPositionStale` freezes a position's yield at current level and moves its value to `totalStaleValue` — admin can manipulate this to affect `totalAssets()` and therefore exchange rate.
+2. **Admin boundary**: ADMIN_ROLE controls oracle, TVL cap, stale marking, pause — all instant. (Per spec §4.8): "There is no admin function to withdraw vault funds or NFTs." Verified in code — no direct extraction path. However, `markPositionStale` manipulates `totalAssets()` and therefore exchange rate, and `setOracle` redirects external consumers.
 
-3. **Upgrader boundary**: UPGRADER_ROLE can replace the entire implementation via UUPS. This is the highest-privilege action — full fund extraction possible through malicious upgrade.
+3. **Upgrader boundary**: UPGRADER_ROLE can replace the entire implementation via UUPS. This is the highest-privilege action — full fund extraction possible through malicious upgrade. No timelock.
 
-4. **Oracle boundary**: `setOracle` instantly changes the oracle address. The oracle is used by `getOraclePrice()` (view function) and by WDCLOracle for external consumers — not directly in vault accounting. However, if downstream protocols (e.g., Aave) rely on WDCLOracle, a malicious oracle change has external blast radius.
+4. **Oracle boundary**: `setOracle` (not in spec — code addition) instantly changes the oracle address. WDCLOracle is consumed by external protocols (Aave V3 per spec §4.3). A malicious oracle change has external blast radius.
 
 ### Key Attack Surfaces
 
-- **ADMIN_ROLE / UPGRADER_ROLE compromise** — All admin functions are instant with no timelock. `setOracle` can redirect the price feed, `markPositionStale` manipulates `totalAssets()`, and UUPS upgrade can replace all logic. A compromised admin EOA has unlimited extraction capability. `markPositionStale`/`unmarkPositionStale` in particular can shift value between `totalStaleValue` and active accounting, affecting exchange rate for all holders.
+- **ADMIN_ROLE / UPGRADER_ROLE compromise** — All admin functions are instant with no timelock. `setOracle` (not in spec) can redirect the price feed. `markPositionStale` is less restricted than spec intended (no withdrawal-delay guard — spec deviation #3). UUPS upgrade can replace all logic. (Per spec §4.8): no direct fund withdrawal, but admin can manipulate exchange rate via stale marking and indirect fund redirection via oracle change.
 
-- **Exchange rate manipulation via totalAssets()** — `totalAssets()` is computed from four components: `totalInvestedPrincipal`, accrued yield (O(1) via `yieldRateSum`/`yieldOffsetSum`), `idleHollar`, and `totalStaleValue`. The accrued yield calculation `(block.timestamp * yieldRateSum - yieldOffsetSum) / (SECONDS_PER_YEAR * WAD)` involves large intermediate values — overflow is possible with very large principals and high APYs. Rounding in deposit (line 325: `hollarAmount * supply / assets`) and queue processing (line 871, 894) determines who gains/loses fractional value.
+- **Exchange rate manipulation via totalAssets()** — `totalAssets()` is computed from four components: `totalInvestedPrincipal`, accrued yield (`block.timestamp * yieldRateSum - yieldOffsetSum`) / (`SECONDS_PER_YEAR * WAD`), `idleHollar`, and `totalStaleValue`. (Per spec §4.3): "This is exact (not an approximation) because positions within each bucket share the same APY and Decentral uses simple interest." The O(1) formula involves large intermediate values — `block.timestamp * yieldRateSum` could overflow with very large principals and high APYs. Rounding in deposit (line 325) and queue processing (lines 871, 894) use inverse formulas — rounding direction may not be symmetric.
 
-- **Redemption queue fairness and rate snapshot** — Queue processing uses the exchange rate at time of `_processQueueWithHollar` call, not at time of request submission. Between request and fulfillment, the exchange rate may change significantly. The `MAX_QUEUE_ITERATIONS = 50` cap means large queues process incrementally — a keeper can choose when to call `pokeQueue()`, selecting favorable rate moments. Partial fulfillment (line 894: `hdclToBurn = available * WAD / rate`) and full fulfillment (line 871: `hollarValue = remainingHdcl * rate / WAD`) use inverse formulas — rounding direction may not be symmetric.
+- **Redemption queue fairness and rate snapshot** — Queue processes at exchange rate at time of fulfillment, not request. (Per spec §4.6): "The escrowed HDCL remains part of totalSupply(). The exchange rate is unaffected by queueing. At fulfillment time, the HDCL is burned at the then-current rate, ensuring the user receives yield accrued during the wait period." This is intentional design, but a keeper can choose favorable timing for `pokeQueue()`. `MAX_QUEUE_ITERATIONS = 50` (not in spec) limits throughput.
 
-- **Decentral Pool external dependency** — All vault funds flow through DecentralPool. The vault has zero diversification — a single pool failure locks 100% of invested assets. The `try/catch` pattern in `pokeDecentral` silently swallows errors, potentially masking Decentral-side issues. There is no emergency withdrawal mechanism that bypasses the Decentral approval flow.
+- **Decentral Pool external dependency** — 100% of invested funds in one external pool. (Per spec §7.1): if Decentral pauses, "existing NFTs cannot be withdrawn until unpause" and "admin should call pauseDeposits() and markPositionStale()." The vault has no emergency withdrawal mechanism bypassing Decentral's approval flow. `try/catch` silently swallows errors.
 
-- **Stale position accounting** — `markPositionStale` removes a position from active yield calculation and snapshots its value into `totalStaleValue`. On `pokeDecentral` for stale positions (lines 431-433, 467-468), `totalStaleValue` is decremented. If the actual yield/principal received differs from the stale snapshot values, the delta impacts `totalAssets()` without compensation — positive difference benefits all holders, negative difference dilutes them.
+- **Stale position accounting** — `markPositionStale` removes a position from active yield calculation and snapshots value into `totalStaleValue`. (Per spec §4.5): should only be callable when position is "stuck in a withdrawal-requested state for longer than WITHDRAWAL_DELAY" — code has NO such guard (spec deviation #3). Admin can mark ANY non-redeemed position stale, arbitrarily shifting value between active and stale accounting, manipulating exchange rate.
 
 ### Upgrade Architecture Concerns
 
-- **No timelock on UUPS upgrades** — `_authorizeUpgrade` only requires `UPGRADER_ROLE` with no delay. A compromised upgrader key can deploy a malicious implementation instantly.
-- **No storage gap** — `HDCLVault.sol` does not declare `uint256[N] private __gap`. Future upgrades that add parent contracts or reorder storage could cause storage collisions.
-- **Implementation not self-destructed** — Constructor calls `_disableInitializers()` which prevents initialization of the implementation, but the implementation contract itself remains callable for view functions.
+- **No timelock on UUPS upgrades** — `_authorizeUpgrade` only requires `UPGRADER_ROLE` with no delay.
+- **No storage gap** — `HDCLVault.sol` does not declare `uint256[N] private __gap`. Future upgrades adding parent contracts could cause storage collisions.
+- **Implementation protection** — Constructor calls `_disableInitializers()` (good).
 
 ### Protocol-Type Concerns
 
 **As a Yield Aggregator:**
-- Share price calculation at `totalSupply == 0` returns `WAD` (1:1). The DEAD_SHARES mitigation (1000 wei to `0xdead`) prevents the classic inflation attack, but the minimum first deposit must exceed DEAD_SHARES (line 318). Verify this threshold is sufficient for the HOLLAR decimal precision.
-- `totalAssets()` uses purely internal accounting — `totalInvestedPrincipal`, `yieldRateSum`/`yieldOffsetSum`, `idleHollar`, `totalStaleValue`. This means direct HOLLAR donations to the vault are NOT reflected in `totalAssets()`, creating a permanent accounting gap between real balance and tracked assets.
-- The vault does not implement ERC-4626, so standard vault integration tools and security assumptions do not apply. Custom integrations must handle the async redemption queue model.
+- Share price at `totalSupply == 0` returns `WAD` (1:1). DEAD_SHARES (1000 wei to `0xdead`) prevents inflation attack (per spec §6.2). (Per spec §7.4): "Next depositor gets 1:1 rate. This is correct behavior."
+- `totalAssets()` uses purely internal accounting — direct HOLLAR donations are NOT reflected. (Per spec §6.2): "idleHollar is tracked as state variable... Donated HOLLAR does not affect the exchange rate." This creates a permanent gap between real balance and tracked assets — (per spec §7.5): "This dust accumulates harmlessly in idleHollar."
+- Not ERC-4626 compliant — custom async redemption model means standard vault integrations don't apply.
 
 **As Liquid Staking:**
-- The withdrawal queue creates illiquidity risk. If positions take 60+ days to mature (Decentral's `minimumInvestmentPeriodSeconds`) plus withdrawal delay, redeemers face extended wait times. No secondary market mechanism exists on-chain.
-- Exchange rate can only increase from yield, but `markPositionStale` followed by `unmarkPositionStale` resets `yieldStartTime` to `block.timestamp`, effectively erasing accrued yield for that position's contribution to the rate.
+- Withdrawal queue creates illiquidity risk. (Per spec §1): "Users can exit via the redemption queue (max ~62 days) or instantly via secondary markets (stableswap pool)." The stableswap pool is out of scope but is the intended fast-exit path.
+- `unmarkPositionStale` resets `yieldStartTime` to `block.timestamp`, erasing accrued yield for that position's contribution — correct behavior per spec intent (restart yield tracking after stale period).
 
 ### Temporal Risk Profile
 
 **Deployment & Initialization:**
-- `initialize()` uses `initializer` modifier — safe against re-initialization. However, the proxy deployment and `initialize()` call should be atomic (same transaction) to prevent front-running.
-- Initial state: `totalSupply == 0` allows first-depositor dynamics. DEAD_SHARES mitigation is present but only activates when the first real deposit occurs.
-- Roles (`DEFAULT_ADMIN_ROLE`, `ADMIN_ROLE`, `UPGRADER_ROLE`) are all granted to `_admin` parameter in `initialize()`. If this is an EOA, there's a single-key risk window until roles are transferred to a multisig.
+- `initialize()` uses `initializer` modifier — safe against re-initialization. Proxy deployment + initialize should be atomic. (Per spec §9): Phase 2 includes "Seed initial deposit to establish the 1:1 exchange rate and avoid first-depositor attack."
+- (Per spec §9): All roles initially granted to single admin address — single-key risk window until role transfer.
 
 **Market Stress:**
-- If Decentral Pool becomes illiquid or pauses withdrawals, the vault cannot process position redemptions. `markPositionStale` is the only admin recourse — it preserves `totalAssets()` accuracy but doesn't recover funds.
-- A large number of redemption requests during stress would queue up, and `MAX_QUEUE_ITERATIONS = 50` limits throughput per `pokeQueue()` call.
+- (Per spec §7.3): "If all vault deposits were made at the same time, all NFTs mature on the same day... exchange rate growth temporarily flattens." With continuous deposits, positions naturally stagger.
+- If Decentral Pool becomes illiquid, `markPositionStale` preserves `totalAssets()` accuracy but doesn't recover funds.
 
 ### Composability & Dependency Risks
 
 **Dependency Risk Map:**
 
 > **DecentralPool** — via `HDCLVault:deposit`, `requestYieldWithdrawal`, `executeYieldWithdrawal`, `requestPrincipalWithdrawal`, `executePrincipalWithdrawal`
-> - Assumes: Correct yield calculation based on `fixedAPYWad`, timely approval of withdrawals, principal returned in full
-> - Validates: NONE — vault uses `try/catch` on execute calls but does not validate amounts returned
+> - Assumes: Correct yield calculation based on `fixedAPYWad`, timely approval within 48h SLA (per spec §6.2), principal returned in full
+> - Validates: NONE — vault uses `try/catch` on execute calls, does not validate returned amounts
 > - Mutability: External contract, likely upgradeable (has UPGRADER_ROLE in interface)
-> - On failure: `try/catch` silently returns — position stays in current state, retried on next `pokeDecentral()` call
+> - On failure: `try/catch` silently returns — position stays in current state, retried next `pokeDecentral()` call
 
 > **PoolToken (NFT)** — via `DecentralPool` (indirect — vault receives NFTs via `onERC721Received`)
-> - Assumes: NFTs are minted correctly on deposit, ownership tracked correctly
+> - Assumes: NFTs minted correctly on deposit, ownership tracked correctly
 > - Validates: `onERC721Received` returns correct selector
 > - Mutability: External contract
-> - On failure: Deposit would revert if NFT mint fails
+> - On failure: Deposit reverts if NFT mint fails
 
 > **HOLLAR (Stablecoin)** — via `safeTransferFrom`, `safeTransfer`, `safeApprove`
-> - Assumes: Standard ERC-20 behavior, no fee-on-transfer, no rebasing, no blacklisting
+> - Assumes: Standard ERC-20 behavior, no fee-on-transfer, no rebasing, no blacklisting (per spec: "HOLLAR: 18 decimals")
 > - Validates: Uses SafeERC20 for all interactions
-> - Mutability: Unknown — if HOLLAR is upgradeable, behavior could change
+> - Mutability: Unknown — if upgradeable, behavior could change
 > - On failure: SafeERC20 reverts on failed transfer
 
 > **IAggregatorV3Interface (Oracle)** — via `HDCLVault.getOraclePrice()`, `WDCLOracle.latestRoundData()`
 > - Assumes: Positive price answer, correct decimals
-> - Validates: `require(answer > 0)` in getOraclePrice; no staleness check
-> - Mutability: Oracle address changeable instantly by admin
+> - Validates: `require(answer > 0)` in getOraclePrice; no staleness check. (Per spec §6.2): "The oracle is calculated from block.timestamp, so it can never be stale — it updates every block"
+> - Mutability: Oracle address changeable instantly by admin (`setOracle` — not in spec)
 > - On failure: Reverts with "Invalid oracle price"
 
 **Token Assumptions** (unvalidated):
-- HOLLAR: assumes no fee-on-transfer — impact if violated: `idleHollar` tracker would overstate actual balance, leading to failed transfers during queue fulfillment
-- HOLLAR: assumes no rebasing — impact if violated: `totalAssets()` would not reflect balance changes from rebasing, causing exchange rate drift
+- HOLLAR: assumes no fee-on-transfer — impact if violated: `idleHollar` tracker overstates actual balance, queue fulfillment transfers fail
+- HOLLAR: assumes no rebasing — impact if violated: `totalAssets()` drifts from reality
 
 ---
 
 ## 3. Invariants
 
-### Stated Invariants
+### Stated Invariants (per spec §6.3)
 
-- **Dead shares prevent inflation**: "Dead shares minted on first deposit to mitigate inflation attack" (`HDCLVault.sol:39`). DEAD_SHARES = 1000 minted to `0xdead` on first deposit.
+1. **Shares require backing**: `totalSupply() > 0 ⟹ totalAssets() > 0` — no way to have shares without backing
+2. **Idle never over-counted**: `idleHollar <= hollar.balanceOf(address(this))` — never over-count idle
+3. **Escrow sufficiency**: `totalQueuedHdcl <= balanceOf(address(vault))` — escrowed HDCL is in vault
+4. **NFT ownership**: Every NFT in `positions[]` with state != Redeemed must be owned by vault in PoolToken
+5. **Rate monotonicity**: `exchangeRate()` is monotonically non-decreasing under normal operation
+6. **Yield-before-principal**: Yield always claimed before principal for every position — enforced by state machine
 
-### Inferred Invariants
+### Stated Invariants (per spec, elsewhere)
 
-- **Accounting identity**: `totalAssets() == totalInvestedPrincipal + accruedYield + idleHollar + totalStaleValue`. Derived from `HDCLVault:totalAssets()`. If violated: exchange rate becomes incorrect, all deposits/redemptions use wrong price.
-- **Bucket consistency**: `yieldRateSum == Σ(apyWad_i × principal_i)` and `yieldOffsetSum == Σ(apyWad_i × principal_i × yieldStartTime_i)` for all non-stale positions. Derived from `_addToBucket`/`_removeFromBucket`. If violated: accrued yield calculation returns wrong value.
-- **Queue HDCL accounting**: `totalQueuedHdcl == Σ(hdclAmount - hdclFulfilled)` for all active queue entries. Derived from `requestRedeem`/`cancelRedeem`/`_processQueueWithHollar`. If violated: queue processing under/over-distributes HOLLAR.
-- **Position state monotonicity**: NFTState transitions only forward: Active → YWR → YC → PWR → Redeemed. Derived from `pokeDecentral` state machine. If violated: positions could be double-processed.
-- **Escrowed HDCL**: `balanceOf(address(vault)) >= totalQueuedHdcl`. HDCL is transferred to vault on `requestRedeem` and burned on fulfillment. If violated: queue fulfillment reverts.
-- **Exchange rate monotonicity**: Exchange rate should only increase over time from yield accrual, never decrease (absent admin stale operations). Derived from the non-rebasing model design.
+7. **No admin extraction** (per spec §4.8): "There is no admin function to withdraw vault funds or NFTs. The only way HOLLAR leaves the vault is through the redemption queue or reinvestment." (per code) — verified: no `withdraw` or `transferNFT` function exists.
+8. **Donation resistance** (per spec §6.2): "idleHollar tracked as state variable, not derived from balanceOf(). Donated HOLLAR does not affect exchange rate." (per code) — verified: `totalAssets()` uses `idleHollar` not `balanceOf`.
+9. **Queue rate neutrality** (per spec §4.6): "Burning HDCL at the exchange rate is proportionally neutral: (totalAssets - hollar) / (totalSupply - hdcl) = totalAssets / totalSupply". (per code) — rate calculated once per batch, so this holds within a single `_processQueueWithHollar` call.
+
+### Inferred Invariants (per code)
+
+- **Accounting identity**: `totalAssets() == totalInvestedPrincipal + accruedYield + idleHollar + totalStaleValue`. If violated: exchange rate incorrect, all deposits/redemptions use wrong price.
+- **Bucket consistency**: `yieldRateSum == Σ(apyWad × principal)` and `yieldOffsetSum == Σ(apyWad × principal × yieldStartTime)` for all non-stale positions. If violated: accrued yield calculation returns wrong value.
+- **Queue HDCL accounting**: `totalQueuedHdcl == Σ(hdclAmount - hdclFulfilled)` for active queue entries. If violated: queue processing under/over-distributes HOLLAR.
+- **Position state monotonicity**: NFTState transitions only forward: Active → YWR → YC → PWR → Redeemed. If violated: positions could be double-processed.
 
 ---
 
@@ -215,9 +250,11 @@ See [entry-points.md](entry-points.md) for the full permissionless entry point m
 | Aspect | Status | Notes |
 |--------|--------|-------|
 | README | Missing | No README in hdcl-vault/ |
-| NatSpec | Present | Good coverage on public functions in HDCLVault.sol; WDCLOracle has doc comments |
-| Spec/Whitepaper | Missing | No spec or whitepaper found |
-| Inline Comments | Adequate | Key sections have headers and brief inline comments; internal functions documented |
+| NatSpec | Present | Good coverage on public functions in HDCLVault.sol and WDCLOracle.sol |
+| Spec/Whitepaper | Present | `.claude/HDCL-vault-specification.md` v0.1 (52KB, 1047 lines) — comprehensive spec covering architecture, flows, security, edge cases |
+| Inline Comments | Adequate | Key sections have headers and brief inline comments |
+
+Spec quality is high — includes worked examples (Appendix B), explicit invariants (§6.3), attack vector mitigations (§6.2), and edge case analysis (§7). 11 spec deviations identified (see §1 above) — auditors should verify each is intentional.
 
 ---
 
@@ -242,10 +279,10 @@ See [entry-points.md](entry-points.md) for the full permissionless entry point m
 
 ### Gaps
 
-- **No fuzz testing**: The exchange rate math (`totalAssets`, `yieldRateSum`/`yieldOffsetSum` calculations) involves large intermediate products and division — high priority for stateless fuzz to find overflow/rounding edge cases.
-- **No stateful/invariant testing**: The position lifecycle state machine (5 states with transitions) and redemption queue (partial fulfillment, cancellation, head advancement) are prime candidates for invariant testing to verify accounting consistency.
-- **No formal verification**: The core accounting invariants (bucket consistency, queue HDCL tracking, exchange rate monotonicity) are suitable for formal verification.
-- **Branch coverage at 64%**: Significant untested branches in HDCLVault — likely edge cases in queue processing, stale position handling, and TVL cap enforcement.
+- **No fuzz testing**: Exchange rate math (`yieldRateSum`/`yieldOffsetSum` calculations) involves large intermediate products — high priority for stateless fuzz to find overflow/rounding edge cases.
+- **No stateful/invariant testing**: Position lifecycle state machine (5 states) and redemption queue (partial fulfillment, cancellation, head advancement) need invariant testing. (Per spec §6.3): six explicit invariants exist but none are encoded as on-chain assertions or off-chain property tests.
+- **No formal verification**: Core accounting invariants (bucket consistency, queue HDCL tracking, exchange rate monotonicity) are suitable for formal verification.
+- **Branch coverage at 64%**: Significant untested branches — likely edge cases in queue processing, stale position handling, and TVL cap enforcement.
 
 ---
 
@@ -268,7 +305,6 @@ See [entry-points.md](entry-points.md) for the full permissionless entry point m
 | Merge commits | 75 of 366 (20%) | Formal review process exists in parent repo |
 | Repo age | 2022-11-22 → 2026-03-26 | 3.3 years (parent repo); vault feature is ~3 days old |
 | Recent source activity (30d) | 10 commits | Active — rapid development burst |
-| Test co-change rate | Could not determine | Git analysis path mismatch; tests are visibly co-modified in recent commits |
 
 ### File Hotspots
 
@@ -281,8 +317,6 @@ See [entry-points.md](entry-points.md) for the full permissionless entry point m
 
 ### Security-Relevant Commits
 
-**Score** = weighted sum of fix-like signals: message keywords, diff patterns, change shape. **10+ warrants a manual diff.**
-
 | SHA | Date | Subject | Score | Key Signal |
 |-----|------|---------|------:|------------|
 | f0c4eac | 2026-03-26 | zero-address checks, oracle pause revert, stale yield fix, TVL cap guard, reinvest cap fix | 10 | Explicit security + oracle/pricing |
@@ -292,33 +326,33 @@ See [entry-points.md](entry-points.md) for the full permissionless entry point m
 
 | Library | Path | Upstream | Status | Notes |
 |---------|------|----------|--------|-------|
-| openzeppelin-contracts | lib/openzeppelin-contracts | OpenZeppelin | Submodule | Standard — pragma variations are OZ's own multi-version support |
+| openzeppelin-contracts | lib/openzeppelin-contracts | OpenZeppelin | Submodule | Standard |
 | openzeppelin-contracts-upgradeable | lib/openzeppelin-contracts-upgradeable | OpenZeppelin | Submodule | Standard |
 
 ### Security Observations
 
-- **Rapid development cycle**: 10 commits in ~3 days with significant logic changes (queue refactoring, stale position handling, TVL cap fixes). High velocity increases defect risk.
-- **Two-contributor codebase**: Initial scaffold by lolmcshizz (1436 LOC), all subsequent modifications by Yash Sharma. Single-developer modification pattern limits peer review of changes.
-- **Security-scored commit f0c4eac (score 10)**: Contains 5 distinct fixes in one commit — zero-address checks, oracle pause behavior, stale yield double-count fix, TVL cap guard, and reinvest cap fix. Each fix addresses a real vulnerability. The bundling suggests these were found during review rather than individual regression.
-- **Approval handling changes**: f2e2f10 explicitly removed max HOLLAR approval "for security reasons" — indicates security awareness in development.
-- **No fuzz or formal verification**: For a vault handling real stablecoin deposits with complex O(1) yield math, the absence of property-based testing is a significant gap.
+- **Rapid development cycle**: 10 commits in ~3 days with significant logic changes. High velocity increases defect risk.
+- **Two-contributor codebase**: Initial scaffold by lolmcshizz, all subsequent modifications by Yash Sharma. Single-developer modification pattern.
+- **Security-scored commit f0c4eac (score 10)**: 5 distinct fixes bundled — found during review, not caught by tests.
+- **Spec exists but code has diverged**: 11 deviations identified. Most are improvements, but #3 (markPositionStale without guard) and #10 (WithdrawalDelayed never emitted) are weaker than spec intent.
+- **No fuzz or formal verification**: For a vault with complex O(1) yield math and 6 spec-stated invariants, the absence of property-based testing is a significant gap.
 
 ### Cross-Reference Synthesis
 
-- **HDCLVault.sol** is both the highest-churn file (9 modifications) AND the sole contract with all attack surfaces identified in Section 2 — prioritize for deep review.
-- Security commit f0c4eac fixes stale yield double-counting and TVL cap underflow — both relate to the "Stale position accounting" and "Exchange rate manipulation" attack surfaces in Section 2.
-- The rapid development pace (10 commits in 3 days) with multiple security fixes suggests the codebase is still stabilizing — inferred invariants in Section 3 may not all hold under edge cases.
-- Branch coverage at 64% aligns with the "Queue fairness" and "Stale position" attack surfaces — these are likely the untested branches.
+- **HDCLVault.sol** is both the highest-churn file (9 modifications) AND the sole contract with all attack surfaces — prioritize for deep review.
+- Security commit f0c4eac fixes stale yield double-counting and TVL cap underflow — both relate to "Stale position accounting" and "Exchange rate manipulation" attack surfaces.
+- Spec deviation #3 (`markPositionStale` without withdrawal-delay guard) directly weakens the "ADMIN_ROLE compromise" attack surface — admin has more power than spec intended.
+- Branch coverage at 64% aligns with untested edge cases in queue processing and stale handling — the same areas with spec deviations.
 
 ---
 
 ## X-Ray Verdict
 
-**FRAGILE** — Unit tests exist with good coverage (88% line) but no fuzz, invariant, or formal verification for a vault with non-trivial O(1) yield math and async queue processing. All admin operations are instant with no on-chain timelock.
+**FRAGILE** — Unit tests exist with good coverage (88% line) but no fuzz, invariant, or formal verification for a vault with non-trivial O(1) yield math, 6 spec-stated invariants, and async queue processing. All admin operations are instant with no on-chain timelock. Comprehensive spec exists but code has 11 deviations, including weaker-than-spec admin guards.
 
 **Structural facts:**
 1. 677 nSLOC across 2 in-scope contracts (HDCLVault + WDCLOracle), with HDCLVault comprising 92% of the codebase
-2. 78 unit tests passing with 88% line / 64% branch coverage on HDCLVault; 0 fuzz tests, 0 invariant tests, 0 formal verification
-3. UUPS upgradeable with no timelock — UPGRADER_ROLE can replace implementation instantly
+2. 78 unit tests passing with 88% line / 64% branch coverage; 0 fuzz, 0 invariant, 0 formal verification — despite 6 explicit invariants in spec
+3. UUPS upgradeable with no timelock — UPGRADER_ROLE can replace implementation instantly; no storage gap declared
 4. 2 contributors to source; all 9 post-initial modifications by a single developer over 3 days
-5. 10 admin functions, all instant execution — no on-chain delay mechanism for any privileged action
+5. Comprehensive spec (1047 lines) with 11 identified code deviations — 2 weaken security posture vs spec intent (#3: stale guard, #10: delayed event)

@@ -38,7 +38,7 @@ contract BaseTest is Test, Constants, Events {
         HDCLVault implementation = new HDCLVault();
         bytes memory initData = abi.encodeCall(
             HDCLVault.initialize,
-            (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, admin)
+            (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, FORTY_EIGHT_HOURS, admin)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         vault = HDCLVault(address(proxy));
