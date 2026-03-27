@@ -249,4 +249,8 @@ contract ExchangeRateTest is BaseTest {
     function test_totalAssets_zeroBeforeDeposits() public view {
         assertEq(vault.totalAssets(), 0, "Total assets should be 0 before any deposits");
     }
+
+    function test_getAPYWad_matchesPool() public view {
+        assertEq(vault.getAPYWad(), APY_18_PERCENT, "getAPYWad returns pool APY");
+    }
 }

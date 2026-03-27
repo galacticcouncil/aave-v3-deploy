@@ -3,6 +3,7 @@ pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
 import {HDCLVault} from "../../src/HDCLVault.sol";
+import {WDCLOracle} from "../../src/WDCLOracle.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
@@ -696,6 +697,80 @@ contract AdminTest is BaseTest {
 
         vm.prank(admin);
         vault.unmarkPositionStale(0, false);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //           STALE POSITION LIFECYCLE (through Decentral)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Yield claim on a stale position deducts from totalStaleValue
+    function test_staleLifecycle_yieldClaimDeductsStaleValue() public {
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _makePositionStaleEligible(0);
+
+        vm.prank(admin);
+        vault.markPositionStale(0);
+
+        uint256 staleValueBefore = vault.totalStaleValue();
+        assertGt(staleValueBefore, 0);
+
+        // Approve yield and execute on the stale position
+        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        pool.approveYieldWithdrawal(tokenId);
+        vault.pokeDecentral(0);
+
+        // Stale yield deducted
+        uint256 staleValueAfter = vault.totalStaleValue();
+        assertLt(staleValueAfter, staleValueBefore, "totalStaleValue decreased after yield claim");
+    }
+
+    /// @notice Full stale lifecycle: mark stale -> yield -> principal -> Redeemed
+    function test_staleLifecycle_fullRedemption() public {
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _makePositionStaleEligible(0);
+
+        vm.prank(admin);
+        vault.markPositionStale(0);
+
+        assertGt(vault.totalStaleValue(), 0);
+
+        // Process yield
+        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        pool.approveYieldWithdrawal(tokenId);
+        vault.pokeDecentral(0); // yield claimed + principal requested
+
+        // Process principal
+        pool.approvePrincipalWithdrawal(tokenId);
+        vm.warp(block.timestamp + FORTY_EIGHT_HOURS + 1);
+        vault.pokeDecentral(0); // -> Redeemed
+
+        (, , , , , uint8 state) = vault.getPosition(0);
+        assertEq(state, 4, "Redeemed");
+        assertEq(vault.totalStaleValue(), 0, "totalStaleValue zeroed after full redemption");
+        assertGt(vault.idleHollar(), 0, "HOLLAR recovered");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //                       getOraclePrice
+    // ═══════════════════════════════════════════════════════════════════════
+
+    function test_getOraclePrice_revertsWithoutOracle() public {
+        vm.expectRevert("Oracle not set");
+        vault.getOraclePrice();
+    }
+
+    function test_getOraclePrice_returnsCorrectPrice() public {
+        // Deploy WDCLOracle and set it
+        WDCLOracle wdclOracle = new WDCLOracle(address(vault));
+        vm.prank(admin);
+        vault.setOracle(address(wdclOracle));
+
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+
+        uint256 price = vault.getOraclePrice();
+        // Oracle returns 8 decimals, getOraclePrice scales to 18
+        // At rate ~1e18: oracle answer = 1e8, price = 1e8 * 1e18 / 1e8 = 1e18
+        assertApproxEqRel(price, 1e18, 0.001e18, "Oracle price ~= 1e18 at 1:1 rate");
     }
 
     // ═══════════════════════════════════════════════════════════════════════

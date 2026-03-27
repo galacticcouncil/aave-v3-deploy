@@ -375,6 +375,27 @@ contract DepositTest is BaseTest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
+    //                        previewDeposit
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice previewDeposit when supply == 0: returns hollarAmount - DEAD_SHARES
+    function test_previewDeposit_zeroSupply() public view {
+        uint256 preview = vault.previewDeposit(TEN_THOUSAND_HOLLAR);
+        assertEq(preview, TEN_THOUSAND_HOLLAR - 1000, "Preview at zero supply = amount - dead shares");
+    }
+
+    /// @notice previewDeposit when supply > 0: matches actual deposit
+    function test_previewDeposit_withExistingSupply() public {
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _warpDays(30);
+
+        uint256 preview = vault.previewDeposit(TEN_THOUSAND_HOLLAR);
+        uint256 actual = _deposit(bob, TEN_THOUSAND_HOLLAR);
+
+        assertEq(preview, actual, "Preview should match actual deposit");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     //                          HELPERS
     // ═══════════════════════════════════════════════════════════════════════
 

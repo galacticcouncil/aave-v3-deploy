@@ -844,6 +844,148 @@ contract RedeemTest is BaseTest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
+    //           pokeDecentral - WITHDRAWAL DELAYED EVENTS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice WithdrawalDelayed emitted when yield unapproved > 2*withdrawalDelay
+    function test_pokeDecentral_emitsWithdrawalDelayed_yieldStuck() public {
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _warpDays(61);
+        vault.pokeDecentral(0); // -> YieldWithdrawalRequested
+        // DON'T approve yield — warp past 2*48h
+        vm.warp(block.timestamp + 2 * FORTY_EIGHT_HOURS + 1);
+
+        vm.expectEmit(true, false, false, false);
+        emit WithdrawalDelayed(0, 0); // data fields don't matter for check
+        vault.pokeDecentral(0);
+
+        // State unchanged
+        (, , , , , uint8 state) = vault.getPosition(0);
+        assertEq(state, 1, "Still YieldWithdrawalRequested");
+    }
+
+    /// @notice WithdrawalDelayed emitted when principal request reverts > 2*delay
+    function test_pokeDecentral_emitsWithdrawalDelayed_principalRequestReverts() public {
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _warpDays(61);
+        vault.pokeDecentral(0);
+        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        pool.approveYieldWithdrawal(tokenId);
+
+        // Make principal request fail by extending investment period
+        pool.setMinimumInvestmentPeriodSeconds(200 days);
+
+        // Yield executes but principal request reverts -> state = YieldClaimed
+        vault.pokeDecentral(0);
+        (, , , , , uint8 s1) = vault.getPosition(0);
+        assertEq(s1, 2, "YieldClaimed (principal request failed)");
+
+        // Warp past 2*delay
+        vm.warp(block.timestamp + 2 * FORTY_EIGHT_HOURS + 1);
+
+        vm.expectEmit(true, false, false, false);
+        emit WithdrawalDelayed(0, 0);
+        vault.pokeDecentral(0);
+    }
+
+    /// @notice WithdrawalDelayed emitted when principal execute stuck > 2*delay
+    function test_pokeDecentral_emitsWithdrawalDelayed_principalExecuteStuck() public {
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _warpDays(61);
+        vault.pokeDecentral(0);
+        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        pool.approveYieldWithdrawal(tokenId);
+        vault.pokeDecentral(0); // -> PrincipalWithdrawalRequested
+        // DON'T approve principal — warp past 2*delay
+        vm.warp(block.timestamp + 2 * FORTY_EIGHT_HOURS + 1);
+
+        vm.expectEmit(true, false, false, false);
+        emit WithdrawalDelayed(0, 0);
+        vault.pokeDecentral(0);
+
+        (, , , , , uint8 state) = vault.getPosition(0);
+        assertEq(state, 3, "Still PrincipalWithdrawalRequested");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //         getEstimatedWaitTime - EDGE CASES
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice When maturity + delay already passed -> returns 0
+    function test_getEstimatedWaitTime_returnsZero_whenMaturityPassed() public {
+        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _requestRedeem(alice, aliceHdcl / 4);
+
+        // Warp past maturity (60d) + principal delay (48h)
+        _warpDays(63);
+
+        uint256 wait = vault.getEstimatedWaitTime(0);
+        assertEq(wait, 0, "Wait = 0 when maturity + delay already passed");
+    }
+
+    /// @notice When all positions are stale -> can't cover -> returns type(uint256).max
+    function test_getEstimatedWaitTime_returnsMax_whenAllStale() public {
+        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _warpDays(61);
+        vault.pokeDecentral(0); // -> YieldWithdrawalRequested
+        vm.warp(block.timestamp + FORTY_EIGHT_HOURS + 1);
+
+        // Mark stale (skipped in wait time loop)
+        vm.prank(admin);
+        vault.markPositionStale(0);
+
+        // Queue a redeem
+        _requestRedeem(alice, aliceHdcl / 4);
+
+        uint256 wait = vault.getEstimatedWaitTime(0);
+        assertEq(wait, type(uint256).max, "Max wait when all positions stale");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //         _removeFromActiveAPYs - MULTI-BUCKET
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Processing a position at APY index > 0 exercises the loop increment
+    function test_pokeDecentral_removesNonFirstApyBucket() public {
+        // Position 0 at 18%
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+
+        // Position 1 at 20%
+        pool.setAPY(APY_20_PERCENT);
+        _deposit(bob, TEN_THOUSAND_HOLLAR);
+
+        assertEq(vault.getActiveAPYCount(), 2);
+
+        // Warp, process position 1 (20%) fully -> its bucket empties
+        _warpDays(61);
+        _processPositionFull(1);
+
+        // 20% bucket removed via swap-and-pop (was at index 1, loop iterates past index 0)
+        assertEq(vault.getActiveAPYCount(), 1, "Only 18% bucket remains");
+        assertEq(vault.getActiveAPY(0), APY_18_PERCENT);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //                       VIEW GETTER COVERAGE
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Exercise uncalled view getters for coverage
+    function test_viewGetters_coverage() public {
+        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+
+        // Getters on empty queue
+        assertEq(vault.getTotalQueuedHdcl(), 0);
+        assertEq(vault.getIdleHollar(), 0);
+        assertEq(vault.getRedemptionQueuePending(), 0);
+        assertEq(vault.getQueueHead(), 0);
+
+        // After queue entry
+        _requestRedeem(alice, aliceHdcl / 4);
+        assertGt(vault.getTotalQueuedHdcl(), 0);
+        assertEq(vault.getRedemptionQueuePending(), 1);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     //                          HELPERS
     // ═══════════════════════════════════════════════════════════════════════
 

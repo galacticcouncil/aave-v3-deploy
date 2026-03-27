@@ -20,4 +20,5 @@ contract Events {
     event MinRedeemAmountUpdated(uint256 newAmount);
     event OracleUpdated(address indexed oracle);
     event WithdrawalDelayUpdated(uint256 newDelay);
+    event WithdrawalDelayed(uint256 indexed positionIndex, uint256 delaySeconds);
 }
