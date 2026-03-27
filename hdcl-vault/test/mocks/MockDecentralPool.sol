@@ -334,43 +334,8 @@ contract MockDecentralPool {
         return (req.amount, req.requestTimestamp, req.availableTimestamp, req.exists, req.approved);
     }
 
-    function getPoolInfo()
-        external
-        view
-        returns (
-            uint256 _totalPrincipalShares,
-            uint256 _fixedAPYWad,
-            uint256 _paymentFrequencySeconds,
-            uint256 _minimumInvestmentPeriodSecs,
-            uint256 _principalWithdrawalDelaySecs,
-            uint256 _minimumInvestmentAmt,
-            uint256 _maximumInvestmentAmt,
-            uint256 _lastUpdateTime,
-            uint256 _cumulativeRewardPerShare,
-            address _stablecoinAddress,
-            uint8 _stablecoinDecimals,
-            address _poolTokenAddress,
-            bool _isShutdown,
-            address _factoryAddress
-        )
-    {
-        return (
-            totalPrincipalShares,
-            fixedAPYWad,
-            paymentFrequencySeconds,
-            _minimumInvestmentPeriodSeconds,
-            _principalWithdrawalDelaySeconds,
-            minimumInvestmentAmount,
-            maximumInvestmentAmount,
-            lastUpdateTime,
-            cumulativeRewardPerShare,
-            address(stablecoin),
-            18,
-            address(poolToken),
-            isShutdown,
-            address(0) // no factory in mock
-        );
-    }
+    // getPoolInfo() omitted — 14 return values cause stack-too-deep without via_ir.
+    // The vault never calls it. Individual state variables are public for test assertions.
 
     // ═════════════════════════════════════════════════════════════════════════
     //                       TEST ADMIN HELPERS

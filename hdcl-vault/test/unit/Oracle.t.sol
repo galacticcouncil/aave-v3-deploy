@@ -3,6 +3,8 @@ pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
 import {WDCLOracle} from "../../src/WDCLOracle.sol";
+import {HDCLVault} from "../../src/HDCLVault.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract OracleTest is BaseTest {
     WDCLOracle public oracle;
@@ -87,5 +89,42 @@ contract OracleTest is BaseTest {
 
         vm.expectRevert("Vault paused");
         oracle.latestRoundData();
+    }
+
+    // ─── Constructor ───────────────────────────────────────────────────────
+
+    function test_constructor_revertsOnZeroVault() public {
+        vm.expectRevert("Zero vault");
+        new WDCLOracle(address(0));
+    }
+
+    // ─── Zero supply (no deposits) ────────────────────────────────────────
+
+    function test_latestRoundData_zeroSupply_returnsOneToOne() public {
+        // Deploy a brand new vault with no deposits
+        HDCLVault impl = new HDCLVault();
+        bytes memory initData = abi.encodeCall(
+            HDCLVault.initialize,
+            (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, FORTY_EIGHT_HOURS, admin)
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        HDCLVault emptyVault = HDCLVault(address(proxy));
+
+        WDCLOracle emptyOracle = new WDCLOracle(address(emptyVault));
+
+        (, int256 answer,,,) = emptyOracle.latestRoundData();
+        // rate = 1e18 when supply=0, answer = 1e18 / 1e10 = 1e8
+        assertEq(uint256(answer), 1e8, "Zero supply: answer should be 1e8 (1:1 rate)");
+        assertGt(answer, 0, "Answer always positive");
+    }
+
+    // ─── getRoundData reverts when paused ─────────────────────────────────
+
+    function test_getRoundData_revertsWhenPaused() public {
+        vm.prank(admin);
+        vault.pause();
+
+        vm.expectRevert("Vault paused");
+        oracle.getRoundData(0);
     }
 }
