@@ -17,4 +17,7 @@ contract Events {
     event DepositsUnpaused();
     event TvlCapUpdated(uint256 newCap);
     event MinReinvestAmountUpdated(uint256 newAmount);
+    event MinRedeemAmountUpdated(uint256 newAmount);
+    event OracleUpdated(address indexed oracle);
+    event WithdrawalDelayUpdated(uint256 newDelay);
 }
