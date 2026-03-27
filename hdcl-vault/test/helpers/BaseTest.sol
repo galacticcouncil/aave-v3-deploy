@@ -4,9 +4,9 @@ pragma solidity ^0.8.22;
 import "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {HDCLVault} from "../../src/HDCLVault.sol";
-import {MockHollar} from "../../src/mocks/MockHollar.sol";
-import {MockDecentralPool} from "../../src/mocks/MockDecentralPool.sol";
-import {MockPoolToken} from "../../src/mocks/MockPoolToken.sol";
+import {MockHollar} from "../mocks/MockHollar.sol";
+import {MockDecentralPool} from "../mocks/MockDecentralPool.sol";
+import {MockPoolToken} from "../mocks/MockPoolToken.sol";
 import {Constants} from "./Constants.sol";
 import {Events} from "./Events.sol";
 
@@ -29,7 +29,7 @@ contract BaseTest is Test, Constants, Events {
         pool = new MockDecentralPool(address(hollar), address(nft), APY_18_PERCENT);
 
         // Allow pool to mint/burn NFTs
-        nft.setPool(address(pool));
+        nft.registerPool(address(pool));
 
         // Fund mock pool with HOLLAR for yield payouts
         hollar.mint(address(pool), 10_000_000e18);
