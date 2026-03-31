@@ -291,7 +291,12 @@ export class HDCLKeeper {
       functionName,
       args: args as any,
     });
-    const hash = await this.walletClient.writeContract(request as any);
+    // Hydration requires legacy (type 0) transactions
+    const hash = await this.walletClient.writeContract({
+      ...request,
+      gasPrice: 1_500_000n,
+      gas: 5_000_000n,
+    } as any);
     console.log(`    tx: ${hash}`);
     await this.publicClient.waitForTransactionReceipt({ hash });
   }
