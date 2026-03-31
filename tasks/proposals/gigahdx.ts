@@ -67,6 +67,7 @@ task(`gigahdx`, `GIGAHDX governance proposal`).setAction(async function (
 
   const rootTxs = [
     // Register stHDX (asset 670) — vault share token, underlying for AAVE reserve
+      /*
     hydrationTx.assetRegistry.register(
       ...Object.values({
         id: STHDX,
@@ -80,14 +81,12 @@ task(`gigahdx`, `GIGAHDX governance proposal`).setAction(async function (
         isSufficient: true,
       })
     ),
-      /*
       hydrationTx.multiTransactionPayment.addCurrency(
         ...Object.values({
           asset: STHDX,
           price: "TODO", // TODO: needs value
         })
       ),
-     */
     // Register GIGAHDX (asset 67) as Erc20 pointing to the aToken
     hydrationTx.assetRegistry.register(
       ...Object.values({
@@ -102,7 +101,6 @@ task(`gigahdx`, `GIGAHDX governance proposal`).setAction(async function (
         isSufficient: true,
       })
     ),
-      /*
       hydrationTx.multiTransactionPayment.addCurrency(
         ...Object.values({
           asset: GIGAHDX,
