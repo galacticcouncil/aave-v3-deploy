@@ -85,21 +85,14 @@ const VAULT_ABI = [
     outputs: [{ name: '', type: 'uint256' }],
   },
   {
-    name: 'processPosition',
+    name: 'pokeDecentral',
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [{ name: 'positionIndex', type: 'uint256' }],
     outputs: [],
   },
   {
-    name: 'processQueue',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [],
-    outputs: [],
-  },
-  {
-    name: 'reinvest',
+    name: 'pokeQueue',
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [],
@@ -187,25 +180,14 @@ export class HDCLKeeper {
     const queued = totalQueuedHdclAfter as bigint;
     const minReinvest = minReinvestAmount as bigint;
 
-    // 4. If idleHollar > 0 AND totalQueuedHdcl > 0 -> processQueue
-    if (idle > 0n && queued > 0n) {
+    // 4. pokeQueue handles both queue processing and reinvestment
+    if ((idle > 0n && queued > 0n) || (idle >= minReinvest && queued === 0n)) {
       try {
-        console.log('  Calling processQueue()...');
-        await this.writeContract('processQueue');
-        console.log('  processQueue() succeeded');
+        console.log(`  Calling pokeQueue() (idle=${formatEther(idle)}, queued=${formatEther(queued)})...`);
+        await this.writeContract('pokeQueue');
+        console.log('  pokeQueue() succeeded');
       } catch (err) {
-        console.error('  processQueue() failed:', err);
-      }
-    }
-
-    // 5. If idleHollar >= minReinvestAmount AND totalQueuedHdcl == 0 -> reinvest
-    if (idle >= minReinvest && queued === 0n) {
-      try {
-        console.log(`  Calling reinvest() with ${formatEther(idle)} idle HOLLAR...`);
-        await this.writeContract('reinvest');
-        console.log('  reinvest() succeeded');
-      } catch (err) {
-        console.error('  reinvest() failed:', err);
+        console.error('  pokeQueue() failed:', err);
       }
     }
 
@@ -282,11 +264,11 @@ export class HDCLKeeper {
 
   private async tryProcessPosition(index: number): Promise<void> {
     try {
-      await this.writeContract('processPosition', [BigInt(index)]);
-      console.log(`    processPosition(${index}) succeeded`);
+      await this.writeContract('pokeDecentral', [BigInt(index)]);
+      console.log(`    pokeDecentral(${index}) succeeded`);
     } catch (err) {
       // Expected: Decentral may not have approved the withdrawal yet
-      console.log(`    processPosition(${index}) reverted (may need Decentral approval)`);
+      console.log(`    pokeDecentral(${index}) reverted (may need Decentral approval)`);
     }
   }
 
