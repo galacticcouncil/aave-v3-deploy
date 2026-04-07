@@ -105,6 +105,14 @@ MARKET_NAME=GIGAHDX HARDHAT_NETWORK=hydration FORK=hydration npx hardhat deploy 
 
 Creates: `GhoAToken-GIGAHDX`, `GhoStableDebtToken-GIGAHDX`, `GhoVariableDebtToken-GIGAHDX`, `GhoInterestRateStrategy-GIGAHDX` (4.5% APY)
 
+Then copy artifacts to aave-v3-deploy:
+```bash
+cp ../gho-core/deployments/hydration/GhoAToken-GIGAHDX.json deployments/hydration/
+cp ../gho-core/deployments/hydration/GhoStableDebtToken-GIGAHDX.json deployments/hydration/
+cp ../gho-core/deployments/hydration/GhoVariableDebtToken-GIGAHDX.json deployments/hydration/
+cp ../gho-core/deployments/hydration/GhoInterestRateStrategy-GIGAHDX.json deployments/hydration/
+```
+
 ### Phase 5: Generate governance proposal (aave-v3-deploy)
 
 ```bash
