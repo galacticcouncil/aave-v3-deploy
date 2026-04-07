@@ -29,6 +29,7 @@ import {
   strategyGSOL,
   strategyEURC,
   strategyHEURC,
+  strategySIGIL,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -71,6 +72,7 @@ export const HydrationConfig: IAaveConfiguration = {
     "2-POOL-GSOL": strategyGSOL,
     EURC: strategyEURC,
     "2-POOL-HEURC": strategyHEURC,
+    SIGIL: strategySIGIL,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -95,6 +97,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-GSOL": tokenAddress(90001),
       EURC: tokenAddress(44),
       "2-POOL-HEURC": tokenAddress(10044),
+      SIGIL: tokenAddress(816),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -199,6 +202,7 @@ export const HydrationConfig: IAaveConfiguration = {
       EURC: "0xaa47a5662269270D3DF33Ae08F806e383611575c", // DIA EUR/USD oracle
       "2-POOL-HEURC": "0x71691b7EE575a2842b242cE8E0AEcdB0e031B725",
       EURUSD: "0xaa47a5662269270D3DF33Ae08F806e383611575c", // DIA EUR/USD oracle (used for HEURC pool drifting peg)
+      SIGIL: "0xe50AA7afa36A5E04C0b0D0892D0b173c924b662F",
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
