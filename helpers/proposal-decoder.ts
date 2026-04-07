@@ -5,6 +5,7 @@ import { HardhatRuntimeEnvironment } from "hardhat/types";
 
 export default class ProposalDecoder {
   private interfaces: { [key: string]: ethers.utils.Interface } = {};
+  private addressNames: { [key: string]: string } = {};
   private hre: HardhatRuntimeEnvironment;
 
   constructor(hre: HardhatRuntimeEnvironment) {
@@ -15,9 +16,17 @@ export default class ProposalDecoder {
     const deployments = await this.hre.deployments.all();
 
     for (const [name, deployment] of Object.entries(deployments)) {
+      if (deployment.address) {
+        this.addressNames[deployment.address.toLowerCase()] = name;
+      }
       if (!deployment.abi) continue;
       this.interfaces[name] = new ethers.utils.Interface(deployment.abi);
     }
+  }
+
+  public resolveAddress(address: string): string | null {
+    if (typeof address !== "string" || !address.startsWith("0x") || address.length !== 42) return null;
+    return this.addressNames[address.toLowerCase()] || null;
   }
 
   public decodeCall(hexData: string): any {
@@ -170,7 +179,10 @@ export default class ProposalDecoder {
       ) {
         console.log(
           `${prefix}${chalk.yellow(key)}: ${value
-            .map((v) => chalk.white(v))
+            .map((v) => {
+              const name = this.resolveAddress(v);
+              return name ? `${chalk.white(v)} ${chalk.bold.yellow(`(${name})`)}` : chalk.white(v);
+            })
             .join(", ")}`
         );
         return;
@@ -189,8 +201,13 @@ export default class ProposalDecoder {
       } else if (value === null) {
         console.log(`${prefix}${chalk.cyan(key)}: ${chalk.dim("null")}`);
       } else if (value && typeof value === "string" && value.startsWith("0x")) {
+        const name = this.resolveAddress(value);
         const formattedValue = this.colorHex(value);
-        console.log(`${prefix}${chalk.cyan(key)}: ${formattedValue}`);
+        if (name) {
+          console.log(`${prefix}${chalk.cyan(key)}: ${formattedValue} ${chalk.bold.yellow(`(${name})`)}`);
+        } else {
+          console.log(`${prefix}${chalk.cyan(key)}: ${formattedValue}`);
+        }
       } else {
         console.log(`${prefix}${chalk.cyan(key)}: ${chalk.white(value)}`);
       }
