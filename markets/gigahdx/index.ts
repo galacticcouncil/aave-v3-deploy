@@ -10,7 +10,7 @@ export const GIGAHDXConfig: IAaveConfiguration = {
   StableDebtTokenNamePrefix: "GIGAHDX",
   VariableDebtTokenNamePrefix: "GIGAHDX",
   SymbolPrefix: "GIGAHDX",
-  ProviderId: 222222,
+  ProviderId: 22222269,
   ReservesConfig: {
     STHDX: strategySTHDX,
   },
