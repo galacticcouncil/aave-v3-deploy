@@ -138,7 +138,7 @@ export const initReservesByHelper = async (
 
   if (lockableATokenReserves.length > 0) {
     lockableATokenImplementationAddress = (
-      await hre.deployments.get("LockableAToken-Hydration")
+      await hre.deployments.get(`LockableAToken-${MARKET_NAME}`)
     ).address;
   }
 
