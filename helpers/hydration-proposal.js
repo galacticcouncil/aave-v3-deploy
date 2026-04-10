@@ -234,7 +234,8 @@ async function rootEvmCall({
       gasPrice,
       undefined,
       undefined,
-      []
+      [],
+      undefined
     )
   );
 }
