@@ -51,23 +51,23 @@ Deploys:
 - `PoolDataProvider-HDCL`
 - Token implementations (`AToken-HDCL`, `StableDebtToken-HDCL`, `VariableDebtToken-HDCL`)
 
-### Phase 3: Deploy GHO implementations for HDCL (gho-core)
+### Phase 3: Deploy HOLLAR token implementations for HDCL (hollar repo)
 
-Deploy GhoAToken, GhoStableDebtToken, GhoVariableDebtToken, GhoInterestRateStrategy
+Deploy HOLLAR aToken, stable/variable debt tokens, and interest rate strategy
 referencing the HDCL pool address.
 
 ```bash
-MARKET_NAME=HDCL HARDHAT_NETWORK=hydration FORK=hydration npx hardhat deploy --tags hdcl_gho_deploy
+MARKET_NAME=HDCL HARDHAT_NETWORK=hydration FORK=hydration npx hardhat deploy --tags hdcl_hollar_deploy
 ```
 
 Creates: `GhoAToken-HDCL`, `GhoStableDebtToken-HDCL`, `GhoVariableDebtToken-HDCL`, `GhoInterestRateStrategy-HDCL` (10% APY)
 
 Then copy artifacts to aave-v3-deploy:
 ```bash
-cp ../gho-core/deployments/hydration/GhoAToken-HDCL.json deployments/hydration/
-cp ../gho-core/deployments/hydration/GhoStableDebtToken-HDCL.json deployments/hydration/
-cp ../gho-core/deployments/hydration/GhoVariableDebtToken-HDCL.json deployments/hydration/
-cp ../gho-core/deployments/hydration/GhoInterestRateStrategy-HDCL.json deployments/hydration/
+cp ../hollar/deployments/hydration/GhoAToken-HDCL.json deployments/hydration/
+cp ../hollar/deployments/hydration/GhoStableDebtToken-HDCL.json deployments/hydration/
+cp ../hollar/deployments/hydration/GhoVariableDebtToken-HDCL.json deployments/hydration/
+cp ../hollar/deployments/hydration/GhoInterestRateStrategy-HDCL.json deployments/hydration/
 ```
 
 ### Phase 4: Generate governance proposal (aave-v3-deploy)
@@ -85,7 +85,7 @@ The proposal does (atomically):
 4. Enable HOLLAR borrowing
 5. Set HOLLAR oracle ($1) in HDCL AaveOracle
 6. Register HDCL GhoAToken as HOLLAR facilitator (1M bucket)
-7. Set GHO cross-references (aToken ↔ variableDebtToken, treasury, ZeroDiscountRateStrategy)
+7. Set HOLLAR cross-references (aToken ↔ variableDebtToken, treasury, ZeroDiscountRateStrategy)
 
 **Substrate calls:**
 8. Register HDCL (asset 55) in Hydration asset registry (ED: 0.02 HDCL)
