@@ -120,14 +120,13 @@ const hydration: Chain = {
 
 const account = privateKeyToAccount(ALICE_PK);
 const publicClient = createPublicClient({ chain: hydration, transport: http(RPC_HTTP) });
-const _walletClient = createWalletClient({ account, chain: hydration, transport: http(RPC_HTTP) });
+const walletClient = createWalletClient({ account, chain: hydration, transport: http(RPC_HTTP) });
 
-// Hydration requires legacy (type 0) transactions — wrap writeContract
-const walletClient = {
-  ..._walletClient,
-  writeContract: (args: any) =>
-    _walletClient.writeContract({ ...args, gasPrice: 1_500_000n, gas: 5_000_000n }),
-} as typeof _walletClient;
+// Hydration requires legacy (type 0) transactions
+async function writeContract(args: any): Promise<Hash> {
+  const { maxFeePerGas, maxPriorityFeePerGas, type, ...rest } = args;
+  return walletClient.writeContract({ ...rest, gasPrice: 1_500_000n, gas: 5_000_000n } as any);
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -280,19 +279,19 @@ async function setup(api: ApiPromise, alice: any) {
     ]);
 
     console.log('  Approving DOT...');
-    await send(await walletClient.writeContract({
+    await send(await writeContract({
       address: DOT, abi: ERC20_ABI, functionName: 'approve', args: [POOL, 10n ** 18n],
     }));
 
     console.log('  Supplying DOT to Aave...');
-    await send(await walletClient.writeContract({
+    await send(await writeContract({
       address: POOL, abi: POOL_ABI, functionName: 'supply',
       args: [DOT, 50000n * 10n ** 10n, ALICE_ADDR, 0],
     }));
 
     // Borrow HOLLAR (variable rate = 2)
     console.log(`  Borrowing ${formatEther(borrowAmount)} HOLLAR...`);
-    await send(await walletClient.writeContract({
+    await send(await writeContract({
       address: POOL, abi: POOL_ABI, functionName: 'borrow',
       args: [HOLLAR, borrowAmount, 2n, 0, ALICE_ADDR],
     }));
@@ -307,7 +306,7 @@ async function setup(api: ApiPromise, alice: any) {
 
   // Approve vault to spend HOLLAR
   console.log('  Approving vault to spend HOLLAR...');
-  const approveHash = await walletClient.writeContract({
+  const approveHash = await writeContract({
     address: HOLLAR, abi: ERC20_ABI, functionName: 'approve',
     args: [VAULT_ADDRESS, parseEther('999999999')],
   });
@@ -351,7 +350,7 @@ async function testDeposit(): Promise<bigint> {
     address: HOLLAR, abi: ERC20_ABI, functionName: 'balanceOf', args: [ALICE_ADDR],
   }) as bigint;
 
-  const hash = await walletClient.writeContract({
+  const hash = await writeContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'deposit', args: [DEPOSIT_AMOUNT],
   });
   await send(hash);
@@ -405,7 +404,7 @@ async function testRequestRedeem(hdclBal: bigint): Promise<bigint> {
   const redeemAmount = hdclBal / REDEEM_FRACTION;
   console.log(`  Requesting redeem of ${formatEther(redeemAmount)} HDCL...`);
 
-  const hash = await walletClient.writeContract({
+  const hash = await writeContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'requestRedeem', args: [redeemAmount],
   });
   const receipt = await send(hash);
@@ -438,7 +437,7 @@ async function testRequestRedeem(hdclBal: bigint): Promise<bigint> {
 async function testCancelRedeem(requestId: bigint, hdclBefore: bigint) {
   console.log('\n── Cancel Redeem ──');
 
-  const hash = await walletClient.writeContract({
+  const hash = await writeContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'cancelRedeem', args: [requestId],
   });
   await send(hash);
@@ -464,7 +463,7 @@ async function testPokeDecentral() {
   console.log('\n── Poke Decentral (position 0) ──');
 
   try {
-    const hash = await walletClient.writeContract({
+    const hash = await writeContract({
       address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'pokeDecentral', args: [0n],
     });
     await send(hash);
@@ -491,7 +490,7 @@ async function testPokeQueue() {
   }) as bigint;
 
   try {
-    const hash = await walletClient.writeContract({
+    const hash = await writeContract({
       address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'pokeQueue',
     });
     await send(hash);
@@ -515,7 +514,7 @@ async function testSecondDeposit() {
   console.log('\n── Second Deposit ──');
 
   const secondAmount = parseEther('500');
-  const hash = await walletClient.writeContract({
+  const hash = await writeContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'deposit', args: [secondAmount],
   });
   await send(hash);
@@ -542,7 +541,7 @@ async function testAdminFunctions() {
   assert(isAdmin as boolean, 'Alice has ADMIN_ROLE');
 
   // pauseDeposits
-  const pauseHash = await walletClient.writeContract({
+  const pauseHash = await writeContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'pauseDeposits',
   });
   await send(pauseHash);
@@ -564,7 +563,7 @@ async function testAdminFunctions() {
   assert(depositReverted, 'deposit correctly reverts when paused');
 
   // unpauseDeposits
-  const unpauseHash = await walletClient.writeContract({
+  const unpauseHash = await writeContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'unpauseDeposits',
   });
   await send(unpauseHash);
@@ -575,7 +574,7 @@ async function testAdminFunctions() {
 
   // setTvlCap
   const newCap = parseEther('5000000');
-  const capHash = await walletClient.writeContract({
+  const capHash = await writeContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'setTvlCap', args: [newCap],
   });
   await send(capHash);
@@ -586,7 +585,7 @@ async function testAdminFunctions() {
 
   // setMinReinvestAmount
   const newMin = parseEther('50');
-  const minHash = await walletClient.writeContract({
+  const minHash = await writeContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'setMinReinvestAmount', args: [newMin],
   });
   await send(minHash);
