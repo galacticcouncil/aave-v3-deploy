@@ -2,9 +2,14 @@ import { eHydrationNetwork, IAaveConfiguration } from "./../../helpers/types";
 import AaveMarket from "../aave";
 import { strategySTHDX } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
+import { rateStrategyDOT } from "./rateStrategies";
 
 export const GIGAHDXConfig: IAaveConfiguration = {
   ...AaveMarket,
+  RateStrategies: {
+    ...AaveMarket.RateStrategies,
+    rateStrategyDOT,
+  },
   MarketId: "GIGAHDX",
   ATokenNamePrefix: "GIGAHDX",
   StableDebtTokenNamePrefix: "GIGAHDX",

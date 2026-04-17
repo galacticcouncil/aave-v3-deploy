@@ -131,25 +131,47 @@ task(
   // Phase C: Register GIGAHDX as HOLLAR facilitator + cross-references
   // ===================================================================
 
-  // Predict proxy addresses from PoolConfigurator nonce
-  // stHDX init creates: aToken(n), stableDebt(n+1), variableDebt(n+2)
-  // HOLLAR init creates: aToken(n+3), stableDebt(n+4), variableDebt(n+5)
+  // Predict proxy addresses from PoolConfigurator nonce.
+  // When stHDX reserve is already initialized (on-chain at time of proposal
+  // generation), the batch only inits HOLLAR so HOLLAR's aToken is at offset 0.
+  // When stHDX init IS in the batch, HOLLAR's aToken is at offset 3.
   const configuratorAddress = poolConfigurator.address;
   const currentNonce = await hre.ethers.provider.getTransactionCount(configuratorAddress);
-  const sthdxATokenAddress = utils.getContractAddress({
-    from: configuratorAddress,
-    nonce: currentNonce,
-  });
+
+  const STHDX_UNDERLYING = "0x000000000000000000000000000000010000029e";
+  const pool = await hre.ethers.getContractAt(
+    [
+      "function getReservesList() view returns (address[])",
+      "function getReserveData(address asset) view returns (tuple(tuple(uint256 data) configuration, uint128,uint128,uint128,uint128,uint128,uint40,uint16,address aTokenAddress,address,address,address,uint128,uint128,uint128))",
+    ],
+    await poolAddressesProvider.getPool()
+  );
+  const reservesList: string[] = await pool.getReservesList();
+  const sthdxAlreadyInit = reservesList
+    .map((a) => a.toLowerCase())
+    .includes(STHDX_UNDERLYING.toLowerCase());
+  const hollarOffset = sthdxAlreadyInit ? 0 : 3;
+
+  let sthdxATokenAddress: string;
+  if (sthdxAlreadyInit) {
+    sthdxATokenAddress = (await pool.getReserveData(STHDX_UNDERLYING)).aTokenAddress;
+  } else {
+    sthdxATokenAddress = utils.getContractAddress({
+      from: configuratorAddress,
+      nonce: currentNonce,
+    });
+  }
   const ghoATokenProxyAddress = utils.getContractAddress({
     from: configuratorAddress,
-    nonce: currentNonce + 3,
+    nonce: currentNonce + hollarOffset,
   });
   const ghoVariableDebtProxyAddress = utils.getContractAddress({
     from: configuratorAddress,
-    nonce: currentNonce + 5,
+    nonce: currentNonce + hollarOffset + 2,
   });
 
-  console.log("predicted stHDX aToken:", sthdxATokenAddress);
+  console.log(`stHDX already initialized on-chain: ${sthdxAlreadyInit}`);
+  console.log("stHDX aToken:", sthdxATokenAddress);
   console.log("predicted GhoAToken proxy:", ghoATokenProxyAddress);
   console.log("predicted GhoVariableDebtToken proxy:", ghoVariableDebtProxyAddress);
 
@@ -161,7 +183,7 @@ task(
       (await hre.deployments.get("HOLLAR")).abi,
       signer
     );
-    const bucketCapacity = ethers.utils.parseUnits("1.0", 24); // 1M HOLLAR — TODO: set final value
+    const bucketCapacity = utils.parseUnits("1.0", 24); // 1M HOLLAR — TODO: set final value
     const tx = await hollar.populateTransaction.addFacilitator(
       ghoATokenProxyAddress,
       "GIGAHDX",
@@ -229,39 +251,80 @@ task(
   const STHDX = 670;
   const GIGAHDX = 67;
 
-  // Register stHDX (asset 670)
-  txs.push(
-    hydrationTx.assetRegistry.register(
-      ...Object.values({
-        id: STHDX,
-        name: "stHDX",
-        assetType: "Token",
-        existentialDeposit: "3000000000000", // 3 stHDX (12 decimals)
-        symbol: "stHDX",
-        decimals: 12,
-        location: null,
-        xcmRateLimit: null,
-        isSufficient: true,
-      })
-    )
-  );
+  // Check existing registrations. batchAll reverts the whole batch if any call
+  // fails, so registering already-existing assets would brick the proposal.
+  const api = await getApi();
+  const sthdxInfo: any = await api.query.assetRegistry.assets(STHDX);
+  const gigaInfo: any = await api.query.assetRegistry.assets(GIGAHDX);
 
-  // Register GIGAHDX (asset 67) — aToken receipt for stHDX deposits
-  txs.push(
-    hydrationTx.assetRegistry.register(
-      ...Object.values({
-        id: GIGAHDX,
-        name: "GIGAHDX",
-        assetType: "Erc20",
-        existentialDeposit: "3000000000000", // 3 GIGAHDX (12 decimals) ≈ 3 HDX
-        symbol: "GIGAHDX",
-        decimals: 12,
-        location: location(sthdxATokenAddress),
-        xcmRateLimit: null,
-        isSufficient: true,
-      })
-    )
-  );
+  if (!sthdxInfo.isSome) {
+    console.log("---------> register stHDX in asset registry");
+    txs.push(
+      hydrationTx.assetRegistry.register(
+        ...Object.values({
+          id: STHDX,
+          name: "stHDX",
+          assetType: "Token",
+          existentialDeposit: "3000000000000", // 3 stHDX (12 decimals)
+          symbol: "stHDX",
+          decimals: 12,
+          location: null,
+          xcmRateLimit: null,
+          isSufficient: true,
+        })
+      )
+    );
+  } else {
+    console.log("---------> stHDX (670) already in asset registry — skipping register");
+  }
+
+  if (!gigaInfo.isSome) {
+    console.log("---------> register GIGAHDX (asset 67) pointing at stHDX aToken");
+    txs.push(
+      hydrationTx.assetRegistry.register(
+        ...Object.values({
+          id: GIGAHDX,
+          name: "GIGAHDX",
+          assetType: "Erc20",
+          existentialDeposit: "3000000000000",
+          symbol: "GIGAHDX",
+          decimals: 12,
+          location: location(sthdxATokenAddress),
+          xcmRateLimit: null,
+          isSufficient: true,
+        })
+      )
+    );
+  } else {
+    // Already registered — check if location matches our aToken, and update if stale.
+    const locOnChain: any = await api.query.assetRegistry.assetLocations(GIGAHDX);
+    let currentKey: string | null = null;
+    if (locOnChain.isSome) {
+      const human: any = locOnChain.toHuman();
+      currentKey = human?.interior?.X1?.[0]?.AccountKey20?.key?.toLowerCase?.() ?? null;
+    }
+    const expectedKey = sthdxATokenAddress.toLowerCase();
+    if (currentKey === expectedKey) {
+      console.log(`---------> GIGAHDX (67) already points at aToken ${sthdxATokenAddress} — skipping update`);
+    } else {
+      console.log(
+        `---------> GIGAHDX (67) location ${currentKey} != ${expectedKey} — adding assetRegistry.update`
+      );
+      txs.push(
+        hydrationTx.assetRegistry.update(
+          GIGAHDX,
+          null, // name
+          null, // asset_type
+          null, // existential_deposit
+          null, // xcm_rate_limit
+          null, // is_sufficient
+          null, // symbol
+          null, // decimals
+          location(sthdxATokenAddress) // location
+        )
+      );
+    }
+  }
 
   /*
   // TODO: enable fee payment

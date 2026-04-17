@@ -155,6 +155,9 @@ export const getCommonNetworkConfig = (
   blockGasLimit: DEFAULT_BLOCK_GAS_LIMIT,
   chainId,
   gasPrice: GAS_PRICE_PER_NET[networkName] || undefined,
+  // Hydration/lark nodes return unreliable eth_estimateGas for contract calls.
+  // Observed multiple OOG reverts with 5x; bump to 20x to avoid repeated failures.
+  gasMultiplier: 20,
   accounts: [
     process.env.PRIV_KEY ||
       "d9b59470b079ffd6a0373c0870dcf7faf8c20f7340b6d05acbeb8a8a8473b131",
