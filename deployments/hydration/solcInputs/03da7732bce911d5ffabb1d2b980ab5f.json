@@ -1,0 +1,39 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol": {
+      "content": "// SPDX-License-Identifier: AGPL-3.0\npragma solidity ^0.8.10;\n\ninterface IEACAggregatorProxy {\n  function decimals() external view returns (uint8);\n\n  function latestAnswer() external view returns (int256);\n\n  function latestTimestamp() external view returns (uint256);\n\n  function latestRound() external view returns (uint256);\n\n  function getAnswer(uint256 roundId) external view returns (int256);\n\n  function getTimestamp(uint256 roundId) external view returns (uint256);\n\n  event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 timestamp);\n  event NewRound(uint256 indexed roundId, address indexed startedBy);\n}\n"
+    },
+    "contracts/FixedPriceOracle.sol": {
+      "content": "// SPDX-License-Identifier: AGPL-3.0\npragma solidity ^0.8.10;\n\nimport \"@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol\";\n\n/**\n * Minimal Chainlink-compatible oracle that returns a constant price\n * set by the owner. Used on lark test chains where the real EMA oracle\n * path is not populated.\n *\n * MAINNET: never use. The prod stHDX oracle is USDOracleAdapter\n * (stHDX/HDX EMA × HDX/USD chainlink).\n */\ncontract FixedPriceOracle is IEACAggregatorProxy {\n    uint8 public constant decimals = 8;\n\n    int256 private _price;\n    address public owner;\n\n    event PriceUpdated(int256 oldPrice, int256 newPrice);\n    event OwnerChanged(address indexed oldOwner, address indexed newOwner);\n\n    constructor(int256 initialPrice, address owner_) {\n        require(owner_ != address(0), \"zero owner\");\n        _price = initialPrice;\n        owner = owner_;\n        emit PriceUpdated(0, initialPrice);\n        emit OwnerChanged(address(0), owner_);\n    }\n\n    function setPrice(int256 newPrice) external {\n        require(msg.sender == owner, \"not owner\");\n        int256 old = _price;\n        _price = newPrice;\n        emit PriceUpdated(old, newPrice);\n    }\n\n    function transferOwnership(address newOwner) external {\n        require(msg.sender == owner, \"not owner\");\n        require(newOwner != address(0), \"zero owner\");\n        address old = owner;\n        owner = newOwner;\n        emit OwnerChanged(old, newOwner);\n    }\n\n    function latestAnswer() external view override returns (int256) {\n        return _price;\n    }\n\n    function latestTimestamp() external view override returns (uint256) {\n        return block.timestamp;\n    }\n\n    function latestRound() external view override returns (uint256) {\n        return 1;\n    }\n\n    function getAnswer(uint256) external view override returns (int256) {\n        return _price;\n    }\n\n    function getTimestamp(uint256) external view override returns (uint256) {\n        return block.timestamp;\n    }\n}\n"
+    }
+  },
+  "settings": {
+    "optimizer": {
+      "enabled": true,
+      "runs": 100000
+    },
+    "evmVersion": "berlin",
+    "outputSelection": {
+      "*": {
+        "*": [
+          "abi",
+          "evm.bytecode",
+          "evm.deployedBytecode",
+          "evm.methodIdentifiers",
+          "metadata",
+          "devdoc",
+          "userdoc",
+          "storageLayout",
+          "evm.gasEstimates"
+        ],
+        "": [
+          "ast"
+        ]
+      }
+    },
+    "metadata": {
+      "useLiteralContent": true
+    }
+  }
+}
