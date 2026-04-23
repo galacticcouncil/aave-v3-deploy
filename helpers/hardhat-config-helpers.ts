@@ -102,6 +102,11 @@ export const NETWORKS_RPC_URL: iParamsPerNetwork<string> = {
   [eHydrationNetwork.nice]: "https://rpc.nice.hydration.cloud",
   [eHydrationNetwork.hydration]: process.env.RPC || "https://rpc.hydradx.cloud",
   [eHydrationNetwork.zombie]: process.env.RPC || "http://localhost:9999",
+  // 0.lark testnet — mainnet fork kept long-running for pre-prod rehearsals.
+  [eHydrationNetwork.lark]: process.env.RPC || "https://0.lark.hydration.cloud",
+  // Local chopsticks fork — disposable, used for dry-runs before 0.lark.
+  // Default port matches `npx @acala-network/chopsticks` default (8000).
+  [eHydrationNetwork.chopsticks]: process.env.RPC || "http://localhost:8000",
 };
 
 export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
@@ -114,6 +119,7 @@ export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
   [eOptimismNetwork.main]: true,
   [eHydrationNetwork.hydration]: true,
   [eHydrationNetwork.nice]: true,
+  [eHydrationNetwork.lark]: true,
   [eBaseNetwork.base]: true,
 };
 
