@@ -178,7 +178,7 @@ task(
       (await hre.deployments.get("HOLLAR")).abi,
       signer
     );
-    const bucketCapacity = ethers.utils.parseUnits("1.0", 24); // 1M HOLLAR
+    const bucketCapacity = utils.parseUnits("1.0", 24); // 1M HOLLAR
     const tx = await hollar.populateTransaction.addFacilitator(
       ghoATokenProxyAddress,
       "HDCL",
@@ -321,12 +321,16 @@ task(
     }
   }
 
-  // Enable HDCL and aHDCL as fee payment currencies
+  // Enable HDCL and aHDCL as fee payment currencies.
+  // Copy HOLLAR's price (asset 222) since 1 HDCL = 1 HOLLAR at launch and
+  // all three tokens share 18 decimals. Read from 0.lark on 2026-04-23:
+  //   multiTransactionPayment.acceptedCurrencies(222) = 10960000000000000000000
+  const HOLLAR_FEE_PRICE = "10960000000000000000000";
   txs.push(
     hydrationTx.multiTransactionPayment.addCurrency(
       ...Object.values({
         asset: HDCL_ASSET_ID,
-        price: "1000000000000000000", // TODO: set accurate HDCL/HDX price
+        price: HOLLAR_FEE_PRICE,
       })
     )
   );
@@ -334,7 +338,7 @@ task(
     hydrationTx.multiTransactionPayment.addCurrency(
       ...Object.values({
         asset: AHDCL_ASSET_ID,
-        price: "1000000000000000000", // TODO: set accurate aHDCL/HDX price
+        price: HOLLAR_FEE_PRICE,
       })
     )
   );
@@ -346,9 +350,9 @@ task(
   const decoder = new ProposalDecoder(hre);
   await decoder.init();
   console.log("whitelisted call hash:");
-  console.log(whitelistedCall.method.hash.toHex());
+  console.log(whitelistedCall.hash.toHex());
   console.log("\nProposal preimage:");
-  console.log(proposal.method.toHex());
+  console.log(proposal.toHex());
   console.log("\nDecoded proposal calls:");
-  await decoder.decode(proposal.method.toHex());
+  decoder.printTree(decoder.transformCall(proposal.toHuman()));
 });
