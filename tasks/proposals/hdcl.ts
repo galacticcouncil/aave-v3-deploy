@@ -170,22 +170,31 @@ task(
   console.log("predicted GhoAToken proxy:", ghoATokenProxyAddress);
   console.log("predicted GhoVariableDebtToken proxy:", ghoVariableDebtProxyAddress);
 
-  // Register as facilitator
-  console.log("---------> register HDCL pool as HOLLAR facilitator");
+  // Register as facilitator (skip if already added — HOLLAR.addFacilitator
+  // reverts on duplicate).
   {
     const hollar = new hre.ethers.Contract(
       HOLLAR_ADDRESS,
       (await hre.deployments.get("HOLLAR")).abi,
       signer
     );
-    const bucketCapacity = utils.parseUnits("1.0", 24); // 1M HOLLAR
-    const tx = await hollar.populateTransaction.addFacilitator(
-      ghoATokenProxyAddress,
-      "HDCL",
-      bucketCapacity,
-      { gasLimit: 500_000 }
-    );
-    addTransaction(tx);
+    const existing = await hollar.getFacilitator(ghoATokenProxyAddress);
+    const existingCap = existing?.bucketCapacity ?? existing?.[0] ?? 0n;
+    if (BigInt(existingCap.toString()) > 0n) {
+      console.log(
+        `---------> HOLLAR facilitator already added for ${ghoATokenProxyAddress} (cap=${existingCap}) — skipping`
+      );
+    } else {
+      console.log("---------> register HDCL pool as HOLLAR facilitator");
+      const bucketCapacity = utils.parseUnits("1.0", 24); // 1M HOLLAR
+      const tx = await hollar.populateTransaction.addFacilitator(
+        ghoATokenProxyAddress,
+        "HDCL",
+        bucketCapacity,
+        { gasLimit: 500_000 }
+      );
+      addTransaction(tx);
+    }
   }
 
   // Set GHO cross-references
@@ -325,23 +334,29 @@ task(
   // Copy HOLLAR's price (asset 222) since 1 HDCL = 1 HOLLAR at launch and
   // all three tokens share 18 decimals. Read from 0.lark on 2026-04-23:
   //   multiTransactionPayment.acceptedCurrencies(222) = 10960000000000000000000
+  // Skip if already accepted — multiTransactionPayment.addCurrency reverts
+  // with AlreadyAccepted on duplicate, which would revert the whole batchAll.
   const HOLLAR_FEE_PRICE = "10960000000000000000000";
-  txs.push(
-    hydrationTx.multiTransactionPayment.addCurrency(
-      ...Object.values({
-        asset: HDCL_ASSET_ID,
-        price: HOLLAR_FEE_PRICE,
-      })
-    )
-  );
-  txs.push(
-    hydrationTx.multiTransactionPayment.addCurrency(
-      ...Object.values({
-        asset: AHDCL_ASSET_ID,
-        price: HOLLAR_FEE_PRICE,
-      })
-    )
-  );
+  const hdclFee: any = await api.query.multiTransactionPayment.acceptedCurrencies(HDCL_ASSET_ID);
+  const aHdclFee: any = await api.query.multiTransactionPayment.acceptedCurrencies(AHDCL_ASSET_ID);
+  if (!hdclFee.isSome) {
+    txs.push(
+      hydrationTx.multiTransactionPayment.addCurrency(
+        ...Object.values({ asset: HDCL_ASSET_ID, price: HOLLAR_FEE_PRICE })
+      )
+    );
+  } else {
+    console.log(`---------> HDCL (${HDCL_ASSET_ID}) already accepted as fee currency — skipping`);
+  }
+  if (!aHdclFee.isSome) {
+    txs.push(
+      hydrationTx.multiTransactionPayment.addCurrency(
+        ...Object.values({ asset: AHDCL_ASSET_ID, price: HOLLAR_FEE_PRICE })
+      )
+    );
+  } else {
+    console.log(`---------> aHDCL (${AHDCL_ASSET_ID}) already accepted as fee currency — skipping`);
+  }
 
   // ===================================================================
   // Phase E: Generate proposal preimage
