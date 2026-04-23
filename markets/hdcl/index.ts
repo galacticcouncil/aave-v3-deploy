@@ -28,11 +28,11 @@ export const HDCLConfig: IAaveConfiguration = {
   EModes: {},
   ChainlinkAggregator: {
     [eHydrationNetwork.hydration]: {
-      HDCL: "TODO_DEPLOY_HDCLOracleAdapter", // HDCLOracleAdapter reading vault.exchangeRate()
+      HDCL: "0x45edf76c0F2c20fD91639f65444af28440A206ca", // HDCLOracleAdapter reading vault.exchangeRate()
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
     },
     [eHydrationNetwork.zombie]: {
-      HDCL: "TODO_DEPLOY_HDCLOracleAdapter",
+      HDCL: "0x45edf76c0F2c20fD91639f65444af28440A206ca",
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
     },
   },

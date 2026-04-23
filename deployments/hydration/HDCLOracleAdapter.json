@@ -1,0 +1,203 @@
+{
+  "address": "0x45edf76c0F2c20fD91639f65444af28440A206ca",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_vault",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "int256",
+          "name": "current",
+          "type": "int256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "AnswerUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "startedBy",
+          "type": "address"
+        }
+      ],
+      "name": "NewRound",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "decimals",
+      "outputs": [
+        {
+          "internalType": "uint8",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "getAnswer",
+      "outputs": [
+        {
+          "internalType": "int256",
+          "name": "",
+          "type": "int256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "getTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestAnswer",
+      "outputs": [
+        {
+          "internalType": "int256",
+          "name": "",
+          "type": "int256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestRound",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "vault",
+      "outputs": [
+        {
+          "internalType": "contract IHDCLVault",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "transactionHash": "0xe12dfe0c85ad62e602bf6a1b6afa440469f5e77deaf43918cc79bbc0ad3376f5",
+  "receipt": {
+    "to": null,
+    "from": "0x222222B60cA97a4998B7D07b99034Fa4d9339531",
+    "contractAddress": "0x45edf76c0F2c20fD91639f65444af28440A206ca",
+    "transactionIndex": 0,
+    "gasUsed": "319152",
+    "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "blockHash": "0xfd6a637c5fe7fb91467e35cbbb7a0a1e731af677389ebf8f124f6c2cb68b60a7",
+    "transactionHash": "0xe12dfe0c85ad62e602bf6a1b6afa440469f5e77deaf43918cc79bbc0ad3376f5",
+    "logs": [],
+    "blockNumber": 76790,
+    "cumulativeGasUsed": "319152",
+    "status": 1,
+    "byzantium": true
+  },
+  "args": [
+    "0xB82cF8A62EB1b51a2f2A9d71C120E2fB8ae548D8"
+  ],
+  "numDeployments": 1,
+  "solcInputHash": "c4cbff185a2e8a668bd34f5e7908033e",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.10+commit.fc410830\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_vault\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"int256\",\"name\":\"current\",\"type\":\"int256\"},{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"timestamp\",\"type\":\"uint256\"}],\"name\":\"AnswerUpdated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"startedBy\",\"type\":\"address\"}],\"name\":\"NewRound\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"decimals\",\"outputs\":[{\"internalType\":\"uint8\",\"name\":\"\",\"type\":\"uint8\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"getAnswer\",\"outputs\":[{\"internalType\":\"int256\",\"name\":\"\",\"type\":\"int256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"getTimestamp\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestAnswer\",\"outputs\":[{\"internalType\":\"int256\",\"name\":\"\",\"type\":\"int256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestRound\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestTimestamp\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"vault\",\"outputs\":[{\"internalType\":\"contract IHDCLVault\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"title\":\"HDCLOracleAdapter\",\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"notice\":\"Chainlink-compatible oracle for HDCL/USD price.         Reads exchangeRate() from HDCLVault (18 decimals, HDCL\\u2192HOLLAR).         Since HOLLAR \\u2248 $1, the exchange rate is effectively HDCL/USD.         Scales the 18-decimal WAD value down to 8 decimals for Aave compatibility.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"contracts/HDCLOracleAdapter.sol\":\"HDCLOracleAdapter\"},\"evmVersion\":\"berlin\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":100000},\"remappings\":[]},\"sources\":{\"@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol\":{\"content\":\"// SPDX-License-Identifier: AGPL-3.0\\npragma solidity ^0.8.10;\\n\\ninterface IEACAggregatorProxy {\\n  function decimals() external view returns (uint8);\\n\\n  function latestAnswer() external view returns (int256);\\n\\n  function latestTimestamp() external view returns (uint256);\\n\\n  function latestRound() external view returns (uint256);\\n\\n  function getAnswer(uint256 roundId) external view returns (int256);\\n\\n  function getTimestamp(uint256 roundId) external view returns (uint256);\\n\\n  event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 timestamp);\\n  event NewRound(uint256 indexed roundId, address indexed startedBy);\\n}\\n\",\"keccak256\":\"0x75bb34641419925730f87eeb122521b34cfd953b800212c362770ed1c7c5d719\",\"license\":\"AGPL-3.0\"},\"contracts/HDCLOracleAdapter.sol\":{\"content\":\"// SPDX-License-Identifier: AGPL-3.0\\npragma solidity ^0.8.10;\\n\\nimport \\\"@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol\\\";\\n\\ninterface IHDCLVault {\\n    function exchangeRate() external view returns (uint256);\\n}\\n\\n/// @title HDCLOracleAdapter\\n/// @notice Chainlink-compatible oracle for HDCL/USD price.\\n///         Reads exchangeRate() from HDCLVault (18 decimals, HDCL\\u2192HOLLAR).\\n///         Since HOLLAR \\u2248 $1, the exchange rate is effectively HDCL/USD.\\n///         Scales the 18-decimal WAD value down to 8 decimals for Aave compatibility.\\ncontract HDCLOracleAdapter is IEACAggregatorProxy {\\n\\n    uint8 public constant decimals = 8;\\n    IHDCLVault public immutable vault;\\n\\n    constructor(address _vault) {\\n        require(_vault != address(0), \\\"Zero vault address\\\");\\n        vault = IHDCLVault(_vault);\\n    }\\n\\n    function latestAnswer() external view returns (int256) {\\n        uint256 rateWad = vault.exchangeRate(); // 18 decimals\\n        return int256(rateWad / 1e10); // scale 18 \\u2192 8 decimals\\n    }\\n\\n    function latestTimestamp() external view returns (uint256) {\\n        return block.timestamp;\\n    }\\n\\n    function latestRound() external view returns (uint256) {\\n        return block.number;\\n    }\\n\\n    function getAnswer(uint256) external view returns (int256) {\\n        return this.latestAnswer();\\n    }\\n\\n    function getTimestamp(uint256) external view returns (uint256) {\\n        return block.timestamp;\\n    }\\n}\\n\",\"keccak256\":\"0xf2d7cfcc165a6a897d9010a4cd2d13ff928798b60ce536b8c4e63490c891f422\",\"license\":\"AGPL-3.0\"}},\"version\":1}",
+  "bytecode": "0x60a060405234801561001057600080fd5b506040516103d83803806103d883398101604081905261002f9161008f565b6001600160a01b03811661007e5760405162461bcd60e51b81526020600482015260126024820152715a65726f207661756c74206164647265737360701b604482015260640160405180910390fd5b6001600160a01b03166080526100bf565b6000602082840312156100a157600080fd5b81516001600160a01b03811681146100b857600080fd5b9392505050565b6080516102f86100e06000396000818160ee015261013a01526102f86000f3fe608060405234801561001057600080fd5b506004361061007d5760003560e01c80638205bf6a1161005b5780638205bf6a146100bd578063b5ab58dc146100c3578063b633620c146100d6578063fbfa77cf146100e957600080fd5b8063313ce5671461008257806350d25bcd146100a1578063668a0f02146100b7575b600080fd5b61008a600881565b60405160ff90911681526020015b60405180910390f35b6100a9610135565b604051908152602001610098565b436100a9565b426100a9565b6100a96100d1366004610255565b6101de565b6100a96100e4366004610255565b504290565b6101107f000000000000000000000000000000000000000000000000000000000000000081565b60405173ffffffffffffffffffffffffffffffffffffffff9091168152602001610098565b6000807f000000000000000000000000000000000000000000000000000000000000000073ffffffffffffffffffffffffffffffffffffffff16633ba0b9a96040518163ffffffff1660e01b8152600401602060405180830381865afa1580156101a3573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906101c7919061026e565b90506101d86402540be40082610287565b91505090565b60003073ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa15801561022b573d6000803e3d6000fd5b505050506040513d601f19601f8201168201806040525081019061024f919061026e565b92915050565b60006020828403121561026757600080fd5b5035919050565b60006020828403121561028057600080fd5b5051919050565b6000826102bd577f4e487b7100000000000000000000000000000000000000000000000000000000600052601260045260246000fd5b50049056fea2646970667358221220ffd68f21387bd3ffdf456d40145a95238fc0f614b87c30980f043ba807351acf64736f6c634300080a0033",
+  "deployedBytecode": "0x608060405234801561001057600080fd5b506004361061007d5760003560e01c80638205bf6a1161005b5780638205bf6a146100bd578063b5ab58dc146100c3578063b633620c146100d6578063fbfa77cf146100e957600080fd5b8063313ce5671461008257806350d25bcd146100a1578063668a0f02146100b7575b600080fd5b61008a600881565b60405160ff90911681526020015b60405180910390f35b6100a9610135565b604051908152602001610098565b436100a9565b426100a9565b6100a96100d1366004610255565b6101de565b6100a96100e4366004610255565b504290565b6101107f000000000000000000000000000000000000000000000000000000000000000081565b60405173ffffffffffffffffffffffffffffffffffffffff9091168152602001610098565b6000807f000000000000000000000000000000000000000000000000000000000000000073ffffffffffffffffffffffffffffffffffffffff16633ba0b9a96040518163ffffffff1660e01b8152600401602060405180830381865afa1580156101a3573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906101c7919061026e565b90506101d86402540be40082610287565b91505090565b60003073ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa15801561022b573d6000803e3d6000fd5b505050506040513d601f19601f8201168201806040525081019061024f919061026e565b92915050565b60006020828403121561026757600080fd5b5035919050565b60006020828403121561028057600080fd5b5051919050565b6000826102bd577f4e487b7100000000000000000000000000000000000000000000000000000000600052601260045260246000fd5b50049056fea2646970667358221220ffd68f21387bd3ffdf456d40145a95238fc0f614b87c30980f043ba807351acf64736f6c634300080a0033",
+  "devdoc": {
+    "kind": "dev",
+    "methods": {},
+    "title": "HDCLOracleAdapter",
+    "version": 1
+  },
+  "userdoc": {
+    "kind": "user",
+    "methods": {},
+    "notice": "Chainlink-compatible oracle for HDCL/USD price.         Reads exchangeRate() from HDCLVault (18 decimals, HDCL→HOLLAR).         Since HOLLAR ≈ $1, the exchange rate is effectively HDCL/USD.         Scales the 18-decimal WAD value down to 8 decimals for Aave compatibility.",
+    "version": 1
+  },
+  "storageLayout": {
+    "storage": [],
+    "types": null
+  }
+}
