@@ -81,9 +81,37 @@ const func: DeployFunction = async function ({
     return;
   }
 
+  // Skip reserves whose underlying asset doesn't respond to decimals() yet.
+  // On Hydration, substrate-asset precompiles (e.g. HDCL tokenAddress(55))
+  // only respond after the asset is added to the substrate asset registry —
+  // which is done by the governance proposal, not by this deploy script. For
+  // those assets, defer reserve init to the proposal (which atomically
+  // registers the asset and calls init-reserve).
+  const reachable: Record<string, string> = {};
+  for (const [symbol, address] of Object.entries(reservesAddresses)) {
+    try {
+      const erc20 = await hre.ethers.getContractAt(
+        ["function decimals() view returns (uint8)"],
+        address
+      );
+      await erc20.decimals();
+      reachable[symbol] = address;
+    } catch {
+      console.warn(
+        `[WARNING] Skipping reserve init for ${symbol} (${address}) — underlying not responsive to decimals(). Defer to governance proposal.`
+      );
+    }
+  }
+  if (Object.keys(reachable).length === 0) {
+    console.warn(
+      "[WARNING] No reachable reserve assets — skipping init-reserves entirely. Reserves will be initialized via the governance proposal."
+    );
+    return true;
+  }
+
   await initReservesByHelper(
     ReservesConfig,
-    reservesAddresses,
+    reachable,
     ATokenNamePrefix,
     StableDebtTokenNamePrefix,
     VariableDebtTokenNamePrefix,
@@ -94,11 +122,11 @@ const func: DeployFunction = async function ({
   );
   deployments.log(`[Deployment] Initialized all reserves`);
 
-  await configureReservesByHelper(ReservesConfig, reservesAddresses);
+  await configureReservesByHelper(ReservesConfig, reachable);
 
   // Save AToken and Debt tokens artifacts
   const dataProvider = await deployments.get(POOL_DATA_PROVIDER);
-  await savePoolTokens(reservesAddresses, dataProvider.address);
+  await savePoolTokens(reachable, dataProvider.address);
 
   deployments.log(`[Deployment] Configured all reserves`);
   return true;

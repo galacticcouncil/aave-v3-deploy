@@ -1,10 +1,15 @@
 import { eHydrationNetwork, IAaveConfiguration } from "./../../helpers/types";
 import AaveMarket from "../aave";
 import { strategyHDCL } from "./reservesConfigs";
+import { rateStrategyStables } from "./rateStrategies";
 import { tokenAddress } from "./helpers";
 
 export const HDCLConfig: IAaveConfiguration = {
   ...AaveMarket,
+  RateStrategies: {
+    ...AaveMarket.RateStrategies,
+    rateStrategyStables,
+  },
   MarketId: "HDCL",
   ATokenNamePrefix: "HDCL",
   StableDebtTokenNamePrefix: "HDCL",

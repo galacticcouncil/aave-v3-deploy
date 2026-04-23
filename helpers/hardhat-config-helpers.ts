@@ -120,6 +120,9 @@ export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
   [eHydrationNetwork.hydration]: true,
   [eHydrationNetwork.nice]: true,
   [eHydrationNetwork.lark]: true,
+  // chopsticks is a mainnet-state fork — real HOLLAR / HDX / HDCL tokens
+  // exist on it. Mark as live so deploys don't fall back to mock testnet tokens.
+  [eHydrationNetwork.chopsticks]: true,
   [eBaseNetwork.base]: true,
 };
 
