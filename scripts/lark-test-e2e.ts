@@ -14,25 +14,25 @@
 //   7. Transfer:    aGIGAHDXstHDX.transfer (LockableAToken free path)
 //
 // Usage:
-//   WS_URL=wss://1.lark.hydration.cloud npx ts-node scripts/lark-test-e2e.ts
+//   WS_URL=wss://2.lark.hydration.cloud npx ts-node scripts/lark-test-e2e.ts
 //   TESTER_URI=//Bob STAKE_HDX=200 npx ts-node scripts/lark-test-e2e.ts
 
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import { u8aToHex } from "@polkadot/util";
 import { ethers } from "ethers";
 
-const WS_URL = process.env.WS_URL || "wss://1.lark.hydration.cloud";
-const RPC_URL = process.env.RPC_URL || "https://1.lark.hydration.cloud";
+const WS_URL = process.env.WS_URL || "wss://2.lark.hydration.cloud";
+const RPC_URL = process.env.RPC_URL || "https://2.lark.hydration.cloud";
 const TESTER_URI = process.env.TESTER_URI || "//Bob";
 const STAKE_HDX = BigInt(process.env.STAKE_HDX || "200") * BigInt(10 ** 12);
 
-// Deployment addresses (from GIGAHDX-LARK1-ADDRESSES.json)
-const POOL = "0x3d2e0116373610dD215d86080Ca79f417311F014";
-const ORACLE = "0x1FB53E8B9494aFd71A3b81db29E8B89052F0edC3";
+// Deployment addresses (lark 2, Apr 25 2026). See GIGAHDX-LARK2-ADDRESSES.md
+const POOL = "0xb952AE92cC4D8D703d2d71Ab541baB34c94b944A";
+const ORACLE = "0x1f14A240f5Aa8eDD4C5f375B82b3B1d836eF4983";
 const STHDX = "0x000000000000000000000000000000010000029e";
 const HOLLAR = "0x531a654d1696ED52e7275A8cede955E82620f99a";
-const A_STHDX = "0x770D46b6d3A6A17235dc308EEfB89731c9d0A8DF";
-const VD_HOLLAR = "0xB78AF9b0E8eBC9709552C6fE93115498ce5A4c77";
+const A_STHDX = "0x25fA2B5a75ECDF39BA194fc96AAc12682DB42661"; // LockableAToken (stHDX aToken)
+const VD_HOLLAR = "0x8Ba27f3761341D622574a70abD1EAe75845b5045"; // HOLLAR variable debt
 
 type Status = "pass" | "fail" | "skip";
 const results: Array<{ phase: string; status: Status; note: string }> = [];
@@ -108,13 +108,16 @@ async function callEvm(
   data: string,
   label: string
 ): Promise<any[]> {
+  // Reduced from (3_000_000, 1_000_000_000) to (1_000_000, 100_000_000) to rule out
+  // EVM balance check failures. At Hydration's 1.5 Mwei gas price, 1M × 0.1 Gwei
+  // (100 Mwei) is still 66× the minimum effective price.
   const tx: any = (api.tx as any).evm.call(
     source,
     target,
     data,
     "0",
-    3_000_000,
-    "1000000000",
+    1_000_000,
+    "100000000",
     null,
     null,
     [],

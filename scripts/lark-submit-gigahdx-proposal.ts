@@ -15,7 +15,7 @@ import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import type { SubmittableExtrinsic } from "@polkadot/api/types";
 import hre from "hardhat";
 
-const LARK_WS = "wss://1.lark.hydration.cloud";
+const LARK_WS = "wss://2.lark.hydration.cloud";
 
 async function signAndWait(
   tx: SubmittableExtrinsic<"promise">,
@@ -321,10 +321,15 @@ async function main() {
   if (refIndex == null) throw new Error("no refIndex");
   console.log(`Referendum: ${refIndex}`);
 
-  // 4. Deposit + vote
+  // 4. Deposit + vote (capped at 4B per Ben's rule — 62% support is well over
+  // any track's approval threshold on Hydration and avoids locking more than
+  // necessary of Alice's balance).
   await signAndWait(api.tx.referenda.placeDecisionDeposit(refIndex), alice, api, "placeDecisionDeposit");
   const bal: any = await api.query.system.account(alice.address);
-  const voteBalance = (bal.data.free.toBigInt() - BigInt(1_000_000) * BigInt(10 ** 12)).toString();
+  const MAX_VOTE_BASE = 4_000_000_000n * 10n ** 12n;
+  const buffered = bal.data.free.toBigInt() - 1_000_000n * 10n ** 12n;
+  const voteBalance = (buffered < MAX_VOTE_BASE ? buffered : MAX_VOTE_BASE).toString();
+  console.log(`voting with ${Number(BigInt(voteBalance) / 10n ** 12n).toLocaleString()} HDX (4B cap)`);
   await signAndWait(
     api.tx.convictionVoting.vote(refIndex, {
       Standard: { vote: { aye: true, conviction: "Locked6x" }, balance: voteBalance },

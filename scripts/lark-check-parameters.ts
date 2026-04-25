@@ -5,7 +5,7 @@ import { ApiPromise, WsProvider } from "@polkadot/api";
 import { decodeAddress, encodeAddress } from "@polkadot/keyring";
 import { u8aToHex } from "@polkadot/util";
 
-const LARK_WS = "wss://1.lark.hydration.cloud";
+const LARK_WS = process.env.WS_URL || "wss://2.lark.hydration.cloud";
 
 async function main() {
   const provider = new WsProvider(LARK_WS);

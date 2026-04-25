@@ -79,52 +79,68 @@ task(
   const treasuryAddress = (await hre.deployments.get(TREASURY_PROXY_ID)).address;
   const incentivesController = (await hre.deployments.get("IncentivesProxy")).address;
 
-  console.log("---------> init HOLLAR reserve in GIGAHDX pool");
-  {
-    const tx = await poolConfigurator.populateTransaction.initReserves(
-      [
-        {
-          aTokenImpl: ghoATokenImpl.address,
-          stableDebtTokenImpl: ghoStableDebtImpl.address,
-          variableDebtTokenImpl: ghoVariableDebtImpl.address,
-          underlyingAssetDecimals: 18,
-          interestRateStrategyAddress: ghoInterestRateStrategy.address,
-          underlyingAsset: HOLLAR_ADDRESS,
-          treasury: treasuryAddress,
-          incentivesController: incentivesController,
-          aTokenName: "GIGAHDX aHOLLAR",
-          aTokenSymbol: "aGIGAHDXHOLLAR",
-          variableDebtTokenName: "GIGAHDX Variable Debt HOLLAR",
-          variableDebtTokenSymbol: "vdGIGAHDXHOLLAR",
-          stableDebtTokenName: "GIGAHDX Stable Debt HOLLAR",
-          stableDebtTokenSymbol: "sdGIGAHDXHOLLAR",
-          params: "0x10",
-        },
-      ],
-      { gasLimit: 10_000_000 }
-    );
-    addTransaction(tx);
-  }
+  // Idempotency guard: skip HOLLAR init if it's already a reserve in the pool.
+  // poolConfigurator.initReserves reverts with RESERVE_ALREADY_INITIALIZED on
+  // re-init, which inside batchAll kills the whole transaction. Same for
+  // setReserveBorrowing (toggle is safe but we bundle the check anyway).
+  const _prePoolForHollarCheck = await hre.ethers.getContractAt(
+    ["function getReservesList() view returns (address[])"],
+    await poolAddressesProvider.getPool()
+  );
+  const _hollarAlreadyInit = (await _prePoolForHollarCheck.getReservesList())
+    .map((a: string) => a.toLowerCase())
+    .includes(HOLLAR_ADDRESS.toLowerCase());
 
-  console.log("---------> enable HOLLAR borrowing");
-  {
-    const tx = await poolConfigurator.populateTransaction.setReserveBorrowing(
-      HOLLAR_ADDRESS,
-      true,
-      { gasLimit: 1_000_000 }
-    );
-    addTransaction(tx);
-  }
+  if (_hollarAlreadyInit) {
+    console.log("---------> HOLLAR reserve already initialized — skipping Phase B init/borrowing/oracle");
+  } else {
+    console.log("---------> init HOLLAR reserve in GIGAHDX pool");
+    {
+      const tx = await poolConfigurator.populateTransaction.initReserves(
+        [
+          {
+            aTokenImpl: ghoATokenImpl.address,
+            stableDebtTokenImpl: ghoStableDebtImpl.address,
+            variableDebtTokenImpl: ghoVariableDebtImpl.address,
+            underlyingAssetDecimals: 18,
+            interestRateStrategyAddress: ghoInterestRateStrategy.address,
+            underlyingAsset: HOLLAR_ADDRESS,
+            treasury: treasuryAddress,
+            incentivesController: incentivesController,
+            aTokenName: "GIGAHDX aHOLLAR",
+            aTokenSymbol: "aGIGAHDXHOLLAR",
+            variableDebtTokenName: "GIGAHDX Variable Debt HOLLAR",
+            variableDebtTokenSymbol: "vdGIGAHDXHOLLAR",
+            stableDebtTokenName: "GIGAHDX Stable Debt HOLLAR",
+            stableDebtTokenSymbol: "sdGIGAHDXHOLLAR",
+            params: "0x10",
+          },
+        ],
+        { gasLimit: 10_000_000 }
+      );
+      addTransaction(tx);
+    }
 
-  console.log("---------> set HOLLAR oracle in GIGAHDX AaveOracle");
-  {
-    const oracleArtifact = await hre.deployments.get(`AaveOracle-${MARKET_NAME}`);
-    const oracle = await hre.ethers.getContractAt(oracleArtifact.abi, oracleArtifact.address);
-    const tx = await oracle.populateTransaction.setAssetSources(
-      [HOLLAR_ADDRESS],
-      [GHO_ORACLE_ADDRESS]
-    );
-    addTransaction(tx);
+    console.log("---------> enable HOLLAR borrowing");
+    {
+      const tx = await poolConfigurator.populateTransaction.setReserveBorrowing(
+        HOLLAR_ADDRESS,
+        true,
+        { gasLimit: 1_000_000 }
+      );
+      addTransaction(tx);
+    }
+
+    console.log("---------> set HOLLAR oracle in GIGAHDX AaveOracle");
+    {
+      const oracleArtifact = await hre.deployments.get(`AaveOracle-${MARKET_NAME}`);
+      const oracle = await hre.ethers.getContractAt(oracleArtifact.abi, oracleArtifact.address);
+      const tx = await oracle.populateTransaction.setAssetSources(
+        [HOLLAR_ADDRESS],
+        [GHO_ORACLE_ADDRESS]
+      );
+      addTransaction(tx);
+    }
   }
 
   // ===================================================================
@@ -175,7 +191,10 @@ task(
   console.log("predicted GhoAToken proxy:", ghoATokenProxyAddress);
   console.log("predicted GhoVariableDebtToken proxy:", ghoVariableDebtProxyAddress);
 
-  // Register as facilitator
+  // Register as facilitator.
+  // Idempotency guard: HOLLAR.addFacilitator reverts with FACILITATOR_ALREADY_EXISTS
+  // if called for an address whose bucketCapacity is already set. This would brick
+  // the whole batchAll on a re-submit after partial failure. Skip if already registered.
   console.log("---------> register GIGAHDX as HOLLAR facilitator");
   {
     const hollar = new hre.ethers.Contract(
@@ -183,58 +202,73 @@ task(
       (await hre.deployments.get("HOLLAR")).abi,
       signer
     );
-    const bucketCapacity = utils.parseUnits("1.0", 24); // 1M HOLLAR — TODO: set final value
-    const tx = await hollar.populateTransaction.addFacilitator(
-      ghoATokenProxyAddress,
-      "GIGAHDX",
-      bucketCapacity,
-      { gasLimit: 500_000 }
-    );
-    addTransaction(tx);
-  }
-
-  // Set GHO cross-references
-  console.log("---------> set GHO cross-references");
-  {
-    const ghoAToken = new hre.ethers.Contract(
-      ghoATokenProxyAddress,
-      ghoATokenImpl.abi,
-      signer
-    );
-
-    const txSetVarDebt = await ghoAToken.populateTransaction.setVariableDebtToken(
-      ghoVariableDebtProxyAddress
-    );
-    addTransaction(txSetVarDebt);
-
-    const txSetTreasury = await ghoAToken.populateTransaction.updateGhoTreasury(
-      treasuryAddress
-    );
-    addTransaction(txSetTreasury);
-  }
-
-  {
-    const ghoVariableDebt = new hre.ethers.Contract(
-      ghoVariableDebtProxyAddress,
-      ghoVariableDebtImpl.abi,
-      signer
-    );
-
-    const txSetAToken = await ghoVariableDebt.populateTransaction.setAToken(
-      ghoATokenProxyAddress
-    );
-    addTransaction(txSetAToken);
-
-    const zeroDiscountStrategy = await hre.deployments.get("ZeroDiscountRateStrategy");
-    const txSetDiscountRate =
-      await ghoVariableDebt.populateTransaction.updateDiscountRateStrategy(
-        zeroDiscountStrategy.address
+    const existing = await hollar.getFacilitator(ghoATokenProxyAddress);
+    if (existing.bucketCapacity && existing.bucketCapacity.gt(0)) {
+      console.log(
+        `---------> GIGAHDX facilitator already registered (capacity=${existing.bucketCapacity.toString()}) — skipping`
       );
-    addTransaction(txSetDiscountRate);
+    } else {
+      const bucketCapacity = utils.parseUnits("1.0", 24); // 1M HOLLAR — TODO: set final value
+      const tx = await hollar.populateTransaction.addFacilitator(
+        ghoATokenProxyAddress,
+        "GIGAHDX",
+        bucketCapacity,
+        { gasLimit: 500_000 }
+      );
+      addTransaction(tx);
+    }
+  }
 
-    const txSetDiscountToken =
-      await ghoVariableDebt.populateTransaction.updateDiscountToken(HOLLAR_ADDRESS);
-    addTransaction(txSetDiscountToken);
+  // GHO cross-references: target the GhoAToken / GhoVariableDebtToken proxies
+  // that were deployed by HOLLAR's initReserves. If HOLLAR was already
+  // initialized in a previous run, these setters were also called then —
+  // re-calling setVariableDebtToken / setAToken typically reverts (one-shot
+  // setters), which would brick batchAll. Skip when HOLLAR is already init.
+  if (_hollarAlreadyInit) {
+    console.log("---------> HOLLAR cross-refs already set — skipping");
+  } else {
+    console.log("---------> set GHO cross-references");
+    {
+      const ghoAToken = new hre.ethers.Contract(
+        ghoATokenProxyAddress,
+        ghoATokenImpl.abi,
+        signer
+      );
+
+      const txSetVarDebt = await ghoAToken.populateTransaction.setVariableDebtToken(
+        ghoVariableDebtProxyAddress
+      );
+      addTransaction(txSetVarDebt);
+
+      const txSetTreasury = await ghoAToken.populateTransaction.updateGhoTreasury(
+        treasuryAddress
+      );
+      addTransaction(txSetTreasury);
+    }
+
+    {
+      const ghoVariableDebt = new hre.ethers.Contract(
+        ghoVariableDebtProxyAddress,
+        ghoVariableDebtImpl.abi,
+        signer
+      );
+
+      const txSetAToken = await ghoVariableDebt.populateTransaction.setAToken(
+        ghoATokenProxyAddress
+      );
+      addTransaction(txSetAToken);
+
+      const zeroDiscountStrategy = await hre.deployments.get("ZeroDiscountRateStrategy");
+      const txSetDiscountRate =
+        await ghoVariableDebt.populateTransaction.updateDiscountRateStrategy(
+          zeroDiscountStrategy.address
+        );
+      addTransaction(txSetDiscountRate);
+
+      const txSetDiscountToken =
+        await ghoVariableDebt.populateTransaction.updateDiscountToken(HOLLAR_ADDRESS);
+      addTransaction(txSetDiscountToken);
+    }
   }
 
   // Wrap all HOLLAR EVM txs

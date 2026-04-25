@@ -3,7 +3,7 @@
 
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 
-const LARK_WS = "wss://1.lark.hydration.cloud";
+const LARK_WS = process.env.WS_URL || "wss://2.lark.hydration.cloud";
 
 async function main() {
   const provider = new WsProvider(LARK_WS);

@@ -13,7 +13,7 @@ import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import { u8aToHex, BN } from "@polkadot/util";
 import type { SubmittableExtrinsic } from "@polkadot/api/types";
 
-const LARK_WS = "wss://1.lark.hydration.cloud";
+const LARK_WS = process.env.WS_URL || "wss://2.lark.hydration.cloud";
 const EVM_DEPLOYER = "0x222222B60cA97a4998B7D07b99034Fa4d9339531";
 
 async function signAndSendWait(

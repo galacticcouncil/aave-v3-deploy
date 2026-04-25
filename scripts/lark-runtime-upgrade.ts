@@ -11,7 +11,7 @@ import { blake2AsHex } from "@polkadot/util-crypto";
 import type { SubmittableExtrinsic } from "@polkadot/api/types";
 import * as fs from "fs";
 
-const LARK_WS = process.env.WS_URL || "wss://1.lark.hydration.cloud";
+const LARK_WS = process.env.WS_URL || "wss://2.lark.hydration.cloud";
 const WASM_PATH =
   process.env.WASM_PATH ||
   "/Users/yashsharma/Workspace/Hydration/hydration-node/target/release/wbuild/hydradx-runtime/hydradx_runtime.compact.compressed.wasm";

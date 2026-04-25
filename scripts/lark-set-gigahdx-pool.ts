@@ -6,8 +6,12 @@
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import type { SubmittableExtrinsic } from "@polkadot/api/types";
 
-const LARK_WS = "wss://1.lark.hydration.cloud";
-const GIGAHDX_POOL = "0x3d2e0116373610dD215d86080Ca79f417311F014";
+const LARK_WS = "wss://2.lark.hydration.cloud";
+// Pool-Proxy-GIGAHDX on lark 2 (from Phase 2 deploy, Apr 25 2026).
+const GIGAHDX_POOL = "0xb952AE92cC4D8D703d2d71Ab541baB34c94b944A";
+// Vote cap per Ben's rule. 4B HDX is well above any track's approval threshold
+// on Hydration (total issuance ~6.5B) and avoids locking Alice's entire balance.
+const MAX_VOTE_BASE = 4_000_000_000n * 10n ** 12n;
 
 async function signAndWait(
   tx: SubmittableExtrinsic<"promise">,
@@ -118,10 +122,15 @@ async function main() {
     "placeDecisionDeposit"
   );
 
-  // Vote with FULL free balance at 6x (works because same-class lock is max-ed anyway)
+  // Vote with min(full free balance, 4B cap) at 6x. Same-class lock is max-ed so
+  // we can vote up to our total balance on a different ref without extra lock.
   const bal: any = await api.query.system.account(alice.address);
-  const voteBalance = bal.data.free.toBigInt().toString();
-  console.log(`voting with ${Number(BigInt(voteBalance) / 10n ** 12n).toLocaleString()} HDX at 6x`);
+  const free = bal.data.free.toBigInt();
+  const voteBalance = (free < MAX_VOTE_BASE ? free : MAX_VOTE_BASE).toString();
+  console.log(
+    `voting with ${Number(BigInt(voteBalance) / 10n ** 12n).toLocaleString()} HDX at 6x ` +
+      `(free=${Number(free / 10n ** 12n).toLocaleString()}, cap=4B)`
+  );
   await signAndWait(
     api.tx.convictionVoting.vote(refIndex, {
       Standard: { vote: { aye: true, conviction: "Locked6x" }, balance: voteBalance },

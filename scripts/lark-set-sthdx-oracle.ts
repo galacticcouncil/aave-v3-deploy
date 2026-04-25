@@ -19,12 +19,14 @@ import { ethers } from "ethers";
 import * as fs from "fs";
 import * as path from "path";
 
-const LARK_WS = "wss://1.lark.hydration.cloud";
-const LARK_RPC = "https://1.lark.hydration.cloud";
+const LARK_WS = "wss://2.lark.hydration.cloud";
+const LARK_RPC = "https://2.lark.hydration.cloud";
 
-const AAVE_ORACLE = "0x1FB53E8B9494aFd71A3b81db29E8B89052F0edC3";
+// AaveOracle-GIGAHDX on lark 2 (from Phase 2 deploy)
+const AAVE_ORACLE = "0x1f14A240f5Aa8eDD4C5f375B82b3B1d836eF4983";
 const STHDX = "0x000000000000000000000000000000010000029e";
 const GOV_EVM = "0xaa7e0000000000000000000000000000000aa7e0";
+const MAX_VOTE_BASE = 4_000_000_000n * 10n ** 12n; // 4B HDX — Ben's rule
 
 async function signAndWait(
   tx: SubmittableExtrinsic<"promise">,
@@ -101,8 +103,14 @@ async function main() {
     console.log("current stHDX price: REVERTS (expected)");
   }
 
-  // Build the inner call: evm.call with Root-dispatched source = GOV_EVM
-  const innerCall: any = (api.tx as any).evm.call(
+  // Build the inner call: wrap evm.call in dispatcher.dispatchAsAaveManager so
+  // pallet-evm's source check accepts the GOV_EVM / AaveManagerAccount identity.
+  // Raw evm.call from a whitelist.dispatchWhitelistedCall (Root origin) reverts
+  // silently in the EVM because pallet-evm rejects a source it can't verify.
+  // Runtime 406 evm.call expects 10 args: (source, target, input, value,
+  // gas_limit, max_fee_per_gas, max_priority_fee_per_gas, nonce, access_list,
+  // authorization_list). The last one (EIP-7702) was added recently.
+  const evmCall: any = (api.tx as any).evm.call(
     GOV_EVM,
     AAVE_ORACLE,
     callData,
@@ -111,8 +119,10 @@ async function main() {
     "1000000000",
     null,
     null,
+    [],
     []
   );
+  const innerCall: any = (api.tx as any).dispatcher.dispatchAsAaveManager(evmCall);
   const innerHash = innerCall.method.hash.toHex();
   console.log(`inner evm.call hash: ${innerHash}`);
 
@@ -178,8 +188,9 @@ async function main() {
   );
 
   const bal: any = await api.query.system.account(alice.address);
-  const voteBalance = bal.data.free.toBigInt().toString();
-  console.log(`voting with ${Number(BigInt(voteBalance) / 10n ** 12n).toLocaleString()} HDX at 6x`);
+  const free = bal.data.free.toBigInt();
+  const voteBalance = (free < MAX_VOTE_BASE ? free : MAX_VOTE_BASE).toString();
+  console.log(`voting with ${Number(BigInt(voteBalance) / 10n ** 12n).toLocaleString()} HDX at 6x (4B cap)`);
   await signAndWait(
     api.tx.convictionVoting.vote(refIndex, {
       Standard: { vote: { aye: true, conviction: "Locked6x" }, balance: voteBalance },

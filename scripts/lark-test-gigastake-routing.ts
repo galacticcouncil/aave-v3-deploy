@@ -12,8 +12,8 @@ import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import { u8aToHex } from "@polkadot/util";
 import { ethers } from "ethers";
 
-const WS_URL = process.env.WS_URL || "wss://1.lark.hydration.cloud";
-const RPC_URL = process.env.RPC_URL || "https://1.lark.hydration.cloud";
+const WS_URL = process.env.WS_URL || "wss://2.lark.hydration.cloud";
+const RPC_URL = process.env.RPC_URL || "https://2.lark.hydration.cloud";
 const TESTER_URI = process.env.TESTER_URI || "//Bob";
 const STAKE_HDX = BigInt(process.env.STAKE_HDX || "100") * BigInt(10 ** 12);
 
