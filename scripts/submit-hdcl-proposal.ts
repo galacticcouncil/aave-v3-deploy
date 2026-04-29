@@ -219,8 +219,8 @@ async function main() {
   {
     const hollar = new hhre.ethers.Contract(HOLLAR, (await hhre.deployments.get("HOLLAR")).abi, signer);
     const existing = await (hollar as any).getFacilitator(ghoATokenProxyAddress);
-    const existingCap = existing?.bucketCapacity ?? existing?.[0] ?? 0n;
-    if (BigInt(existingCap.toString()) > 0n) {
+    const existingCap = existing?.bucketCapacity ?? existing?.[0] ?? BigInt(0);
+    if (BigInt(existingCap.toString()) > BigInt(0)) {
       console.log(`HOLLAR facilitator already added for ${ghoATokenProxyAddress} (cap=${existingCap}) — skipping`);
     } else {
       const bucketCapacity = utils.parseUnits("1.0", 24); // 1M HOLLAR
@@ -247,30 +247,58 @@ async function main() {
   txs.push(...hollarTxs);
   clearBatch();
 
-  // Phase D — asset registry (conditional)
+  // Phase D — asset registry + fee currencies + approve MM contract.
   const HDCL_ASSET_ID = 55;
   const AHDCL_ASSET_ID = 550;
   const hdclInfo: any = await apiInst.query.assetRegistry.assets(HDCL_ASSET_ID);
   const aHdclInfo: any = await apiInst.query.assetRegistry.assets(AHDCL_ASSET_ID);
 
+  // Read vault proxy from the deployed HDCLOracleAdapter (works on any net).
+  const adapterArtifact = await hhre.deployments.get("HDCLOracleAdapter");
+  const adapter = await hhre.ethers.getContractAt(["function vault() view returns (address)"], adapterArtifact.address);
+  const HDCL_VAULT_PROXY: string = await adapter.vault();
+  console.log(`HDCL vault proxy (from HDCLOracleAdapter): ${HDCL_VAULT_PROXY}`);
+
+  // HDCL is itself an EVM ERC-20 (the vault contract), so register as Erc20
+  // with location → vault. As Token / location:null the substrate→EVM
+  // precompile at tokenAddress(55) is not bridged to the vault, breaking
+  // Pool.supply for HDCL.
   if (!hdclInfo.isSome) {
     txs.push(
       hydrationTx.assetRegistry.register(
         ...Object.values({
           id: HDCL_ASSET_ID,
           name: "HDCL",
-          assetType: "Token",
+          assetType: "Erc20",
           existentialDeposit: "20000000000000000",
           symbol: "HDCL",
           decimals: 18,
-          location: null,
+          location: location(HDCL_VAULT_PROXY),
           xcmRateLimit: null,
           isSufficient: true,
         })
       )
     );
   } else {
-    console.log(`HDCL (${HDCL_ASSET_ID}) already registered — skipping register`);
+    const locOnChain: any = await apiInst.query.assetRegistry.assetLocations(HDCL_ASSET_ID);
+    let currentKey: string | null = null;
+    if (locOnChain.isSome) {
+      const human: any = locOnChain.toHuman();
+      currentKey = human?.interior?.X1?.[0]?.AccountKey20?.key?.toLowerCase?.() ?? null;
+    }
+    const expectedKey = HDCL_VAULT_PROXY.toLowerCase();
+    if (currentKey === expectedKey) {
+      console.log(`HDCL (${HDCL_ASSET_ID}) already at correct location — skipping`);
+    } else {
+      console.log(`HDCL (${HDCL_ASSET_ID}) location ${currentKey} != ${expectedKey} — adding assetRegistry.update`);
+      txs.push(
+        hydrationTx.assetRegistry.update(
+          HDCL_ASSET_ID,
+          null, null, null, null, null, null, null,
+          location(HDCL_VAULT_PROXY)
+        )
+      );
+    }
   }
 
   if (!aHdclInfo.isSome) {
@@ -331,6 +359,17 @@ async function main() {
     txs.push(hydrationTx.multiTransactionPayment.addCurrency(...Object.values({ asset: AHDCL_ASSET_ID, price: HOLLAR_FEE_PRICE })));
   } else {
     console.log(`aHDCL fee currency already accepted — skipping`);
+  }
+
+  // Approve Pool-Proxy-HDCL as managed-balance contract — saves users from
+  // running ERC-20 approve() before pool.supply / repay. Idempotent.
+  const poolProxyAddress = (await hhre.deployments.get("Pool-Proxy-HDCL")).address;
+  const approvedEntry: any = await apiInst.query.eVMAccounts.approvedContract(poolProxyAddress);
+  if (!approvedEntry.isSome) {
+    console.log(`approve Pool-Proxy-HDCL (${poolProxyAddress}) for managed-balance access`);
+    txs.push(hydrationTx.eVMAccounts.approveContract(poolProxyAddress));
+  } else {
+    console.log(`Pool-Proxy-HDCL already approved — skipping`);
   }
 
   // For lark/chopsticks dry-run: submit the raw batchAll on the Root track.

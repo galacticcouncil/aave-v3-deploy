@@ -179,8 +179,8 @@ task(
       signer
     );
     const existing = await hollar.getFacilitator(ghoATokenProxyAddress);
-    const existingCap = existing?.bucketCapacity ?? existing?.[0] ?? 0n;
-    if (BigInt(existingCap.toString()) > 0n) {
+    const existingCap = existing?.bucketCapacity ?? existing?.[0] ?? BigInt(0);
+    if (BigInt(existingCap.toString()) > BigInt(0)) {
       console.log(
         `---------> HOLLAR facilitator already added for ${ghoATokenProxyAddress} (cap=${existingCap}) — skipping`
       );
@@ -249,11 +249,27 @@ task(
   clearBatch();
 
   // ===================================================================
-  // Phase D: Substrate root transactions — asset registry + fee payment
+  // Phase D: Substrate root transactions — asset registry + fee payment +
+  // approve MM contract for ERC-20 transferFrom.
   // ===================================================================
 
   const HDCL_ASSET_ID = 55;
   const AHDCL_ASSET_ID = 550;
+
+  // HDCL is itself an EVM contract (the vault), so register it as Erc20 with
+  // a location pointing at the vault proxy. This is critical: as Token /
+  // location:null, the substrate→EVM precompile at tokenAddress(55) does not
+  // bridge to the vault contract, and Pool.supply(HDCL,...) reverts because
+  // transferFrom on the precompile sees a zero substrate balance.
+  // Read the vault address from the deployed HDCLOracleAdapter so this works
+  // across networks (lark vault proxy != mainnet vault proxy).
+  const oracleAdapterArtifact = await hre.deployments.get("HDCLOracleAdapter");
+  const oracleAdapterRO = await hre.ethers.getContractAt(
+    ["function vault() view returns (address)"],
+    oracleAdapterArtifact.address
+  );
+  const HDCL_VAULT_PROXY = await oracleAdapterRO.vault();
+  console.log(`HDCL vault proxy (from HDCLOracleAdapter): ${HDCL_VAULT_PROXY}`);
 
   // Check existing registrations. batchAll reverts the whole batch if any call
   // fails, so registering already-existing assets would brick the proposal.
@@ -262,24 +278,52 @@ task(
   const aHdclInfo: any = await api.query.assetRegistry.assets(AHDCL_ASSET_ID);
 
   if (!hdclInfo.isSome) {
-    console.log("---------> register HDCL in asset registry");
+    console.log("---------> register HDCL in asset registry as Erc20 → vault");
     txs.push(
       hydrationTx.assetRegistry.register(
         ...Object.values({
           id: HDCL_ASSET_ID,
           name: "HDCL",
-          assetType: "Token",
+          assetType: "Erc20",
           existentialDeposit: "20000000000000000", // 0.02 HDCL (18 decimals)
           symbol: "HDCL",
           decimals: 18,
-          location: null,
+          location: location(HDCL_VAULT_PROXY),
           xcmRateLimit: null,
           isSufficient: true,
         })
       )
     );
   } else {
-    console.log(`---------> HDCL (${HDCL_ASSET_ID}) already in asset registry — skipping register`);
+    // Already registered — check if location matches the vault proxy and
+    // update if not (handles the "registered as Token then need to fix" case).
+    const locOnChain: any = await api.query.assetRegistry.assetLocations(HDCL_ASSET_ID);
+    let currentKey: string | null = null;
+    if (locOnChain.isSome) {
+      const human: any = locOnChain.toHuman();
+      currentKey = human?.interior?.X1?.[0]?.AccountKey20?.key?.toLowerCase?.() ?? null;
+    }
+    const expectedKey = HDCL_VAULT_PROXY.toLowerCase();
+    if (currentKey === expectedKey) {
+      console.log(`---------> HDCL (${HDCL_ASSET_ID}) already at correct location ${HDCL_VAULT_PROXY} — skipping`);
+    } else {
+      console.log(
+        `---------> HDCL (${HDCL_ASSET_ID}) location ${currentKey} != ${expectedKey} — adding assetRegistry.update`
+      );
+      txs.push(
+        hydrationTx.assetRegistry.update(
+          HDCL_ASSET_ID,
+          null, // name
+          null, // asset_type — note: pallet may or may not allow Token→Erc20 here
+          null, // existential_deposit
+          null, // xcm_rate_limit
+          null, // is_sufficient
+          null, // symbol
+          null, // decimals
+          location(HDCL_VAULT_PROXY) // location
+        )
+      );
+    }
   }
 
   if (!aHdclInfo.isSome) {
@@ -356,6 +400,18 @@ task(
     );
   } else {
     console.log(`---------> aHDCL (${AHDCL_ASSET_ID}) already accepted as fee currency — skipping`);
+  }
+
+  // Approve the HDCL Pool proxy as a managed-balance contract so users don't
+  // need a separate ERC-20 approve() before pool.supply / repay. Idempotent:
+  // skip if already in EVMAccounts.ApprovedContract.
+  const poolProxyAddress = (await hre.deployments.get("Pool-Proxy-HDCL")).address;
+  const approvedEntry: any = await api.query.eVMAccounts.approvedContract(poolProxyAddress);
+  if (!approvedEntry.isSome) {
+    console.log(`---------> approve Pool-Proxy-HDCL (${poolProxyAddress}) for managed-balance access`);
+    txs.push(hydrationTx.eVMAccounts.approveContract(poolProxyAddress));
+  } else {
+    console.log(`---------> Pool-Proxy-HDCL already approved — skipping`);
   }
 
   // ===================================================================

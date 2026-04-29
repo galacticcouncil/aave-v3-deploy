@@ -23,7 +23,8 @@ execution. All addresses + artifacts captured in `deployments/lark/`.
   `GhoInterestRateStrategy-HDCL` (fixed 10% APR). Built in the `hollar` repo.
 - **Governance proposal** — single `batchAll` containing init-reserve + config
   calls (EVM, via `dispatcher.dispatchAsAaveManager`) plus substrate
-  `assetRegistry.register` / `multiTransactionPayment.addCurrency` calls.
+  `assetRegistry.register`, `multiTransactionPayment.addCurrency`, and
+  `EVMAccounts.approve_contract(Pool-Proxy-HDCL)` calls.
 
 ## Correct phase ordering
 
@@ -60,6 +61,57 @@ execution. All addresses + artifacts captured in `deployments/lark/`.
     `hydration-ui/apps/main/src/modules/hdcl-vault/constants.ts` and any
     money-market pool registry.
 
+## What the proposal `batchAll` does (current source of truth)
+
+The HDCL governance proposal task at `tasks/proposals/hdcl.ts` builds these
+calls. Every substrate call is idempotent — re-submission after a partial
+failure is safe.
+
+**Phase A — HDCL collateral reserve (EVM via dispatchAsAaveManager):**
+- `init-reserve HDCL` → `pool.initReserves(...)` for HDCL with the standard
+  AToken / StableDebtToken / VariableDebtToken impls and `rateStrategyStables`.
+- `configureReserves` → applies LTV 70 / LiqThresh 80 / liquidation bonus 7% /
+  reserve factor 20% / supply cap 3M / borrow disabled / debt ceiling 0.
+- `setupLiquidationProtocolFee` → 10%.
+
+**Phase B — HOLLAR borrow reserve (EVM via dispatchAsAaveManager):**
+- `pool.initReserves` for HOLLAR using the HDCL-specific `GhoAToken-HDCL` /
+  `GhoStableDebtToken-HDCL` / `GhoVariableDebtToken-HDCL` impls and
+  `GhoInterestRateStrategy-HDCL` (fixed 10% APR).
+- `setReserveBorrowing(HOLLAR, true)`.
+- `AaveOracle-HDCL.setAssetSources([HOLLAR], [GhoOracle])`.
+
+**Phase C — HOLLAR facilitator + GHO cross-references (EVM via dispatchAsAaveManager):**
+- `HOLLAR.addFacilitator(predictedGhoAToken, "HDCL", 1M HOLLAR)` — *skipped if
+  bucket already set up*.
+- `GhoAToken.setVariableDebtToken(predictedGhoVariableDebt)`.
+- `GhoAToken.updateGhoTreasury(treasury)`.
+- `GhoVariableDebt.setAToken(predictedGhoAToken)`.
+- `GhoVariableDebt.updateDiscountRateStrategy(ZeroDiscountRateStrategy)`.
+- `GhoVariableDebt.updateDiscountToken(HOLLAR)`.
+
+The predicted addresses use a nonce-offset that auto-detects whether HDCL is
+already initialized (offset 0) or being initialized in this batch (offset 3).
+
+**Phase D — Substrate (root):**
+- `assetRegistry.register(55, HDCL, **Erc20**, location → vault proxy)` —
+  HDCL is itself an EVM contract (the vault), so it registers as `Erc20` with
+  `location = location(vault_proxy_address)`. Skipped if already registered;
+  if location drifted, emits `assetRegistry.update`.
+- `assetRegistry.register(550, aHDCL, Erc20, location → HDCL aToken proxy)` —
+  same idempotency.
+- `multiTransactionPayment.addCurrency(55, HOLLAR_price)` — skipped if
+  already accepted.
+- `multiTransactionPayment.addCurrency(550, HOLLAR_price)` — skipped if
+  already accepted.
+- `EVMAccounts.approve_contract(Pool-Proxy-HDCL)` — adds the pool to
+  Hydration's managed-balance approved-contract list so users don't need a
+  separate `IERC20.approve(pool, ...)` before `pool.supply`. Idempotent.
+
+The vault proxy address used for HDCL's `location` is read at proposal-build
+time from the on-chain `HDCLOracleAdapter.vault()` getter, so it's correct on
+any network without hardcoding.
+
 ## Pre-flight checklist (MUST pass before step 11)
 
 Run each check before submitting the governance proposal. Do not skip.
@@ -74,6 +126,9 @@ cast call PoolAddressesProvider-HDCL "owner()(address)"      # → 0xaa7e...
 
 # ReservesSetupHelper can configure reserves
 cast call ACLManager-HDCL "isRiskAdmin(address)(bool)" <ReservesSetupHelper-address> # → true
+
+# HDCL OracleAdapter is wired to the right vault (the location used in registry)
+cast call HDCLOracleAdapter "vault()(address)" # → vault proxy address used in the proposal's HDCL registration
 
 # All required artifacts present
 ls deployments/<network>/HOLLAR.json \
@@ -264,6 +319,39 @@ initialized in this batch" cases. It queries `pool.getReservesList()` and
 adjusts the predicted GhoAToken proxy address accordingly. On mainnet this
 will correctly predict offset 3 (HDCL not initialized until the proposal).
 
+### 7. HDCL registered as Token instead of Erc20 (cost: lark needs remediation; mainnet code now correct)
+
+The original proposal task copied Yash's GIGAHDX pattern verbatim:
+`assetType: "Token"` with `location: null` for the underlying collateral.
+That's correct for stHDX (a substrate-native asset with no EVM contract) but
+wrong for HDCL — HDCL *is* an EVM contract (the vault). When registered as
+`Token`, the substrate→EVM precompile at `tokenAddress(55)` does not bridge
+to the actual vault contract, so `Pool.supply(HDCL, amount)` reverts on its
+internal `transferFrom` call.
+
+**Fix:** `tasks/proposals/hdcl.ts` now registers HDCL as
+`assetType: "Erc20"` with `location: location(vault_proxy)`, where
+`vault_proxy` is read at proposal-build time from
+`HDCLOracleAdapter.vault()` (so it works on any network without
+hardcoding). The aHDCL registration was always correct (`Erc20` →
+HDCL aToken proxy).
+
+The 0.lark deployment will need a remediation `assetRegistry.update(55, ...)`
+to switch type/location — handled separately from this code change.
+
+### 8. Forgot to approve Pool-Proxy-HDCL for managed-balance access (cost: every user would need a separate approve before supplying)
+
+Hydration's EVM has a managed-contract approval mechanism: contracts in
+`EVMAccounts.ApprovedContract` can call `transferFrom` on substrate-mapped
+tokens without requiring an explicit `IERC20.approve` from the user. This is
+how the existing money-market avoids the two-tx UX. We forgot to add the
+HDCL Pool-Proxy to this list in the original proposal.
+
+**Fix:** the proposal task now appends
+`EVMAccounts.approve_contract(Pool-Proxy-HDCL)` to the substrate phase, with
+an idempotency check on `EVMAccounts.ApprovedContract` storage so re-runs
+don't revert.
+
 ## 0.lark deployed addresses (reference)
 
 | Component | 0.lark Address |
@@ -328,9 +416,27 @@ cast call <Pool-Proxy-HDCL> "getReserveData(address)(...)" <HOLLAR-address>
 cast call <HOLLAR> "getFacilitator(address)(uint128,uint128,string)" <predicted-GhoAToken>
 
 # 4. Substrate state
-polkadot-api: assetRegistry.assets(55) / assets(550)
+polkadot-api:
+  assetRegistry.assets(55)              # type=Erc20, location=AccountKey20(vault_proxy)
+  assetRegistry.assets(550)             # type=Erc20, location=AccountKey20(HDCL aToken proxy)
+  assetRegistry.assetLocations(55)      # decodes to vault proxy
+  assetRegistry.assetLocations(550)     # decodes to HDCL aToken proxy
+  multiTransactionPayment.acceptedCurrencies(55)        # is some
+  multiTransactionPayment.acceptedCurrencies(550)       # is some
+  EVMAccounts.approvedContract(<Pool-Proxy-HDCL>)       # is some
+
+# 5. End-to-end UX check — supply with NO approve()
+   In a fresh wallet that's never interacted with the pool:
+   - deposit HOLLAR → vault → receive HDCL (single tx)
+   - directly call pool.supply(HDCL, amount) WITHOUT first calling
+     IERC20(HDCL).approve(pool, ...) — this should succeed because the pool
+     is in EVMAccounts.ApprovedContract.
+   - borrow HOLLAR
+   - repay HOLLAR (also without explicit approve)
+   - withdraw HDCL
+   - redeem HDCL → HOLLAR via vault
               multiTransactionPayment.acceptedCurrencies(55) / (550)
 
-# 5. End-to-end UI test (on mainnet vault URL)
+# 6. End-to-end UI test (on mainnet vault URL)
    deposit HOLLAR → get HDCL → supply HDCL as collateral → borrow HOLLAR → repay → withdraw
 ```
