@@ -40,12 +40,14 @@ task(
   const txs = [];
 
   // ===================================================================
-  // Phase A: HDCL reserve initialization (standard Aave flow)
+  // Phase A: DCL collateral reserve initialization (standard Aave flow).
+  // DCL is the substrate-registered name for the vault token. The aToken
+  // proxy created by initReserves becomes the user-facing "HDCL" asset.
   // ===================================================================
 
-  console.log("---------> init HDCL reserve");
+  console.log("---------> init DCL reserve");
   await hre.run("init-reserve", {
-    symbol: "HDCL",
+    symbol: "DCL",
     batch: true,
   });
 
@@ -55,11 +57,10 @@ task(
     batch: true,
   });
 
-  // Wrap HDCL EVM txs
-  const hdclTxs = await Promise.all(
+  const dclTxs = await Promise.all(
     getBatch().map((tx) => aaveManagerCall({ ...tx, from: admin }))
   );
-  txs.push(...hdclTxs);
+  txs.push(...dclTxs);
   clearBatch();
 
   // ===================================================================
@@ -127,13 +128,15 @@ task(
   // ===================================================================
 
   // Predict proxy addresses from PoolConfigurator nonce.
-  // When HDCL reserve is already initialized (on-chain at time of proposal
+  // When DCL reserve is already initialized (on-chain at time of proposal
   // generation), the batch only inits HOLLAR so HOLLAR's aToken is at offset 0.
-  // When HDCL init IS in the batch, HOLLAR's aToken is at offset 3.
+  // When DCL init IS in the batch, HOLLAR's aToken is at offset 3.
+  // The DCL aToken's address is what we register as the user-facing "HDCL"
+  // asset in the substrate registry (asset id 55).
   const configuratorAddress = poolConfigurator.address;
   const currentNonce = await hre.ethers.provider.getTransactionCount(configuratorAddress);
 
-  const HDCL_UNDERLYING = "0x0000000000000000000000000000000100000037";
+  const DCL_UNDERLYING = "0x0000000000000000000000000000000100000226"; // tokenAddress(550)
   const pool = await hre.ethers.getContractAt(
     [
       "function getReservesList() view returns (address[])",
@@ -142,14 +145,14 @@ task(
     await poolAddressesProvider.getPool()
   );
   const reservesList: string[] = await pool.getReservesList();
-  const hdclAlreadyInit = reservesList
+  const dclAlreadyInit = reservesList
     .map((a) => a.toLowerCase())
-    .includes(HDCL_UNDERLYING.toLowerCase());
-  const hollarOffset = hdclAlreadyInit ? 0 : 3;
+    .includes(DCL_UNDERLYING.toLowerCase());
+  const hollarOffset = dclAlreadyInit ? 0 : 3;
 
   let hdclATokenAddress: string;
-  if (hdclAlreadyInit) {
-    hdclATokenAddress = (await pool.getReserveData(HDCL_UNDERLYING)).aTokenAddress;
+  if (dclAlreadyInit) {
+    hdclATokenAddress = (await pool.getReserveData(DCL_UNDERLYING)).aTokenAddress;
   } else {
     hdclATokenAddress = utils.getContractAddress({
       from: configuratorAddress,
@@ -165,8 +168,8 @@ task(
     nonce: currentNonce + hollarOffset + 2,
   });
 
-  console.log(`HDCL already initialized on-chain: ${hdclAlreadyInit}`);
-  console.log("HDCL aToken:", hdclATokenAddress);
+  console.log(`DCL already initialized on-chain: ${dclAlreadyInit}`);
+  console.log("HDCL aToken (asset 55, location target):", hdclATokenAddress);
   console.log("predicted GhoAToken proxy:", ghoATokenProxyAddress);
   console.log("predicted GhoVariableDebtToken proxy:", ghoVariableDebtProxyAddress);
 
@@ -253,40 +256,46 @@ task(
   // approve MM contract for ERC-20 transferFrom.
   // ===================================================================
 
-  const HDCL_ASSET_ID = 55;
-  const AHDCL_ASSET_ID = 550;
+  // Asset-id allocation:
+  //   55  = HDCL  → user-facing aToken (what users hold after auto-deposit).
+  //                 Location → DCL aToken proxy (computed from PoolConfigurator
+  //                 nonce above as `hdclATokenAddress`).
+  //   550 = DCL   → underlying vault token. Location → vault proxy (read from
+  //                 HDCLOracleAdapter.vault()).
+  // Both registered as Erc20 so the substrate→EVM precompile bridges to the
+  // EVM contract (without that, Pool.supply / transfers via the precompile
+  // see zero substrate balance and revert).
+  const HDCL_ATOKEN_ASSET_ID = 55;
+  const DCL_ASSET_ID = 550;
 
-  // HDCL is itself an EVM contract (the vault), so register it as Erc20 with
-  // a location pointing at the vault proxy. This is critical: as Token /
-  // location:null, the substrate→EVM precompile at tokenAddress(55) does not
-  // bridge to the vault contract, and Pool.supply(HDCL,...) reverts because
-  // transferFrom on the precompile sees a zero substrate balance.
-  // Read the vault address from the deployed HDCLOracleAdapter so this works
-  // across networks (lark vault proxy != mainnet vault proxy).
+  // Vault proxy address (DCL location target) — read from HDCLOracleAdapter so
+  // this works on any network without hardcoding.
   const oracleAdapterArtifact = await hre.deployments.get("HDCLOracleAdapter");
   const oracleAdapterRO = await hre.ethers.getContractAt(
     ["function vault() view returns (address)"],
     oracleAdapterArtifact.address
   );
   const HDCL_VAULT_PROXY = await oracleAdapterRO.vault();
-  console.log(`HDCL vault proxy (from HDCLOracleAdapter): ${HDCL_VAULT_PROXY}`);
+  console.log(`Vault proxy (DCL → asset 550 location): ${HDCL_VAULT_PROXY}`);
+  console.log(`DCL aToken (HDCL → asset 55 location):  ${hdclATokenAddress}`);
 
   // Check existing registrations. batchAll reverts the whole batch if any call
   // fails, so registering already-existing assets would brick the proposal.
   const api = await getApi();
-  const hdclInfo: any = await api.query.assetRegistry.assets(HDCL_ASSET_ID);
-  const aHdclInfo: any = await api.query.assetRegistry.assets(AHDCL_ASSET_ID);
+  const hdclATokenInfo: any = await api.query.assetRegistry.assets(HDCL_ATOKEN_ASSET_ID);
+  const dclInfo: any = await api.query.assetRegistry.assets(DCL_ASSET_ID);
 
-  if (!hdclInfo.isSome) {
-    console.log("---------> register HDCL in asset registry as Erc20 → vault");
+  // ---- DCL (asset 550): underlying vault → assetRegistry.register or update ----
+  if (!dclInfo.isSome) {
+    console.log(`---------> register DCL (asset ${DCL_ASSET_ID}) Erc20 → vault proxy`);
     txs.push(
       hydrationTx.assetRegistry.register(
         ...Object.values({
-          id: HDCL_ASSET_ID,
-          name: "HDCL",
+          id: DCL_ASSET_ID,
+          name: "DCL",
           assetType: "Erc20",
-          existentialDeposit: "20000000000000000", // 0.02 HDCL (18 decimals)
-          symbol: "HDCL",
+          existentialDeposit: "20000000000000000", // 0.02 DCL
+          symbol: "DCL",
           decimals: 18,
           location: location(HDCL_VAULT_PROXY),
           xcmRateLimit: null,
@@ -295,9 +304,7 @@ task(
       )
     );
   } else {
-    // Already registered — check if location matches the vault proxy and
-    // update if not (handles the "registered as Token then need to fix" case).
-    const locOnChain: any = await api.query.assetRegistry.assetLocations(HDCL_ASSET_ID);
+    const locOnChain: any = await api.query.assetRegistry.assetLocations(DCL_ASSET_ID);
     let currentKey: string | null = null;
     if (locOnChain.isSome) {
       const human: any = locOnChain.toHuman();
@@ -305,37 +312,32 @@ task(
     }
     const expectedKey = HDCL_VAULT_PROXY.toLowerCase();
     if (currentKey === expectedKey) {
-      console.log(`---------> HDCL (${HDCL_ASSET_ID}) already at correct location ${HDCL_VAULT_PROXY} — skipping`);
+      console.log(`---------> DCL (${DCL_ASSET_ID}) already at vault proxy ${HDCL_VAULT_PROXY} — skipping`);
     } else {
       console.log(
-        `---------> HDCL (${HDCL_ASSET_ID}) location ${currentKey} != ${expectedKey} — adding assetRegistry.update`
+        `---------> DCL (${DCL_ASSET_ID}) location ${currentKey} != ${expectedKey} — adding assetRegistry.update`
       );
       txs.push(
         hydrationTx.assetRegistry.update(
-          HDCL_ASSET_ID,
-          null, // name
-          null, // asset_type — note: pallet may or may not allow Token→Erc20 here
-          null, // existential_deposit
-          null, // xcm_rate_limit
-          null, // is_sufficient
-          null, // symbol
-          null, // decimals
-          location(HDCL_VAULT_PROXY) // location
+          DCL_ASSET_ID,
+          null, null, null, null, null, null, null,
+          location(HDCL_VAULT_PROXY)
         )
       );
     }
   }
 
-  if (!aHdclInfo.isSome) {
-    console.log(`---------> register aHDCL (asset ${AHDCL_ASSET_ID}) pointing at HDCL aToken`);
+  // ---- HDCL (asset 55): aToken receipt → assetRegistry.register or update ----
+  if (!hdclATokenInfo.isSome) {
+    console.log(`---------> register HDCL (asset ${HDCL_ATOKEN_ASSET_ID}) Erc20 → DCL aToken proxy`);
     txs.push(
       hydrationTx.assetRegistry.register(
         ...Object.values({
-          id: AHDCL_ASSET_ID,
-          name: "aHDCL",
+          id: HDCL_ATOKEN_ASSET_ID,
+          name: "HDCL",
           assetType: "Erc20",
-          existentialDeposit: "20000000000000000", // 0.02 aHDCL (18 decimals)
-          symbol: "aHDCL",
+          existentialDeposit: "20000000000000000",
+          symbol: "HDCL",
           decimals: 18,
           location: location(hdclATokenAddress),
           xcmRateLimit: null,
@@ -345,7 +347,7 @@ task(
     );
   } else {
     // Already registered — check if location matches our aToken, and update if stale.
-    const locOnChain: any = await api.query.assetRegistry.assetLocations(AHDCL_ASSET_ID);
+    const locOnChain: any = await api.query.assetRegistry.assetLocations(HDCL_ATOKEN_ASSET_ID);
     let currentKey: string | null = null;
     if (locOnChain.isSome) {
       const human: any = locOnChain.toHuman();
@@ -353,14 +355,14 @@ task(
     }
     const expectedKey = hdclATokenAddress.toLowerCase();
     if (currentKey === expectedKey) {
-      console.log(`---------> aHDCL (${AHDCL_ASSET_ID}) already points at aToken ${hdclATokenAddress} — skipping update`);
+      console.log(`---------> HDCL (${HDCL_ATOKEN_ASSET_ID}) already at aToken ${hdclATokenAddress} — skipping`);
     } else {
       console.log(
-        `---------> aHDCL (${AHDCL_ASSET_ID}) location ${currentKey} != ${expectedKey} — adding assetRegistry.update`
+        `---------> HDCL (${HDCL_ATOKEN_ASSET_ID}) location ${currentKey} != ${expectedKey} — adding assetRegistry.update`
       );
       txs.push(
         hydrationTx.assetRegistry.update(
-          AHDCL_ASSET_ID,
+          HDCL_ATOKEN_ASSET_ID,
           null, // name
           null, // asset_type
           null, // existential_deposit
@@ -374,32 +376,32 @@ task(
     }
   }
 
-  // Enable HDCL and aHDCL as fee payment currencies.
-  // Copy HOLLAR's price (asset 222) since 1 HDCL = 1 HOLLAR at launch and
+  // Enable DCL and HDCL as fee payment currencies.
+  // Copy HOLLAR's price (asset 222) since 1 DCL = 1 HOLLAR at launch and
   // all three tokens share 18 decimals. Read from 0.lark on 2026-04-23:
   //   multiTransactionPayment.acceptedCurrencies(222) = 10960000000000000000000
   // Skip if already accepted — multiTransactionPayment.addCurrency reverts
   // with AlreadyAccepted on duplicate, which would revert the whole batchAll.
   const HOLLAR_FEE_PRICE = "10960000000000000000000";
-  const hdclFee: any = await api.query.multiTransactionPayment.acceptedCurrencies(HDCL_ASSET_ID);
-  const aHdclFee: any = await api.query.multiTransactionPayment.acceptedCurrencies(AHDCL_ASSET_ID);
+  const dclFee: any = await api.query.multiTransactionPayment.acceptedCurrencies(DCL_ASSET_ID);
+  const hdclFee: any = await api.query.multiTransactionPayment.acceptedCurrencies(HDCL_ATOKEN_ASSET_ID);
+  if (!dclFee.isSome) {
+    txs.push(
+      hydrationTx.multiTransactionPayment.addCurrency(
+        ...Object.values({ asset: DCL_ASSET_ID, price: HOLLAR_FEE_PRICE })
+      )
+    );
+  } else {
+    console.log(`---------> DCL (${DCL_ASSET_ID}) already accepted as fee currency — skipping`);
+  }
   if (!hdclFee.isSome) {
     txs.push(
       hydrationTx.multiTransactionPayment.addCurrency(
-        ...Object.values({ asset: HDCL_ASSET_ID, price: HOLLAR_FEE_PRICE })
+        ...Object.values({ asset: HDCL_ATOKEN_ASSET_ID, price: HOLLAR_FEE_PRICE })
       )
     );
   } else {
-    console.log(`---------> HDCL (${HDCL_ASSET_ID}) already accepted as fee currency — skipping`);
-  }
-  if (!aHdclFee.isSome) {
-    txs.push(
-      hydrationTx.multiTransactionPayment.addCurrency(
-        ...Object.values({ asset: AHDCL_ASSET_ID, price: HOLLAR_FEE_PRICE })
-      )
-    );
-  } else {
-    console.log(`---------> aHDCL (${AHDCL_ASSET_ID}) already accepted as fee currency — skipping`);
+    console.log(`---------> HDCL (${HDCL_ATOKEN_ASSET_ID}) already accepted as fee currency — skipping`);
   }
 
   // Approve the HDCL Pool proxy as a managed-balance contract so users don't

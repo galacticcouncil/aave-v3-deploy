@@ -1,7 +1,11 @@
 import { eContractid, IReserveParams } from "../../helpers/types";
 import { rateStrategyStables } from "./rateStrategies";
 
-export const strategyHDCL: IReserveParams = {
+// Reserve config for DCL — the underlying vault token in the HDCL Aave pool.
+// Asset id 550 in the substrate registry. The aToken receipt for this reserve
+// is what users hold (asset id 55, registry name "HDCL"), since user
+// positions are auto-deposited into the pool.
+export const strategyDCL: IReserveParams = {
   strategy: rateStrategyStables,
   baseLTVAsCollateral: "7000",
   liquidationThreshold: "8000",

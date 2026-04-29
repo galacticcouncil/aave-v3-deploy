@@ -9,18 +9,37 @@ admin-transfer step, both of which bit us hard on 0.lark.
 0.lark after multiple recovery runs. Ref 324 on 0.lark was the clean
 execution. All addresses + artifacts captured in `deployments/lark/`.
 
-## Components
+## Components and naming
+
+The substrate-side asset names are **not** the same as the EVM contract
+names — what users see in their wallet is dictated by the assetRegistry, not
+the underlying contract's `symbol()`. The naming is intentional:
+
+| Asset id | Registry name | What it is | Location target | Why users see it |
+|---|---|---|---|---|
+| 550 | **DCL** | Vault token (`HDCLVault.sol`). The user-deposits-HOLLAR-gets-this thing. | vault proxy | Brief — the UI auto-supplies DCL into the Aave pool, so users hold it for milliseconds at most. |
+| 55 | **HDCL** | aToken receipt for the DCL reserve in the Aave pool. | DCL aToken proxy | This is what users actually hold. Their balance grows as the pool earns yield. |
+
+This mirrors the GDOT pattern — the user-facing token has the marketed name
+(HDCL), the underlying that the auto-deposit unwraps into has its own name
+(DCL).
+
+Components:
 
 - **HDCL Vault** — `aave-v3-deploy/hdcl-vault/` (Foundry). Users deposit
-  HOLLAR, get HDCL vault shares, vault deploys HOLLAR into Decentral.
+  HOLLAR, get DCL vault shares (asset 550), vault deploys HOLLAR into
+  Decentral. The UI then auto-supplies DCL into the HDCL Aave pool to mint
+  HDCL aToken (asset 55) to the user.
 - **HDCLOracleAdapter** — `aave-v3-deploy/contracts/HDCLOracleAdapter.sol`.
   Chainlink-compat (IEACAggregatorProxy) wrapper reading `vault.exchangeRate()`,
-  scaled 18→8 decimals. Consumed by Aave's AaveOracle.
-- **HDCL Aave pool** — separate Aave V3 instance. ProviderId `22222255`. HDCL
+  scaled 18→8 decimals. Consumed by Aave's AaveOracle as the price source for
+  the DCL reserve.
+- **HDCL Aave pool** — separate Aave V3 instance. ProviderId `22222255`. DCL
   supply-only collateral, HOLLAR borrow-only (via GhoAToken facilitator).
 - **HOLLAR GHO impls** — per-pool HDCL-specific versions of `GhoAToken-HDCL`,
   `GhoStableDebtToken-HDCL`, `GhoVariableDebtToken-HDCL`,
   `GhoInterestRateStrategy-HDCL` (fixed 10% APR). Built in the `hollar` repo.
+  Naming follows the pool name (`HDCL`), not the asset name.
 - **Governance proposal** — single `batchAll` containing init-reserve + config
   calls (EVM, via `dispatcher.dispatchAsAaveManager`) plus substrate
   `assetRegistry.register`, `multiTransactionPayment.addCurrency`, and
@@ -67,9 +86,12 @@ The HDCL governance proposal task at `tasks/proposals/hdcl.ts` builds these
 calls. Every substrate call is idempotent — re-submission after a partial
 failure is safe.
 
-**Phase A — HDCL collateral reserve (EVM via dispatchAsAaveManager):**
-- `init-reserve HDCL` → `pool.initReserves(...)` for HDCL with the standard
-  AToken / StableDebtToken / VariableDebtToken impls and `rateStrategyStables`.
+**Phase A — DCL collateral reserve (EVM via dispatchAsAaveManager):**
+- `init-reserve DCL` → `pool.initReserves(...)` for the DCL underlying
+  (asset 550 / vault token) with the standard AToken / StableDebtToken /
+  VariableDebtToken impls and `rateStrategyStables`. The aToken proxy this
+  creates is the address the substrate registry binds to "HDCL" (asset 55)
+  in Phase D.
 - `configureReserves` → applies LTV 70 / LiqThresh 80 / liquidation bonus 7% /
   reserve factor 20% / supply cap 3M / borrow disabled / debt ceiling 0.
 - `setupLiquidationProtocolFee` → 10%.
@@ -94,23 +116,24 @@ The predicted addresses use a nonce-offset that auto-detects whether HDCL is
 already initialized (offset 0) or being initialized in this batch (offset 3).
 
 **Phase D — Substrate (root):**
-- `assetRegistry.register(55, HDCL, **Erc20**, location → vault proxy)` —
-  HDCL is itself an EVM contract (the vault), so it registers as `Erc20` with
-  `location = location(vault_proxy_address)`. Skipped if already registered;
-  if location drifted, emits `assetRegistry.update`.
-- `assetRegistry.register(550, aHDCL, Erc20, location → HDCL aToken proxy)` —
-  same idempotency.
-- `multiTransactionPayment.addCurrency(55, HOLLAR_price)` — skipped if
-  already accepted.
-- `multiTransactionPayment.addCurrency(550, HOLLAR_price)` — skipped if
-  already accepted.
+- `assetRegistry.register(550, **DCL**, Erc20, location → vault proxy)` —
+  the underlying vault token. Skipped if already registered; if location
+  drifted, emits `assetRegistry.update`.
+- `assetRegistry.register(55, **HDCL**, Erc20, location → DCL aToken proxy)`
+  — the user-facing aToken receipt. Same idempotency.
+- `multiTransactionPayment.addCurrency(550, HOLLAR_price)` — DCL accepted
+  for fees. Skipped if already accepted.
+- `multiTransactionPayment.addCurrency(55, HOLLAR_price)` — HDCL accepted
+  for fees. Skipped if already accepted.
 - `EVMAccounts.approve_contract(Pool-Proxy-HDCL)` — adds the pool to
   Hydration's managed-balance approved-contract list so users don't need a
   separate `IERC20.approve(pool, ...)` before `pool.supply`. Idempotent.
 
-The vault proxy address used for HDCL's `location` is read at proposal-build
+The vault proxy address used for DCL's `location` is read at proposal-build
 time from the on-chain `HDCLOracleAdapter.vault()` getter, so it's correct on
-any network without hardcoding.
+any network without hardcoding. The DCL aToken proxy address used for HDCL's
+`location` is computed from PoolConfigurator's nonce (offset 0 if DCL reserve
+is already initialized, else current nonce — see Phase C nonce-prediction).
 
 ## Pre-flight checklist (MUST pass before step 11)
 
@@ -352,6 +375,22 @@ HDCL Pool-Proxy to this list in the original proposal.
 an idempotency check on `EVMAccounts.ApprovedContract` storage so re-runs
 don't revert.
 
+### 9. Asset-id naming flipped after launch (no cost — caught before mainnet)
+
+The original deploy registered the user-held aToken at asset 550 as `aHDCL`
+and the underlying vault token at asset 55 as `HDCL`. After 0.lark execution
+we flipped to: **asset 55 = `HDCL`** (the aToken users hold post-auto-deposit)
+and **asset 550 = `DCL`** (the underlying). The flip mirrors the GDOT pattern
+and reflects the actual UX flow — the UI auto-supplies the vault token (DCL)
+into the Aave pool right after the user's HOLLAR→DCL deposit, so the
+durable user balance is the aToken (HDCL), not the underlying.
+
+**Fix on lark:** update both registry entries via `assetRegistry.update` on a
+follow-up proposal (handled separately from this code change). **Mainnet:**
+the proposal task in this branch produces the correct naming on first run —
+asset 55 registers as HDCL → DCL aToken proxy, asset 550 registers as DCL →
+vault proxy.
+
 ## 0.lark deployed addresses (reference)
 
 | Component | 0.lark Address |
@@ -365,7 +404,7 @@ don't revert.
 | AaveOracle-HDCL | `0x19Cb1536947bA792d71c04F4dBa9DcDF63C840A7` (same as OracleAdapter — coincidence of deployer-nonce across two separate deploys) |
 | ACLManager-HDCL | `0x68F38AeF16B6E197Bb0C86B15fDACFC461074D04` |
 | AToken-HDCL (impl) | `0x75677FC81cFd0577bfd9442CCaf5D6C88e44836d` |
-| AToken-HDCL (proxy for HDCL reserve) | `0x9cd4410c27977CD5e400e43B7B1aB5ADD845ada2` |
+| AToken-HDCL (proxy for DCL reserve — bound to asset 55 `HDCL`) | `0x9cd4410c27977CD5e400e43B7B1aB5ADD845ada2` |
 | GhoAToken-HDCL (impl) | `0xa67f4FB7E691414cf064aE432F3e647601e36207` |
 | GhoAToken-HDCL (proxy for HOLLAR reserve) | `0x8936D09C63830062FAd22C1Eb9ED37Bc12a4659a` |
 | GhoVariableDebtToken-HDCL (proxy) | `0x27633213BE89A725a25B9e4F49c5E514f6790eb3` |
@@ -417,12 +456,12 @@ cast call <HOLLAR> "getFacilitator(address)(uint128,uint128,string)" <predicted-
 
 # 4. Substrate state
 polkadot-api:
-  assetRegistry.assets(55)              # type=Erc20, location=AccountKey20(vault_proxy)
-  assetRegistry.assets(550)             # type=Erc20, location=AccountKey20(HDCL aToken proxy)
-  assetRegistry.assetLocations(55)      # decodes to vault proxy
-  assetRegistry.assetLocations(550)     # decodes to HDCL aToken proxy
-  multiTransactionPayment.acceptedCurrencies(55)        # is some
-  multiTransactionPayment.acceptedCurrencies(550)       # is some
+  assetRegistry.assets(550)             # name=DCL,  type=Erc20, location=AccountKey20(vault proxy)
+  assetRegistry.assets(55)              # name=HDCL, type=Erc20, location=AccountKey20(DCL aToken proxy)
+  assetRegistry.assetLocations(550)     # decodes to vault proxy
+  assetRegistry.assetLocations(55)      # decodes to DCL aToken proxy
+  multiTransactionPayment.acceptedCurrencies(550)       # is some  (DCL)
+  multiTransactionPayment.acceptedCurrencies(55)        # is some  (HDCL)
   EVMAccounts.approvedContract(<Pool-Proxy-HDCL>)       # is some
 
 # 5. End-to-end UX check — supply with NO approve()
