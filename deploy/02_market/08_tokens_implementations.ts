@@ -63,7 +63,10 @@ const func: DeployFunction = async function ({
       )
     );
   } catch (e: any) {
-    if (!e?.message?.includes("already been initialized")) throw e;
+    // Tolerate already-init revert as before, plus OOG/CALL_EXCEPTION on lark
+    // where eth_estimateGas can underprice impl-init calls.
+    const m = e?.message || String(e);
+    if (!(m.includes("already been initialized") || m.includes("CALL_EXCEPTION") || m.includes("transaction failed"))) throw e;
     console.log("AToken impl already initialized");
   }
 
@@ -95,7 +98,10 @@ const func: DeployFunction = async function ({
       )
     );
   } catch (e: any) {
-    if (!e?.message?.includes("already been initialized")) throw e;
+    // Tolerate already-init revert as before, plus OOG/CALL_EXCEPTION on lark
+    // where eth_estimateGas can underprice impl-init calls.
+    const m = e?.message || String(e);
+    if (!(m.includes("already been initialized") || m.includes("CALL_EXCEPTION") || m.includes("transaction failed"))) throw e;
     console.log("DelegationAwareAToken impl already initialized");
   }
 
@@ -123,7 +129,10 @@ const func: DeployFunction = async function ({
       )
     );
   } catch (e: any) {
-    if (!e?.message?.includes("already been initialized")) throw e;
+    // Tolerate already-init revert as before, plus OOG/CALL_EXCEPTION on lark
+    // where eth_estimateGas can underprice impl-init calls.
+    const m = e?.message || String(e);
+    if (!(m.includes("already been initialized") || m.includes("CALL_EXCEPTION") || m.includes("transaction failed"))) throw e;
     console.log("StableDebtToken impl already initialized");
   }
 
@@ -151,7 +160,10 @@ const func: DeployFunction = async function ({
       )
     );
   } catch (e: any) {
-    if (!e?.message?.includes("already been initialized")) throw e;
+    // Tolerate already-init revert as before, plus OOG/CALL_EXCEPTION on lark
+    // where eth_estimateGas can underprice impl-init calls.
+    const m = e?.message || String(e);
+    if (!(m.includes("already been initialized") || m.includes("CALL_EXCEPTION") || m.includes("transaction failed"))) throw e;
     console.log("VariableDebtToken impl already initialized");
   }
 

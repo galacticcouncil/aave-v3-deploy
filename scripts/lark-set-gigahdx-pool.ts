@@ -5,10 +5,21 @@
 
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import type { SubmittableExtrinsic } from "@polkadot/api/types";
+import * as fs from "fs";
+import * as path from "path";
 
-const LARK_WS = "wss://2.lark.hydration.cloud";
-// Pool-Proxy-GIGAHDX on lark 2 (from Phase 2 deploy, Apr 25 2026).
-const GIGAHDX_POOL = "0xb952AE92cC4D8D703d2d71Ab541baB34c94b944A";
+const LARK_WS = process.env.WS_URL || "wss://2.lark.hydration.cloud";
+// Auto-resolve Pool-Proxy-GIGAHDX from deployments/lark2/ (the freshly-deployed
+// hardhat artifact). Override via GIGAHDX_POOL env var if needed.
+function resolveGigaHdxPool(): string {
+	if (process.env.GIGAHDX_POOL) return process.env.GIGAHDX_POOL;
+	const p = path.join(__dirname, "..", "deployments", "lark2", "Pool-Proxy-GIGAHDX.json");
+	if (!fs.existsSync(p)) {
+		throw new Error(`Pool-Proxy-GIGAHDX.json not found at ${p}; set GIGAHDX_POOL env var`);
+	}
+	return JSON.parse(fs.readFileSync(p, "utf8")).address;
+}
+const GIGAHDX_POOL = resolveGigaHdxPool();
 // Vote cap per Ben's rule. 4B HDX is well above any track's approval threshold
 // on Hydration (total issuance ~6.5B) and avoids locking Alice's entire balance.
 const MAX_VOTE_BASE = 4_000_000_000n * 10n ** 12n;

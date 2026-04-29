@@ -20,19 +20,27 @@
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import { u8aToHex } from "@polkadot/util";
 import { ethers } from "ethers";
+import * as fs from "fs";
+import * as path from "path";
 
 const WS_URL = process.env.WS_URL || "wss://2.lark.hydration.cloud";
 const RPC_URL = process.env.RPC_URL || "https://2.lark.hydration.cloud";
 const TESTER_URI = process.env.TESTER_URI || "//Bob";
 const STAKE_HDX = BigInt(process.env.STAKE_HDX || "200") * BigInt(10 ** 12);
 
-// Deployment addresses (lark 2, Apr 25 2026). See GIGAHDX-LARK2-ADDRESSES.md
-const POOL = "0xb952AE92cC4D8D703d2d71Ab541baB34c94b944A";
-const ORACLE = "0x1f14A240f5Aa8eDD4C5f375B82b3B1d836eF4983";
+// Auto-resolve POOL + ORACLE from deployments/lark2/. A_STHDX + VD_HOLLAR are
+// AAVE-managed proxies created during Phase 7 reserve init — query them from
+// Pool.getReserveData(asset) at runtime instead of relying on static artifacts.
+function readDeployment(name: string): string {
+	if (process.env[name.toUpperCase().replace(/-/g, "_")]) return process.env[name.toUpperCase().replace(/-/g, "_")]!;
+	const p = path.join(__dirname, "..", "deployments", "lark2", `${name}.json`);
+	if (!fs.existsSync(p)) throw new Error(`missing artifact: ${p}`);
+	return JSON.parse(fs.readFileSync(p, "utf8")).address;
+}
+const POOL = process.env.POOL || readDeployment("Pool-Proxy-GIGAHDX");
+const ORACLE = process.env.ORACLE || readDeployment("AaveOracle-GIGAHDX");
 const STHDX = "0x000000000000000000000000000000010000029e";
 const HOLLAR = "0x531a654d1696ED52e7275A8cede955E82620f99a";
-const A_STHDX = "0x25fA2B5a75ECDF39BA194fc96AAc12682DB42661"; // LockableAToken (stHDX aToken)
-const VD_HOLLAR = "0x8Ba27f3761341D622574a70abD1EAe75845b5045"; // HOLLAR variable debt
 
 type Status = "pass" | "fail" | "skip";
 const results: Array<{ phase: string; status: Status; note: string }> = [];
@@ -135,6 +143,24 @@ async function main() {
 
   console.log(`chain:  ${WS_URL}`);
   console.log(`tester: ${TESTER_URI} sub=${tester.address} evm=${testerEvm}`);
+
+  // Resolve aToken + variable-debt-token proxies from Pool.getReserveData. These
+  // proxies are created during Phase 7 reserve init and don't have static artifacts.
+  const poolReader = new ethers.Contract(
+    POOL,
+    [
+      "function getReserveData(address) view returns (tuple(tuple(uint256 data) configuration, uint128 liquidityIndex, uint128 currentLiquidityRate, uint128 variableBorrowIndex, uint128 currentVariableBorrowRate, uint128 currentStableBorrowRate, uint40 lastUpdateTimestamp, uint16 id, address aTokenAddress, address stableDebtTokenAddress, address variableDebtTokenAddress, address interestRateStrategyAddress, uint128 accruedToTreasury, uint128 unbacked, uint128 isolationModeTotalDebt))",
+    ],
+    provider
+  );
+  const stHdxData = await poolReader.getReserveData(STHDX);
+  const hollarData = await poolReader.getReserveData(HOLLAR);
+  const A_STHDX = stHdxData.aTokenAddress;
+  const VD_HOLLAR = hollarData.variableDebtTokenAddress;
+  console.log(`A_STHDX:   ${A_STHDX}`);
+  console.log(`VD_HOLLAR: ${VD_HOLLAR}`);
+  if (A_STHDX === ethers.constants.AddressZero) throw new Error("stHDX reserve not initialized in Pool — Phase 7 incomplete?");
+  if (VD_HOLLAR === ethers.constants.AddressZero) throw new Error("HOLLAR reserve not initialized in Pool — Phase 7 incomplete?");
 
   let supplyAToken = 0n;
   let hollarDebt = 0n;

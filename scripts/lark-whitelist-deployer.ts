@@ -114,27 +114,101 @@ async function main() {
   const dispatchMethods = Object.keys(api.tx.whitelist || {});
   console.log(`\nWhitelist pallet methods: ${dispatchMethods.join(", ")}`);
 
-  let dispatch: SubmittableExtrinsic<"promise">;
+  // Direct `dispatchWhitelistedCall*` from a signed account fails with BadOrigin
+  // because Hydration's WhitelistOrigin only accepts WhitelistedCaller (a track-1
+  // ref) or Root — not plain Signed. We try the direct path first to short-circuit
+  // on a permissioned chain, then fall through to the referendum path below.
   if (api.tx.whitelist.dispatchWhitelistedCallWithPreimage) {
-    dispatch = api.tx.whitelist.dispatchWhitelistedCallWithPreimage(innerCall);
-  } else if (api.tx.whitelist.dispatchWhitelistedCall) {
-    // Need weight for this variant
-    const info = await innerCall.paymentInfo(alice);
-    const weight = info.weight as any;
-    dispatch = api.tx.whitelist.dispatchWhitelistedCall(
-      innerHash,
-      innerLen,
-      { refTime: weight.refTime, proofSize: weight.proofSize }
-    );
-  } else {
-    throw new Error("No dispatch method found on whitelist pallet");
+    try {
+      const dispatch = api.tx.whitelist.dispatchWhitelistedCallWithPreimage(innerCall);
+      await signAndSendWait(dispatch, alice, api, "whitelist.dispatchWhitelistedCallWithPreimage (direct)");
+      const postCheck: any = await api.query.evmAccounts.contractDeployer(EVM_DEPLOYER);
+      if (postCheck.isSome) {
+        console.log(`\n✓ ${EVM_DEPLOYER} whitelisted via direct dispatch`);
+        await api.disconnect();
+        return;
+      }
+    } catch (e: any) {
+      if (!String(e.message).includes("BadOrigin")) throw e;
+      console.log(`  (direct dispatch returned BadOrigin — falling through to referendum)`);
+    }
   }
 
-  await signAndSendWait(dispatch, alice, api, "whitelist.dispatchWhitelistedCall*");
+  // Fallback: submit a track-1 (whitelisted_caller) referendum that runs the
+  // wrapper, which then dispatches the inner call with Root.
+  const wrapper = api.tx.whitelist.dispatchWhitelistedCallWithPreimage(innerCall);
+  const wrapperHex = wrapper.method.toHex();
+  const wrapperHash = wrapper.method.hash.toHex();
+  const wrapperLen = wrapper.method.encodedLength;
+  console.log(`\nFallback wrapper hash: ${wrapperHash} len: ${wrapperLen}`);
 
-  // Verify
+  const pre: any = await api.query.preimage.requestStatusFor(wrapperHash);
+  const preOld: any = await api.query.preimage.statusFor(wrapperHash);
+  if (!pre.isSome && !preOld.isSome) {
+    await signAndSendWait(api.tx.preimage.notePreimage(wrapperHex), alice, api, "preimage.notePreimage(wrapper)");
+  } else {
+    console.log("wrapper preimage already noted");
+  }
+
+  let refIndex: number | null = null;
+  await new Promise<void>((resolve, reject) => {
+    api.tx.referenda.submit(
+      { Origins: "WhitelistedCaller" },
+      { Lookup: { hash: wrapperHash, len: wrapperLen } },
+      { After: 1 }
+    ).signAndSend(alice, ({ status, dispatchError, events }: any) => {
+      if (status.isInBlock) console.log(`  ref submit in block: ${status.asInBlock.toHex().slice(0, 18)}...`);
+      if (!status.isFinalized) return;
+      if (dispatchError) {
+        if (dispatchError.isModule) {
+          const d = api.registry.findMetaError(dispatchError.asModule);
+          return reject(new Error(`${d.section}.${d.name}`));
+        }
+        return reject(new Error(dispatchError.toString()));
+      }
+      for (const { event } of events) {
+        if (event.section === "referenda" && event.method === "Submitted") {
+          refIndex = (event.data[0] as any).toNumber();
+        }
+      }
+      resolve();
+    }).catch(reject);
+  });
+  if (refIndex == null) throw new Error("no Submitted event");
+  console.log(`ref: ${refIndex}`);
+
+  await signAndSendWait(api.tx.referenda.placeDecisionDeposit(refIndex), alice, api, "placeDecisionDeposit");
+
+  const bal: any = await api.query.system.account(alice.address);
+  const free = bal.data.free.toBigInt();
+  const MAX_VOTE = 4_000_000_000n * 10n ** 12n;
+  const voteBalance = (free < MAX_VOTE ? free : MAX_VOTE).toString();
+  console.log(`voting with ${Number(BigInt(voteBalance) / 10n ** 12n).toLocaleString()} HDX at 6x`);
+  await signAndSendWait(
+    api.tx.convictionVoting.vote(refIndex, {
+      Standard: { vote: { aye: true, conviction: "Locked6x" }, balance: voteBalance },
+    }),
+    alice,
+    api,
+    "convictionVoting.vote(aye, 6x)"
+  );
+
+  console.log(`\npolling ref ${refIndex}...`);
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const info: any = await api.query.referenda.referendumInfoFor(refIndex);
+    if (!info.isSome) continue;
+    const r = info.unwrap();
+    if (r.isApproved) { console.log("  Approved"); break; }
+    if (r.isRejected || r.isCancelled || r.isTimedOut || r.isKilled) throw new Error(r.type);
+    if (i % 3 === 0) console.log(`  [${i}] ${r.type}`);
+  }
+  await new Promise((r) => setTimeout(r, 15000));
+
   const postCheck: any = await api.query.evmAccounts.contractDeployer(EVM_DEPLOYER);
-  console.log(`\n✓ ${EVM_DEPLOYER} whitelisted (post): ${postCheck.isSome}`);
+  console.log(`\n${EVM_DEPLOYER} whitelisted (post): ${postCheck.isSome}`);
+  if (!postCheck.isSome) throw new Error("whitelist did not enact");
+  console.log("✓✓✓ deployer whitelisted via referendum");
 
   await api.disconnect();
 }

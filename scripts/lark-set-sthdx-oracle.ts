@@ -19,11 +19,20 @@ import { ethers } from "ethers";
 import * as fs from "fs";
 import * as path from "path";
 
-const LARK_WS = "wss://2.lark.hydration.cloud";
-const LARK_RPC = "https://2.lark.hydration.cloud";
+const LARK_WS = process.env.WS_URL || "wss://2.lark.hydration.cloud";
+const LARK_RPC = process.env.RPC_URL || "https://2.lark.hydration.cloud";
 
-// AaveOracle-GIGAHDX on lark 2 (from Phase 2 deploy)
-const AAVE_ORACLE = "0x1f14A240f5Aa8eDD4C5f375B82b3B1d836eF4983";
+// Auto-resolve AaveOracle-GIGAHDX from deployments/lark2/ (Phase 2 artifact).
+// Override via AAVE_ORACLE env var if needed.
+function resolveAaveOracle(): string {
+	if (process.env.AAVE_ORACLE) return process.env.AAVE_ORACLE;
+	const p = path.join(__dirname, "..", "deployments", "lark2", "AaveOracle-GIGAHDX.json");
+	if (!fs.existsSync(p)) {
+		throw new Error(`AaveOracle-GIGAHDX.json not found at ${p}; set AAVE_ORACLE env var`);
+	}
+	return JSON.parse(fs.readFileSync(p, "utf8")).address;
+}
+const AAVE_ORACLE = resolveAaveOracle();
 const STHDX = "0x000000000000000000000000000000010000029e";
 const GOV_EVM = "0xaa7e0000000000000000000000000000000aa7e0";
 const MAX_VOTE_BASE = 4_000_000_000n * 10n ** 12n; // 4B HDX — Ben's rule
