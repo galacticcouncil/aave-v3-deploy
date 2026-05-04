@@ -116,7 +116,7 @@ cp ../gho-core/deployments/hydration/GhoInterestRateStrategy-GIGAHDX.json deploy
 ### Phase 5: Generate governance proposal (aave-v3-deploy)
 
 ```bash
-MARKET_NAME=GIGAHDX HARDHAT_NETWORK=hydration FORK=hydration npx hardhat gigahdx```
+MARKET_NAME=GIGAHDX HARDHAT_NETWORK=hydration FORK=hydration npx hardhat gigahdx-launch```
 
 The proposal does (atomically):
 

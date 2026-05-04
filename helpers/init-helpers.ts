@@ -458,7 +458,7 @@ export const configureReservesByHelper = async (
           await reservesSetupHelper.populateTransaction.configureReserves(
             poolConfiguratorAddress,
             chunkedInputParams[chunkIndex],
-            { gasLimit: 300000 }
+            { gasLimit: 3000000 }
           );
         addTransaction(tx);
       } else {
@@ -466,7 +466,7 @@ export const configureReservesByHelper = async (
           await reservesSetupHelper.configureReserves(
             poolConfiguratorAddress,
             chunkedInputParams[chunkIndex],
-            { gasLimit: 300000 }
+            { gasLimit: 3000000 }
           )
         );
         console.log(
@@ -500,13 +500,22 @@ export const addMarketToRegistry = async (
 
   const signer = await hre.ethers.getSigner(providerRegistryOwner);
 
-  // 1. Set the provider at the Registry
-  await waitForTx(
-    await providerRegistryInstance
-      .connect(signer)
-      .registerAddressesProvider(addressesProvider, providerId)
+  // 1. Set the provider at the Registry (idempotent — skip if already registered)
+  const existingId = await providerRegistryInstance.getAddressesProviderIdByAddress(
+    addressesProvider
   );
-  console.log(
-    `Added LendingPoolAddressesProvider with address "${addressesProvider}" to registry located at ${providerRegistry.address}`
-  );
+  if (existingId.gt(0)) {
+    console.log(
+      `LendingPoolAddressesProvider ${addressesProvider} already registered (id=${existingId.toString()}) in registry ${providerRegistry.address}`
+    );
+  } else {
+    await waitForTx(
+      await providerRegistryInstance
+        .connect(signer)
+        .registerAddressesProvider(addressesProvider, providerId)
+    );
+    console.log(
+      `Added LendingPoolAddressesProvider with address "${addressesProvider}" to registry located at ${providerRegistry.address}`
+    );
+  }
 };
