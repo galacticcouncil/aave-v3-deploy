@@ -3,6 +3,7 @@ import { POOL_ADMIN } from "../../helpers";
 import { getContract, waitForTx } from "../../helpers";
 
 import { POOL_ADDRESSES_PROVIDER_ID } from "../../helpers/deploy-ids";
+import { MARKET_NAME } from "../../helpers/env";
 
 import { PoolAddressesProvider } from "../../typechain";
 
@@ -29,7 +30,7 @@ task(
   const pool = await addressesProviderInstance.getPool();
   console.log(`\n- Pool address: ${pool}`);
 
-  const artifact = await hre.deployments.deploy(`LockableAToken-Hydration`, {
+  const artifact = await hre.deployments.deploy(`LockableAToken-${MARKET_NAME}`, {
     from: deployer,
     contract: "LockableAToken",
     args: [pool],
