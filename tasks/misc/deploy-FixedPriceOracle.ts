@@ -17,6 +17,19 @@ task("deploy-FixedPriceOracle", "Deploys FixedPriceOracle for a test asset")
   .setAction(async ({ asset, price, owner }, hre) => {
     if (!hre.network.config.chainId) throw new Error("INVALID_CHAIN_ID");
 
+    // Mainnet guard: FixedPriceOracle is a testnet-only mock. The Hydration
+    // mainnet stHDX oracle is the EMA-backed USDOracleAdapter at
+    // 0x202df3eDac2775b857ee2f61A3569731E53eC713. For prod-fork testing, use
+    // HARDHAT_NETWORK=localhost (or hardhat) with FORK=hydration — that points
+    // at a local fork node and `network.name` will not be "hydration".
+    if (hre.network.name === "hydration") {
+      throw new Error(
+        "Refusing to deploy FixedPriceOracle on hydration mainnet. " +
+          "Use the prod USDOracleAdapter (0x202df3eDac2775b857ee2f61A3569731E53eC713) instead. " +
+          "For fork testing, use HARDHAT_NETWORK=localhost FORK=hydration."
+      );
+    }
+
     const { deployer } = await hre.getNamedAccounts();
     const ownerAddr = owner || deployer;
 

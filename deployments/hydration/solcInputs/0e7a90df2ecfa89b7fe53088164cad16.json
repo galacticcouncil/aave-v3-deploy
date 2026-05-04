@@ -1,0 +1,42 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "@aave/core-v3/contracts/dependencies/chainlink/AggregatorInterface.sol": {
+      "content": "// SPDX-License-Identifier: MIT\n// Chainlink Contracts v0.8\npragma solidity ^0.8.0;\n\ninterface AggregatorInterface {\n  function latestAnswer() external view returns (int256);\n\n  function latestTimestamp() external view returns (uint256);\n\n  function latestRound() external view returns (uint256);\n\n  function getAnswer(uint256 roundId) external view returns (int256);\n\n  function getTimestamp(uint256 roundId) external view returns (uint256);\n\n  event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 updatedAt);\n\n  event NewRound(uint256 indexed roundId, address indexed startedBy, uint256 startedAt);\n}\n"
+    },
+    "contracts/dependencies/chainlink/AggregatorV3Interface.sol": {
+      "content": "// SPDX-License-Identifier: MIT\n// Chainlink Contracts v0.8\npragma solidity ^0.8.0;\n\n// solhint-disable-next-line interface-starts-with-i\ninterface AggregatorV3Interface {\n  function decimals() external view returns (uint8);\n\n  function description() external view returns (string memory);\n\n  function version() external view returns (uint256);\n\n  function getRoundData(\n    uint80 _roundId\n  ) external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);\n\n  function latestRoundData()\n    external\n    view\n    returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);\n}\n"
+    },
+    "contracts/HybridOracleAggregator.sol": {
+      "content": "// SPDX-License-Identifier: AGPL-3.0\npragma solidity ^0.8.10;\n\nimport \"@aave/core-v3/contracts/dependencies/chainlink/AggregatorInterface.sol\";\nimport {AggregatorV3Interface} from \"./dependencies/chainlink/AggregatorV3Interface.sol\";\n\ncontract HybridOracleAggregator is AggregatorV3Interface, AggregatorInterface {\n\n    uint8 public constant decimals = 8;\n\n    AggregatorV3Interface public srcAssetToXOracle;\n    AggregatorInterface public destAssetToXOracle;\n\n    constructor(address _srcAssetToXOracle, address _destAssetToXOracle) {\n        srcAssetToXOracle = AggregatorV3Interface(_srcAssetToXOracle);\n        destAssetToXOracle = AggregatorInterface(_destAssetToXOracle);\n    }\n\n    function latestRoundData()\n    external\n    view\n    returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) {\n        (uint80 rountId, int256 srcToX, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) = srcAssetToXOracle.latestRoundData();\n        int256 xToDest = destAssetToXOracle.latestAnswer();\n\n        answer = int256((uint256(srcToX) * uint256(xToDest)) / uint256(10) ** decimals);\n\n        return (roundId, answer, startedAt, updatedAt, answeredInRound);\n    }\n\n    function description() external view returns (string memory) {\n        return \"\";\n    }\n\n    function version() external view returns (uint256) {\n        return 0;\n    }\n\n    function getRoundData(\n        uint80 _roundId\n    ) external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) {\n        return this.latestRoundData();\n    }\n\n    function latestAnswer() external view returns (int256) {\n        (, int256 answer, , , ) = this.latestRoundData();\n        return answer;\n    }\n\n    function latestTimestamp() external view returns (uint256) {\n        return block.timestamp;\n    }\n\n    function latestRound() external view returns (uint256) {\n        return 0;\n    }\n\n    function getAnswer(uint256 roundId) external view returns (int256) {\n        return this.latestAnswer();\n    }\n\n    function getTimestamp(uint256 roundId) external view returns (uint256) {\n        return 0;\n    }\n}\n"
+    }
+  },
+  "settings": {
+    "optimizer": {
+      "enabled": true,
+      "runs": 100000
+    },
+    "evmVersion": "berlin",
+    "outputSelection": {
+      "*": {
+        "*": [
+          "abi",
+          "evm.bytecode",
+          "evm.deployedBytecode",
+          "evm.methodIdentifiers",
+          "metadata",
+          "devdoc",
+          "userdoc",
+          "storageLayout",
+          "evm.gasEstimates"
+        ],
+        "": [
+          "ast"
+        ]
+      }
+    },
+    "metadata": {
+      "useLiteralContent": true
+    }
+  }
+}

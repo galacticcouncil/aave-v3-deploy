@@ -1,0 +1,243 @@
+{
+  "address": "0x2fFa376E0a84606e4Ccb3738071312A34Cebad6C",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_assetToXOracle",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "_XToUsdOracle",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "int256",
+          "name": "current",
+          "type": "int256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "AnswerUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "startedBy",
+          "type": "address"
+        }
+      ],
+      "name": "NewRound",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "XToUsdOracle",
+      "outputs": [
+        {
+          "internalType": "contract AggregatorInterface",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "assetToXOracle",
+      "outputs": [
+        {
+          "internalType": "contract AggregatorInterface",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "decimals",
+      "outputs": [
+        {
+          "internalType": "uint8",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getAnswer",
+      "outputs": [
+        {
+          "internalType": "int256",
+          "name": "",
+          "type": "int256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestAnswer",
+      "outputs": [
+        {
+          "internalType": "int256",
+          "name": "",
+          "type": "int256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestRound",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "transactionHash": "0xb3e838a368b84886b5015d76ffb5a1f723e1a34922b60c66dfcf8d137e6a9fc8",
+  "receipt": {
+    "to": null,
+    "from": "0x71FeB8b2849101a6E62e3369eaAfDc6154CD0Bc0",
+    "contractAddress": "0x2fFa376E0a84606e4Ccb3738071312A34Cebad6C",
+    "transactionIndex": 0,
+    "gasUsed": "628788",
+    "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "blockHash": "0x6e6e08ffa5565c069cc02a9010c2bbbb4527e06146ef9a0e5c761bf79f89e5b5",
+    "transactionHash": "0xb3e838a368b84886b5015d76ffb5a1f723e1a34922b60c66dfcf8d137e6a9fc8",
+    "logs": [],
+    "blockNumber": 7474688,
+    "cumulativeGasUsed": "628788",
+    "status": 1,
+    "byzantium": true
+  },
+  "args": [
+    "0x00000102626966726f73746f000000050000000f",
+    "0xFBCa0A6dC5B74C042DF23025D99ef0F1fcAC6702"
+  ],
+  "numDeployments": 1,
+  "solcInputHash": "bb592e20b7c272a441aac14b8316165a",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.10+commit.fc410830\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_assetToXOracle\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_XToUsdOracle\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"int256\",\"name\":\"current\",\"type\":\"int256\"},{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"timestamp\",\"type\":\"uint256\"}],\"name\":\"AnswerUpdated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"startedBy\",\"type\":\"address\"}],\"name\":\"NewRound\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"XToUsdOracle\",\"outputs\":[{\"internalType\":\"contract AggregatorInterface\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"assetToXOracle\",\"outputs\":[{\"internalType\":\"contract AggregatorInterface\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"decimals\",\"outputs\":[{\"internalType\":\"uint8\",\"name\":\"\",\"type\":\"uint8\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"}],\"name\":\"getAnswer\",\"outputs\":[{\"internalType\":\"int256\",\"name\":\"\",\"type\":\"int256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"}],\"name\":\"getTimestamp\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestAnswer\",\"outputs\":[{\"internalType\":\"int256\",\"name\":\"\",\"type\":\"int256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestRound\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestTimestamp\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"contracts/USDOracleAdapter.sol\":\"USDOracleAdapter\"},\"evmVersion\":\"berlin\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":100000},\"remappings\":[]},\"sources\":{\"@aave/core-v3/contracts/dependencies/chainlink/AggregatorInterface.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// Chainlink Contracts v0.8\\npragma solidity ^0.8.0;\\n\\ninterface AggregatorInterface {\\n  function latestAnswer() external view returns (int256);\\n\\n  function latestTimestamp() external view returns (uint256);\\n\\n  function latestRound() external view returns (uint256);\\n\\n  function getAnswer(uint256 roundId) external view returns (int256);\\n\\n  function getTimestamp(uint256 roundId) external view returns (uint256);\\n\\n  event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 updatedAt);\\n\\n  event NewRound(uint256 indexed roundId, address indexed startedBy, uint256 startedAt);\\n}\\n\",\"keccak256\":\"0x07df0744d1a393c574d7ee11b75a1690a82f3136a79c76b933724872298bf718\",\"license\":\"MIT\"},\"@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol\":{\"content\":\"// SPDX-License-Identifier: AGPL-3.0\\npragma solidity ^0.8.10;\\n\\ninterface IEACAggregatorProxy {\\n  function decimals() external view returns (uint8);\\n\\n  function latestAnswer() external view returns (int256);\\n\\n  function latestTimestamp() external view returns (uint256);\\n\\n  function latestRound() external view returns (uint256);\\n\\n  function getAnswer(uint256 roundId) external view returns (int256);\\n\\n  function getTimestamp(uint256 roundId) external view returns (uint256);\\n\\n  event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 timestamp);\\n  event NewRound(uint256 indexed roundId, address indexed startedBy);\\n}\\n\",\"keccak256\":\"0x75bb34641419925730f87eeb122521b34cfd953b800212c362770ed1c7c5d719\",\"license\":\"AGPL-3.0\"},\"contracts/USDOracleAdapter.sol\":{\"content\":\"// SPDX-License-Identifier: AGPL-3.0\\npragma solidity ^0.8.10;\\n\\nimport \\\"@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol\\\";\\nimport {AggregatorInterface} from '@aave/core-v3/contracts/dependencies/chainlink/AggregatorInterface.sol';\\n\\ncontract  USDOracleAdapter is IEACAggregatorProxy {\\n\\n    uint8 public constant decimals = 8;\\n\\n    AggregatorInterface public assetToXOracle;\\n    AggregatorInterface public XToUsdOracle;\\n\\n    constructor(address _assetToXOracle, address _XToUsdOracle) {\\n        assetToXOracle = AggregatorInterface(_assetToXOracle);\\n        XToUsdOracle = AggregatorInterface(_XToUsdOracle);\\n    }\\n\\n    function latestAnswer() external view returns (int256) {\\n        return int256((uint256(assetToXOracle.latestAnswer()) * uint256(XToUsdOracle.latestAnswer())) / uint256(10) ** decimals);\\n    }\\n\\n    function latestTimestamp() external view returns (uint256) {\\n        return block.timestamp;\\n    }\\n\\n    function latestRound() external view returns (uint256) {\\n        return 0;\\n    }\\n\\n    function getAnswer(uint256 roundId) external view returns (int256) {\\n        return this.latestAnswer();\\n    }\\n\\n    function getTimestamp(uint256 roundId) external view returns (uint256) {\\n        return 0;\\n    }\\n}\\n\",\"keccak256\":\"0x604cbd1d4661774c81611319a472bfaf92998decfecefc2ef6330447cf9f1004\",\"license\":\"AGPL-3.0\"}},\"version\":1}",
+  "bytecode": "0x608060405234801561001057600080fd5b5060405161061c38038061061c83398101604081905261002f9161007c565b600080546001600160a01b039384166001600160a01b031991821617909155600180549290931691161790556100af565b80516001600160a01b038116811461007757600080fd5b919050565b6000806040838503121561008f57600080fd5b61009883610060565b91506100a660208401610060565b90509250929050565b61055e806100be6000396000f3fe608060405234801561001057600080fd5b50600436106100885760003560e01c80638205bf6a1161005b5780638205bf6a1461010e578063b5ab58dc14610114578063b633620c14610127578063e94cb14e1461013b57600080fd5b8063313ce5671461008d5780634bec3090146100ac57806350d25bcd146100f1578063668a0f0214610107575b600080fd5b610095600881565b60405160ff90911681526020015b60405180910390f35b6001546100cc9073ffffffffffffffffffffffffffffffffffffffff1681565b60405173ffffffffffffffffffffffffffffffffffffffff90911681526020016100a3565b6100f961015b565b6040519081526020016100a3565b60006100f9565b426100f9565b6100f9610122366004610319565b6102a2565b6100f9610135366004610319565b50600090565b6000546100cc9073ffffffffffffffffffffffffffffffffffffffff1681565b60006101696008600a610481565b600160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa1580156101d6573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906101fa9190610497565b60008054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa158015610265573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906102899190610497565b61029391906104b0565b61029d91906104ed565b905090565b60003073ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa1580156102ef573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906103139190610497565b92915050565b60006020828403121561032b57600080fd5b5035919050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b600181815b808511156103ba57817fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff048211156103a0576103a0610332565b808516156103ad57918102915b93841c9390800290610366565b509250929050565b6000826103d157506001610313565b816103de57506000610313565b81600181146103f457600281146103fe5761041a565b6001915050610313565b60ff84111561040f5761040f610332565b50506001821b610313565b5060208310610133831016604e8410600b841016171561043d575081810a610313565b6104478383610361565b807fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0482111561047957610479610332565b029392505050565b600061049060ff8416836103c2565b9392505050565b6000602082840312156104a957600080fd5b5051919050565b6000817fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff04831182151516156104e8576104e8610332565b500290565b600082610523577f4e487b7100000000000000000000000000000000000000000000000000000000600052601260045260246000fd5b50049056fea2646970667358221220f6e32afae4fbe31f1b1ded7fb28e52dd0f46e06189ad87b0a816da95b470991264736f6c634300080a0033",
+  "deployedBytecode": "0x608060405234801561001057600080fd5b50600436106100885760003560e01c80638205bf6a1161005b5780638205bf6a1461010e578063b5ab58dc14610114578063b633620c14610127578063e94cb14e1461013b57600080fd5b8063313ce5671461008d5780634bec3090146100ac57806350d25bcd146100f1578063668a0f0214610107575b600080fd5b610095600881565b60405160ff90911681526020015b60405180910390f35b6001546100cc9073ffffffffffffffffffffffffffffffffffffffff1681565b60405173ffffffffffffffffffffffffffffffffffffffff90911681526020016100a3565b6100f961015b565b6040519081526020016100a3565b60006100f9565b426100f9565b6100f9610122366004610319565b6102a2565b6100f9610135366004610319565b50600090565b6000546100cc9073ffffffffffffffffffffffffffffffffffffffff1681565b60006101696008600a610481565b600160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa1580156101d6573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906101fa9190610497565b60008054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa158015610265573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906102899190610497565b61029391906104b0565b61029d91906104ed565b905090565b60003073ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa1580156102ef573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906103139190610497565b92915050565b60006020828403121561032b57600080fd5b5035919050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b600181815b808511156103ba57817fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff048211156103a0576103a0610332565b808516156103ad57918102915b93841c9390800290610366565b509250929050565b6000826103d157506001610313565b816103de57506000610313565b81600181146103f457600281146103fe5761041a565b6001915050610313565b60ff84111561040f5761040f610332565b50506001821b610313565b5060208310610133831016604e8410600b841016171561043d575081810a610313565b6104478383610361565b807fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0482111561047957610479610332565b029392505050565b600061049060ff8416836103c2565b9392505050565b6000602082840312156104a957600080fd5b5051919050565b6000817fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff04831182151516156104e8576104e8610332565b500290565b600082610523577f4e487b7100000000000000000000000000000000000000000000000000000000600052601260045260246000fd5b50049056fea2646970667358221220f6e32afae4fbe31f1b1ded7fb28e52dd0f46e06189ad87b0a816da95b470991264736f6c634300080a0033",
+  "devdoc": {
+    "kind": "dev",
+    "methods": {},
+    "version": 1
+  },
+  "userdoc": {
+    "kind": "user",
+    "methods": {},
+    "version": 1
+  },
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 111,
+        "contract": "contracts/USDOracleAdapter.sol:USDOracleAdapter",
+        "label": "assetToXOracle",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_contract(AggregatorInterface)47"
+      },
+      {
+        "astId": 114,
+        "contract": "contracts/USDOracleAdapter.sol:USDOracleAdapter",
+        "label": "XToUsdOracle",
+        "offset": 0,
+        "slot": "1",
+        "type": "t_contract(AggregatorInterface)47"
+      }
+    ],
+    "types": {
+      "t_contract(AggregatorInterface)47": {
+        "encoding": "inplace",
+        "label": "contract AggregatorInterface",
+        "numberOfBytes": "20"
+      }
+    }
+  }
+}
