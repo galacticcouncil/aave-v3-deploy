@@ -1,0 +1,39 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol": {
+      "content": "// SPDX-License-Identifier: AGPL-3.0\npragma solidity ^0.8.10;\n\ninterface IEACAggregatorProxy {\n  function decimals() external view returns (uint8);\n\n  function latestAnswer() external view returns (int256);\n\n  function latestTimestamp() external view returns (uint256);\n\n  function latestRound() external view returns (uint256);\n\n  function getAnswer(uint256 roundId) external view returns (int256);\n\n  function getTimestamp(uint256 roundId) external view returns (uint256);\n\n  event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 timestamp);\n  event NewRound(uint256 indexed roundId, address indexed startedBy);\n}\n"
+    },
+    "contracts/HDCLOracleAdapter.sol": {
+      "content": "// SPDX-License-Identifier: AGPL-3.0\npragma solidity ^0.8.10;\n\nimport \"@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol\";\n\ninterface IHDCLVault {\n    function exchangeRate() external view returns (uint256);\n}\n\n/// @title HDCLOracleAdapter\n/// @notice Chainlink-compatible oracle for HDCL/USD price.\n///         Reads exchangeRate() from HDCLVault (18 decimals, HDCL→HOLLAR).\n///         Since HOLLAR ≈ $1, the exchange rate is effectively HDCL/USD.\n///         Scales the 18-decimal WAD value down to 8 decimals for Aave compatibility.\n///\n///         Implements the FULL Chainlink V3 AggregatorV3Interface (in addition\n///         to Aave's IEACAggregatorProxy) — required by Hydration's stableswap\n///         pallet `MMOracle` peg-source resolver, which calls `latestRoundData`\n///         (not just `latestAnswer`). Without this, `stableswap.create_pool_with_pegs`\n///         errors with `MissingTargetPegOracle`.\ncontract HDCLOracleAdapter is IEACAggregatorProxy {\n\n    uint8 public constant decimals = 8;\n    uint256 public constant version = 4; // Chainlink V3 interface version\n    IHDCLVault public immutable vault;\n\n    constructor(address _vault) {\n        require(_vault != address(0), \"Zero vault address\");\n        vault = IHDCLVault(_vault);\n    }\n\n    // ---- Legacy IEACAggregatorProxy methods (used by Aave's AaveOracle) ----\n\n    function latestAnswer() public view returns (int256) {\n        uint256 rateWad = vault.exchangeRate(); // 18 decimals\n        return int256(rateWad / 1e10); // scale 18 → 8 decimals\n    }\n\n    function latestTimestamp() external view returns (uint256) {\n        return block.timestamp;\n    }\n\n    function latestRound() external view returns (uint256) {\n        return block.number;\n    }\n\n    function getAnswer(uint256) external view returns (int256) {\n        return this.latestAnswer();\n    }\n\n    function getTimestamp(uint256) external view returns (uint256) {\n        return block.timestamp;\n    }\n\n    // ---- Chainlink V3 AggregatorV3Interface (used by stableswap MMOracle) ----\n\n    function description() external pure returns (string memory) {\n        return \"HDCL / USD\";\n    }\n\n    /// @notice Vault.exchangeRate is monotonically updated every block, so\n    ///         every read effectively returns the \"current round\" with no\n    ///         meaningful history. We return the same shape for any roundId.\n    function getRoundData(uint80 _roundId)\n        external\n        view\n        returns (\n            uint80 roundId,\n            int256 answer,\n            uint256 startedAt,\n            uint256 updatedAt,\n            uint80 answeredInRound\n        )\n    {\n        return _roundData(_roundId);\n    }\n\n    function latestRoundData()\n        external\n        view\n        returns (\n            uint80 roundId,\n            int256 answer,\n            uint256 startedAt,\n            uint256 updatedAt,\n            uint80 answeredInRound\n        )\n    {\n        return _roundData(uint80(block.number));\n    }\n\n    function _roundData(uint80 _roundId)\n        internal\n        view\n        returns (\n            uint80 roundId,\n            int256 answer,\n            uint256 startedAt,\n            uint256 updatedAt,\n            uint80 answeredInRound\n        )\n    {\n        roundId = _roundId;\n        answer = latestAnswer();\n        startedAt = block.timestamp;\n        updatedAt = block.timestamp;\n        answeredInRound = _roundId;\n    }\n}\n"
+    }
+  },
+  "settings": {
+    "optimizer": {
+      "enabled": true,
+      "runs": 100000
+    },
+    "evmVersion": "berlin",
+    "outputSelection": {
+      "*": {
+        "*": [
+          "abi",
+          "evm.bytecode",
+          "evm.deployedBytecode",
+          "evm.methodIdentifiers",
+          "metadata",
+          "devdoc",
+          "userdoc",
+          "storageLayout",
+          "evm.gasEstimates"
+        ],
+        "": [
+          "ast"
+        ]
+      }
+    },
+    "metadata": {
+      "useLiteralContent": true
+    }
+  }
+}
