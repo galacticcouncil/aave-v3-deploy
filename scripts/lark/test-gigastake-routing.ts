@@ -86,16 +86,19 @@ async function main() {
   // Pallets present
   const metadata = await api.rpc.state.getMetadata();
   const pallets = metadata.asLatest.pallets.map((p: any) => p.name.toString());
-  for (const need of ["GigaHdx", "GigaHdxVoting", "FeeProcessor"]) {
+  // Pivot 2026-05-06: GigaHdxVoting + FeeProcessor were dropped from the runtime.
+  // GigaHdx is the only required pallet now.
+  for (const need of ["GigaHdx"]) {
     if (!pallets.includes(need)) throw new Error(`missing pallet: ${need}`);
   }
-  console.log(`pallets present: GigaHdx, GigaHdxVoting, FeeProcessor ✓`);
+  console.log(`pallets present: GigaHdx ✓`);
 
-  // Storage: gigaHdxPoolContract must equal GIGAHDX_POOL
-  const gp: any = await api.query.liquidation.gigaHdxPoolContract();
-  console.log(`gigaHdxPoolContract: ${gp.toString()}`);
+  // Storage: gigaHdx.gigaHdxPoolContract must equal GIGAHDX_POOL
+  // (Moved from pallet-liquidation to pallet-gigahdx in the 2026-05-06 pivot.)
+  const gp: any = await api.query.gigaHdx.gigaHdxPoolContract();
+  console.log(`gigaHdx.gigaHdxPoolContract: ${gp.toString()}`);
   if (gp.toString().toLowerCase() !== GIGAHDX_POOL.toLowerCase()) {
-    throw new Error(`gigaHdxPoolContract is ${gp.toString()}, expected ${GIGAHDX_POOL}`);
+    throw new Error(`gigaHdx.gigaHdxPoolContract is ${gp.toString()}, expected ${GIGAHDX_POOL}`);
   }
 
   // Tester

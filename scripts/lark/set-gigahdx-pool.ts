@@ -1,4 +1,10 @@
-// Point pallet-liquidation.gigaHdxPoolContract at our Pool-Proxy-GIGAHDX on lark 1.
+// Point pallet-gigahdx.gigaHdxPoolContract at our Pool-Proxy-GIGAHDX on the lark.
+// Pivot 2026-05-06: storage moved from pallet-liquidation → pallet-gigahdx, AND
+// the extrinsic was renamed in the same change:
+//   pallet-liquidation::set_gigahdx_pool_contract → pallet-gigahdx::set_pool_contract
+// (the redundant "gigahdx" prefix was dropped now that the extrinsic lives on
+// pallet-gigahdx). polkadot.js maps Rust `GigaHdx` to camelCase `gigaHdx` — note
+// the capital H. Storage key keeps its `gigaHdxPoolContract` name.
 // Uses same whitelisted_caller + Alice 6x conviction pattern that just worked for the
 // runtime upgrade. Origin needed: EitherOf<EnsureRoot, GeneralAdmin> — WhitelistedCaller
 // track dispatches with Root.
@@ -58,7 +64,7 @@ async function main() {
   const api = await ApiPromise.create({ provider: new WsProvider(LARK_WS) });
   const alice = new Keyring({ type: "sr25519" }).addFromUri("//Alice");
 
-  const current: any = await api.query.liquidation.gigaHdxPoolContract();
+  const current: any = await api.query.gigaHdx.gigaHdxPoolContract();
   console.log(`current gigaHdxPoolContract: ${current.toString()}`);
   if (current.toString().toLowerCase() === GIGAHDX_POOL.toLowerCase()) {
     console.log("already set correctly");
@@ -67,9 +73,9 @@ async function main() {
   }
 
   // Inner call
-  const innerCall = api.tx.liquidation.setGigahdxPoolContract(GIGAHDX_POOL);
+  const innerCall = api.tx.gigaHdx.setPoolContract(GIGAHDX_POOL);
   const innerHash = innerCall.method.hash.toHex();
-  console.log(`inner setGigahdxPoolContract hash: ${innerHash}`);
+  console.log(`inner gigaHdx.setPoolContract hash: ${innerHash}`);
 
   // TC whitelist
   const wl: any = await api.query.whitelist.whitelistedCall(innerHash);
@@ -166,7 +172,7 @@ async function main() {
   console.log("waiting 15s for enactment...");
   await new Promise((r) => setTimeout(r, 15000));
 
-  const final: any = await api.query.liquidation.gigaHdxPoolContract();
+  const final: any = await api.query.gigaHdx.gigaHdxPoolContract();
   console.log(`\ngigaHdxPoolContract now: ${final.toString()}`);
   if (final.toString().toLowerCase() === GIGAHDX_POOL.toLowerCase()) {
     console.log("✓✓✓ gigaHdxPoolContract set correctly");

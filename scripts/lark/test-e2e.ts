@@ -173,13 +173,15 @@ async function main() {
 
     const metadata = await api.rpc.state.getMetadata();
     const pallets = metadata.asLatest.pallets.map((p: any) => p.name.toString());
-    for (const p of ["GigaHdx", "GigaHdxVoting", "FeeProcessor"]) {
+    // Pivot 2026-05-06: GigaHdxVoting + FeeProcessor were dropped from the runtime.
+    // GigaHdx is the only required pallet now.
+    for (const p of ["GigaHdx"]) {
       if (!pallets.includes(p)) throw new Error(`missing pallet: ${p}`);
     }
 
-    const gp: any = await api.query.liquidation.gigaHdxPoolContract();
+    const gp: any = await api.query.gigaHdx.gigaHdxPoolContract();
     if (gp.toString().toLowerCase() !== POOL.toLowerCase()) {
-      throw new Error(`gigaHdxPoolContract=${gp} expected=${POOL}`);
+      throw new Error(`gigaHdx.gigaHdxPoolContract=${gp} expected=${POOL}`);
     }
 
     const acct: any = await api.query.system.account(tester.address);
@@ -269,45 +271,76 @@ async function main() {
   });
 
   // -------------- Phase 6 --------------
-  await phase("6. Withdraw stHDX", async () => {
+  // Pivot 2026-05-06: GIGAHDX is non-transferable by design. Pool.withdraw on the
+  // aToken always reverts with ExceedsFreeBalance because the LockManager precompile
+  // reports the user's full aToken balance as locked. The supported unstake path is
+  // the gigaHdx pallet extrinsic, which burns the aToken and creates a pendingUnstake
+  // position with a cooldown.
+  await phase("6. Unstake (via gigaHdx.gigaUnstake)", async () => {
     if (!suppliedOk) throw new Error(`SKIP: no supply`);
-    const debtNow = await balanceOf(provider, VD_HOLLAR, testerEvm);
-    if (debtNow > 0n && !oracleStHdxWorks) {
-      throw new Error(`SKIP: outstanding debt + oracle blocked — HF check would revert`);
-    }
-
-    const iface = new ethers.utils.Interface(["function withdraw(address,uint256,address) returns (uint256)"]);
-    const amt = supplyAToken / 10n; // withdraw 10% to keep margin
-    const data = iface.encodeFunctionData("withdraw", [STHDX, amt, testerEvm]);
 
     const aBefore = await balanceOf(provider, A_STHDX, testerEvm);
-    await callEvm(api, tester, testerEvm, POOL, data, `Pool.withdraw(${amt} stHDX, ~${Number(amt) / 1e12})`);
+    const amt = supplyAToken / 10n; // unstake 10%
+    const tx = api.tx.gigaHdx.gigaUnstake(amt.toString());
+    console.log(`  tx: gigaUnstake(${amt})`);
+    await new Promise<void>((res, rej) => {
+      tx.signAndSend(tester, ({ status, dispatchError, events }) => {
+        if (status.isInBlock) console.log(`    in block: ${status.asInBlock.toHex().slice(0, 18)}...`);
+        if (status.isFinalized) {
+          if (dispatchError) {
+            if (dispatchError.isModule) {
+              const d = api.registry.findMetaError(dispatchError.asModule);
+              return rej(new Error(`${d.section}.${d.name}: ${d.docs.join(" ")}`));
+            }
+            return rej(new Error(dispatchError.toString()));
+          }
+          for (const { event } of events) {
+            if (event.section === "system" && event.method === "ExtrinsicFailed") return rej(new Error(`ExtrinsicFailed: ${event.data}`));
+          }
+          console.log(`    finalized: ${status.asFinalized.toHex().slice(0, 18)}...`);
+          res();
+        }
+      }).catch(rej);
+    });
     await new Promise((r) => setTimeout(r, 6000));
     const aAfter = await balanceOf(provider, A_STHDX, testerEvm);
     const delta = aBefore - aAfter;
-    if (delta === 0n) throw new Error(`aToken balance unchanged — withdraw silently failed`);
-    return `aToken Δ = -${delta}`;
+    if (delta === 0n) throw new Error(`aToken balance unchanged — unstake silently failed`);
+    const pending: any = await api.query.gigaHdx.pendingUnstakes(tester.address);
+    return `aToken Δ = -${delta}; pendingUnstakes = ${pending.toString()}`;
   });
 
   // -------------- Phase 7 --------------
-  await phase("7. aToken ERC20 transfer (LockableAToken free path)", async () => {
+  // Pivot 2026-05-06: aToken transfers MUST revert. GIGAHDX is non-transferable.
+  // PASS condition is now: the transfer reverts with ExceedsFreeBalance.
+  await phase("7. aToken ERC20 transfer reverts (non-transferable by design)", async () => {
     const bal = await balanceOf(provider, A_STHDX, testerEvm);
-    if (bal === 0n) throw new Error(`SKIP: no aToken to transfer`);
+    if (bal === 0n) throw new Error(`SKIP: no aToken to attempt transfer`);
 
     const alice = keyring.addFromUri("//Alice");
     const aliceEvm = "0x" + u8aToHex(alice.publicKey).slice(2, 42);
 
     const iface = new ethers.utils.Interface(["function transfer(address,uint256) returns (bool)"]);
-    const amt = bal / 100n; // 1% of balance
+    const amt = bal / 100n;
     const data = iface.encodeFunctionData("transfer", [aliceEvm, amt]);
 
-    const aBefore = await balanceOf(provider, A_STHDX, aliceEvm);
-    await callEvm(api, tester, testerEvm, A_STHDX, data, `aGIGAHDXstHDX.transfer(Alice, ${amt})`);
-    await new Promise((r) => setTimeout(r, 6000));
-    const aAfter = await balanceOf(provider, A_STHDX, aliceEvm);
-    const delta = aAfter - aBefore;
-    if (delta === 0n) throw new Error(`Alice balance unchanged — transfer reverted silently or was blocked by lock check`);
-    return `Alice aToken Δ = +${delta}`;
+    // Simulate via eth_call to get the revert reason cleanly without spending tx fee.
+    try {
+      await provider.call({
+        from: testerEvm,
+        to: A_STHDX,
+        data,
+      });
+      // If it returns instead of reverting, that's a regression.
+      throw new Error(`aToken.transfer DID NOT revert — non-transferability not enforced`);
+    } catch (e: any) {
+      const rd = e.error?.body || e.body || e.data || e.message;
+      const txt = typeof rd === "string" ? rd : JSON.stringify(rd);
+      // ExceedsFreeBalance(uint256,uint256) selector = 0x9e176ac9
+      if (!txt.includes("0x9e176ac9") && !txt.includes("ExceedsFreeBalance"))
+        throw new Error(`transfer reverted but not with ExceedsFreeBalance: ${txt.slice(0, 200)}`);
+      return `revert ExceedsFreeBalance — non-transferability enforced ✓`;
+    }
   });
 
   // -------------- Summary --------------

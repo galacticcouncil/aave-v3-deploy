@@ -14,7 +14,8 @@ The `feat/gigahdx-impl` and `feat/gigahdx-liquidation` branches introduce:
 | `pallet-gigahdx` | Core staking: HDX → stHDX → supply to MM → GIGAHDX |
 | `pallet-gigahdx-voting` | Conviction voting with GIGAHDX, lock enforcement via 0x0806 precompile |
 | `pallet-fee-processor` | Fee distribution: 70% gigapot, 10% staking, 10% referrals |
-| `pallet-liquidation` update | GIGAHDX liquidation: clear locks → treasury borrows HOLLAR → liquidationCall |
+| `pallet-gigahdx` | Now also stores the GIGAHDX Pool address (`gigaHdxPoolContract`); set via `set_pool_contract`. (Storage moved from `pallet-liquidation`, and the extrinsic was renamed from `set_gigahdx_pool_contract` — both in the 2026-05-06 pivot.) |
+| `pallet-liquidation` update | GIGAHDX liquidation: clear locks → treasury borrows HOLLAR → liquidationCall (reads pool address from `pallet-gigahdx`) |
 | LockManager precompile (0x0806) | Reads voting locks, enforced by LockableAToken |
 
 ### Runtime change needed for second pool

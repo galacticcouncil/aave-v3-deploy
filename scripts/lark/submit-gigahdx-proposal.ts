@@ -52,14 +52,14 @@ async function main() {
   // This guarantees the preimage matches the CURRENT runtime metadata.
   console.log("Regenerating GIGAHDX proposal to capture whitelistedCall & proposal objects...");
   const { generateProposalV2, getApi, location, aaveManagerCall } = await import(
-    "../helpers/hydration-proposal.js"
+    "../../helpers/hydration-proposal.js"
   );
   const { addTransaction, getBatch, clearBatch } = await import(
-    "../helpers/transaction-batch"
+    "../../helpers/transaction-batch"
   );
   const { getPoolAddressesProvider, getPoolConfiguratorProxy, POOL_ADMIN, TREASURY_PROXY_ID, FORK } =
-    await import("../helpers");
-  const { MARKET_NAME } = await import("../helpers/env");
+    await import("../../helpers");
+  const { MARKET_NAME } = await import("../../helpers/env");
 
   const HOLLAR = "0x531a654d1696ED52e7275A8cede955E82620f99a";
   const GHO_ORACLE = "0x6096C9D71F7c06024578a62F4B608a1Bb06834F8";

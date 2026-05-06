@@ -1,0 +1,327 @@
+{
+  "address": "0x60391660c136046bB7ac5E86E416617df8f5dAa3",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "int256",
+          "name": "initialPrice",
+          "type": "int256"
+        },
+        {
+          "internalType": "address",
+          "name": "owner_",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "int256",
+          "name": "current",
+          "type": "int256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "AnswerUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "startedBy",
+          "type": "address"
+        }
+      ],
+      "name": "NewRound",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "oldOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnerChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "int256",
+          "name": "oldPrice",
+          "type": "int256"
+        },
+        {
+          "indexed": false,
+          "internalType": "int256",
+          "name": "newPrice",
+          "type": "int256"
+        }
+      ],
+      "name": "PriceUpdated",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "decimals",
+      "outputs": [
+        {
+          "internalType": "uint8",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "getAnswer",
+      "outputs": [
+        {
+          "internalType": "int256",
+          "name": "",
+          "type": "int256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "getTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestAnswer",
+      "outputs": [
+        {
+          "internalType": "int256",
+          "name": "",
+          "type": "int256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestRound",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "int256",
+          "name": "newPrice",
+          "type": "int256"
+        }
+      ],
+      "name": "setPrice",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "transactionHash": "0x8f4bf4d2547a9585e13f743d148244df4afa90114f4389602939296b99831b3a",
+  "receipt": {
+    "to": null,
+    "from": "0x222222B60cA97a4998B7D07b99034Fa4d9339531",
+    "contractAddress": "0x60391660c136046bB7ac5E86E416617df8f5dAa3",
+    "transactionIndex": 0,
+    "gasUsed": "526674",
+    "logsBloom": "0x00000000000000000000000000000000000002000000000000080000000000000000000000000000040000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000100000000000000000000000000000000000000000000000000000000000200000000000000000000080000000000000020040000000000000000004000000000000000000000000800000000000000000000",
+    "blockHash": "0x4900c94a50b6be9da21c78d5246e2200637fcac62a4658fe92c6a0b2a2d5b9ca",
+    "transactionHash": "0x8f4bf4d2547a9585e13f743d148244df4afa90114f4389602939296b99831b3a",
+    "logs": [
+      {
+        "transactionIndex": 0,
+        "blockNumber": 2134,
+        "transactionHash": "0x8f4bf4d2547a9585e13f743d148244df4afa90114f4389602939296b99831b3a",
+        "address": "0x60391660c136046bB7ac5E86E416617df8f5dAa3",
+        "topics": [
+          "0x92ddd77a3b8d4ec2f8d939408c461519c5ddea9083fd78b1ab24a449fe3427b9"
+        ],
+        "data": "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002625a0",
+        "logIndex": 0,
+        "blockHash": "0x4900c94a50b6be9da21c78d5246e2200637fcac62a4658fe92c6a0b2a2d5b9ca"
+      },
+      {
+        "transactionIndex": 0,
+        "blockNumber": 2134,
+        "transactionHash": "0x8f4bf4d2547a9585e13f743d148244df4afa90114f4389602939296b99831b3a",
+        "address": "0x60391660c136046bB7ac5E86E416617df8f5dAa3",
+        "topics": [
+          "0xb532073b38c83145e3e5135377a08bf9aab55bc0fd7c1179cd4fb995d2a5159c",
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0x000000000000000000000000222222b60ca97a4998b7d07b99034fa4d9339531"
+        ],
+        "data": "0x",
+        "logIndex": 1,
+        "blockHash": "0x4900c94a50b6be9da21c78d5246e2200637fcac62a4658fe92c6a0b2a2d5b9ca"
+      }
+    ],
+    "blockNumber": 2134,
+    "cumulativeGasUsed": "526674",
+    "status": 1,
+    "byzantium": true
+  },
+  "args": [
+    "2500000",
+    "0x222222B60cA97a4998B7D07b99034Fa4d9339531"
+  ],
+  "numDeployments": 1,
+  "solcInputHash": "03da7732bce911d5ffabb1d2b980ab5f",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.10+commit.fc410830\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"int256\",\"name\":\"initialPrice\",\"type\":\"int256\"},{\"internalType\":\"address\",\"name\":\"owner_\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"int256\",\"name\":\"current\",\"type\":\"int256\"},{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"timestamp\",\"type\":\"uint256\"}],\"name\":\"AnswerUpdated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"startedBy\",\"type\":\"address\"}],\"name\":\"NewRound\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"oldOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnerChanged\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"int256\",\"name\":\"oldPrice\",\"type\":\"int256\"},{\"indexed\":false,\"internalType\":\"int256\",\"name\":\"newPrice\",\"type\":\"int256\"}],\"name\":\"PriceUpdated\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"decimals\",\"outputs\":[{\"internalType\":\"uint8\",\"name\":\"\",\"type\":\"uint8\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"getAnswer\",\"outputs\":[{\"internalType\":\"int256\",\"name\":\"\",\"type\":\"int256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"getTimestamp\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestAnswer\",\"outputs\":[{\"internalType\":\"int256\",\"name\":\"\",\"type\":\"int256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestRound\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestTimestamp\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"int256\",\"name\":\"newPrice\",\"type\":\"int256\"}],\"name\":\"setPrice\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"notice\":\"Minimal Chainlink-compatible oracle that returns a constant price set by the owner. Used on lark test chains where the real EMA oracle path is not populated. MAINNET: never use. The prod stHDX oracle is USDOracleAdapter (stHDX/HDX EMA \\u00d7 HDX/USD chainlink).\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"contracts/FixedPriceOracle.sol\":\"FixedPriceOracle\"},\"evmVersion\":\"berlin\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":100000},\"remappings\":[]},\"sources\":{\"@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol\":{\"content\":\"// SPDX-License-Identifier: AGPL-3.0\\npragma solidity ^0.8.10;\\n\\ninterface IEACAggregatorProxy {\\n  function decimals() external view returns (uint8);\\n\\n  function latestAnswer() external view returns (int256);\\n\\n  function latestTimestamp() external view returns (uint256);\\n\\n  function latestRound() external view returns (uint256);\\n\\n  function getAnswer(uint256 roundId) external view returns (int256);\\n\\n  function getTimestamp(uint256 roundId) external view returns (uint256);\\n\\n  event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 timestamp);\\n  event NewRound(uint256 indexed roundId, address indexed startedBy);\\n}\\n\",\"keccak256\":\"0x75bb34641419925730f87eeb122521b34cfd953b800212c362770ed1c7c5d719\",\"license\":\"AGPL-3.0\"},\"contracts/FixedPriceOracle.sol\":{\"content\":\"// SPDX-License-Identifier: AGPL-3.0\\npragma solidity ^0.8.10;\\n\\nimport \\\"@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol\\\";\\n\\n/**\\n * Minimal Chainlink-compatible oracle that returns a constant price\\n * set by the owner. Used on lark test chains where the real EMA oracle\\n * path is not populated.\\n *\\n * MAINNET: never use. The prod stHDX oracle is USDOracleAdapter\\n * (stHDX/HDX EMA \\u00d7 HDX/USD chainlink).\\n */\\ncontract FixedPriceOracle is IEACAggregatorProxy {\\n    uint8 public constant decimals = 8;\\n\\n    int256 private _price;\\n    address public owner;\\n\\n    event PriceUpdated(int256 oldPrice, int256 newPrice);\\n    event OwnerChanged(address indexed oldOwner, address indexed newOwner);\\n\\n    constructor(int256 initialPrice, address owner_) {\\n        require(owner_ != address(0), \\\"zero owner\\\");\\n        _price = initialPrice;\\n        owner = owner_;\\n        emit PriceUpdated(0, initialPrice);\\n        emit OwnerChanged(address(0), owner_);\\n    }\\n\\n    function setPrice(int256 newPrice) external {\\n        require(msg.sender == owner, \\\"not owner\\\");\\n        int256 old = _price;\\n        _price = newPrice;\\n        emit PriceUpdated(old, newPrice);\\n    }\\n\\n    function transferOwnership(address newOwner) external {\\n        require(msg.sender == owner, \\\"not owner\\\");\\n        require(newOwner != address(0), \\\"zero owner\\\");\\n        address old = owner;\\n        owner = newOwner;\\n        emit OwnerChanged(old, newOwner);\\n    }\\n\\n    function latestAnswer() external view override returns (int256) {\\n        return _price;\\n    }\\n\\n    function latestTimestamp() external view override returns (uint256) {\\n        return block.timestamp;\\n    }\\n\\n    function latestRound() external view override returns (uint256) {\\n        return 1;\\n    }\\n\\n    function getAnswer(uint256) external view override returns (int256) {\\n        return _price;\\n    }\\n\\n    function getTimestamp(uint256) external view override returns (uint256) {\\n        return block.timestamp;\\n    }\\n}\\n\",\"keccak256\":\"0x4394e7058c96e7ab6fbb12563352b24edc70171972f5495c453c67bbaab991a1\",\"license\":\"AGPL-3.0\"}},\"version\":1}",
+  "bytecode": "0x608060405234801561001057600080fd5b5060405161059f38038061059f83398101604081905261002f9161010c565b6001600160a01b0381166100765760405162461bcd60e51b815260206004820152600a6024820152693d32b9379037bbb732b960b11b604482015260640160405180910390fd5b6000828155600180546001600160a01b0319166001600160a01b03841617905560408051918252602082018490527f92ddd77a3b8d4ec2f8d939408c461519c5ddea9083fd78b1ab24a449fe3427b9910160405180910390a16040516001600160a01b038216906000907fb532073b38c83145e3e5135377a08bf9aab55bc0fd7c1179cd4fb995d2a5159c908290a35050610149565b6000806040838503121561011f57600080fd5b825160208401519092506001600160a01b038116811461013e57600080fd5b809150509250929050565b610447806101586000396000f3fe608060405234801561001057600080fd5b50600436106100a35760003560e01c80638da5cb5b11610076578063b633620c1161005b578063b633620c14610140578063f2fde38b14610153578063f7a308061461016857600080fd5b80638da5cb5b146100e6578063b5ab58dc1461012b57600080fd5b8063313ce567146100a857806350d25bcd146100c7578063668a0f02146100d95780638205bf6a146100e0575b600080fd5b6100b0600881565b60405160ff90911681526020015b60405180910390f35b6000545b6040519081526020016100be565b60016100cb565b426100cb565b6001546101069073ffffffffffffffffffffffffffffffffffffffff1681565b60405173ffffffffffffffffffffffffffffffffffffffff90911681526020016100be565b6100cb6101393660046103bb565b5060005490565b6100cb61014e3660046103bb565b504290565b6101666101613660046103d4565b61017b565b005b6101666101763660046103bb565b6102f5565b60015473ffffffffffffffffffffffffffffffffffffffff163314610201576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152600960248201527f6e6f74206f776e6572000000000000000000000000000000000000000000000060448201526064015b60405180910390fd5b73ffffffffffffffffffffffffffffffffffffffff811661027e576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152600a60248201527f7a65726f206f776e65720000000000000000000000000000000000000000000060448201526064016101f8565b6001805473ffffffffffffffffffffffffffffffffffffffff8381167fffffffffffffffffffffffff0000000000000000000000000000000000000000831681179093556040519116919082907fb532073b38c83145e3e5135377a08bf9aab55bc0fd7c1179cd4fb995d2a5159c90600090a35050565b60015473ffffffffffffffffffffffffffffffffffffffff163314610376576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152600960248201527f6e6f74206f776e6572000000000000000000000000000000000000000000000060448201526064016101f8565b600080549082905560408051828152602081018490527f92ddd77a3b8d4ec2f8d939408c461519c5ddea9083fd78b1ab24a449fe3427b9910160405180910390a15050565b6000602082840312156103cd57600080fd5b5035919050565b6000602082840312156103e657600080fd5b813573ffffffffffffffffffffffffffffffffffffffff8116811461040a57600080fd5b939250505056fea2646970667358221220191e4a2c66bd9542816dbb6f8a9eb8e67b0188d3e5f608da219ba8c40b63cf7b64736f6c634300080a0033",
+  "deployedBytecode": "0x608060405234801561001057600080fd5b50600436106100a35760003560e01c80638da5cb5b11610076578063b633620c1161005b578063b633620c14610140578063f2fde38b14610153578063f7a308061461016857600080fd5b80638da5cb5b146100e6578063b5ab58dc1461012b57600080fd5b8063313ce567146100a857806350d25bcd146100c7578063668a0f02146100d95780638205bf6a146100e0575b600080fd5b6100b0600881565b60405160ff90911681526020015b60405180910390f35b6000545b6040519081526020016100be565b60016100cb565b426100cb565b6001546101069073ffffffffffffffffffffffffffffffffffffffff1681565b60405173ffffffffffffffffffffffffffffffffffffffff90911681526020016100be565b6100cb6101393660046103bb565b5060005490565b6100cb61014e3660046103bb565b504290565b6101666101613660046103d4565b61017b565b005b6101666101763660046103bb565b6102f5565b60015473ffffffffffffffffffffffffffffffffffffffff163314610201576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152600960248201527f6e6f74206f776e6572000000000000000000000000000000000000000000000060448201526064015b60405180910390fd5b73ffffffffffffffffffffffffffffffffffffffff811661027e576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152600a60248201527f7a65726f206f776e65720000000000000000000000000000000000000000000060448201526064016101f8565b6001805473ffffffffffffffffffffffffffffffffffffffff8381167fffffffffffffffffffffffff0000000000000000000000000000000000000000831681179093556040519116919082907fb532073b38c83145e3e5135377a08bf9aab55bc0fd7c1179cd4fb995d2a5159c90600090a35050565b60015473ffffffffffffffffffffffffffffffffffffffff163314610376576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152600960248201527f6e6f74206f776e6572000000000000000000000000000000000000000000000060448201526064016101f8565b600080549082905560408051828152602081018490527f92ddd77a3b8d4ec2f8d939408c461519c5ddea9083fd78b1ab24a449fe3427b9910160405180910390a15050565b6000602082840312156103cd57600080fd5b5035919050565b6000602082840312156103e657600080fd5b813573ffffffffffffffffffffffffffffffffffffffff8116811461040a57600080fd5b939250505056fea2646970667358221220191e4a2c66bd9542816dbb6f8a9eb8e67b0188d3e5f608da219ba8c40b63cf7b64736f6c634300080a0033",
+  "devdoc": {
+    "kind": "dev",
+    "methods": {},
+    "version": 1
+  },
+  "userdoc": {
+    "kind": "user",
+    "methods": {},
+    "notice": "Minimal Chainlink-compatible oracle that returns a constant price set by the owner. Used on lark test chains where the real EMA oracle path is not populated. MAINNET: never use. The prod stHDX oracle is USDOracleAdapter (stHDX/HDX EMA × HDX/USD chainlink).",
+    "version": 1
+  },
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 61,
+        "contract": "contracts/FixedPriceOracle.sol:FixedPriceOracle",
+        "label": "_price",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_int256"
+      },
+      {
+        "astId": 63,
+        "contract": "contracts/FixedPriceOracle.sol:FixedPriceOracle",
+        "label": "owner",
+        "offset": 0,
+        "slot": "1",
+        "type": "t_address"
+      }
+    ],
+    "types": {
+      "t_address": {
+        "encoding": "inplace",
+        "label": "address",
+        "numberOfBytes": "20"
+      },
+      "t_int256": {
+        "encoding": "inplace",
+        "label": "int256",
+        "numberOfBytes": "32"
+      }
+    }
+  }
+}

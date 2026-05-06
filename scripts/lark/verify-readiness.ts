@@ -68,11 +68,11 @@ async function main() {
   );
 
   // The "fixed by a call" thing for gigaStake routing — ref 321 set this.
-  const poolPtr: any = await api.query.liquidation.gigaHdxPoolContract();
+  const poolPtr: any = await api.query.gigaHdx.gigaHdxPoolContract();
   const expectedPool = (sheet.core.Pool as string).toLowerCase();
   add(
     "B. Substrate state",
-    "pallet_liquidation::gigaHdxPoolContract → sheet.Pool",
+    "pallet_gigahdx::GigaHdxPoolContract → sheet.Pool",
     poolPtr.toString().toLowerCase() === expectedPool,
     `runtime=${poolPtr.toString()} sheet=${sheet.core.Pool}`
   );
