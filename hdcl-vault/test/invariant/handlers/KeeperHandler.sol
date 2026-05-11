@@ -18,6 +18,7 @@ contract KeeperHandler is Test {
     uint256 public ghost_pokeDecentralCalls;
     uint256 public ghost_pokeQueueCalls;
     uint256 public ghost_timeWarps;
+    uint256 public ghost_shortfallsConfigured;
 
     constructor(HDCLVault _vault, MockDecentralPool _pool) {
         vault = _vault;
@@ -89,6 +90,48 @@ contract KeeperHandler is Test {
         vault.pokeQueue();
         ghost_pokeQueueCalls++;
         _checkRate();
+    }
+
+    // ── Configure Principal Shortfall ──────────────────────────────────────
+
+    /// @notice Schedule a small principal-payout shortfall on a random
+    ///         position so the eventual `executePrincipalWithdrawal` drops
+    ///         the exchange rate by a bounded amount. This is what causes
+    ///         already-queued redemption requests with a non-zero
+    ///         `minRateWad` to *park* during fuzz — without it, the new
+    ///         park-and-skip path is never exercised under random call
+    ///         sequences (the rate is monotonically non-decreasing).
+    /// @dev    Shortfall is bounded to leave the rate strictly above 1.0
+    ///         so `invariant_exchangeRateAboveInitial` stays satisfied:
+    ///           headroom = totalAssets - totalSupply  (positive when rate > 1)
+    ///           shortfall ≤ headroom / 200            (0.5% of headroom)
+    ///         The shortfall is applied at principal-redemption time, by
+    ///         which point yield will have accrued further — the conservative
+    ///         bound covers that drift.
+    function setPositionShortfall(uint256 positionSeed, uint256 shortfallSeed) external {
+        uint256 count = vault.getPositionCount();
+        if (count == 0) return;
+
+        uint256 idx = positionSeed % count;
+        (uint256 tokenId, uint256 principal, , , , uint8 state) = vault.getPosition(idx);
+
+        // Only meaningful while the position can still pass through
+        // executePrincipalWithdrawal (state != Redeemed).
+        if (state == 4 || principal == 0) return;
+
+        uint256 supply = vault.totalSupply();
+        if (supply == 0) return;
+        uint256 totalAssets = vault.totalAssets();
+        if (totalAssets <= supply) return; // rate already at 1.0 — no headroom
+
+        uint256 headroom = totalAssets - supply;
+        uint256 maxShortfall = headroom / 200; // 0.5% of headroom
+        if (maxShortfall == 0) return;
+        if (maxShortfall > principal) maxShortfall = principal;
+
+        uint256 shortfall = bound(shortfallSeed, 1, maxShortfall);
+        pool.setPayoutDelta(tokenId, -int256(shortfall));
+        ghost_shortfallsConfigured++;
     }
 
     // ── Rate Tracking ──────────────────────────────────────────────────────

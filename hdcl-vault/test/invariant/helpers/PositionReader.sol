@@ -13,14 +13,18 @@ contract PositionReader {
     }
 
     function isStale(uint256 idx) external view returns (bool _isStale) {
-        (,,,,,,, _isStale,,,) = vault.positions(idx);
+        (,,,,,,, _isStale,,,,) = vault.positions(idx);
     }
 
     function staleValues(uint256 idx) external view returns (uint256 stalePrincipal, uint256 staleYield) {
-        (,,,,,,,, stalePrincipal, staleYield,) = vault.positions(idx);
+        (,,,,,,,, stalePrincipal, staleYield,,) = vault.positions(idx);
     }
 
     function principal(uint256 idx) external view returns (uint256 _principal) {
-        (, _principal,,,,,,,,,) = vault.positions(idx);
+        (, _principal,,,,,,,,,,) = vault.positions(idx);
+    }
+
+    function pendingYield(uint256 idx) external view returns (uint256 _pendingYield) {
+        (,,,,,,,,,,, _pendingYield) = vault.positions(idx);
     }
 }

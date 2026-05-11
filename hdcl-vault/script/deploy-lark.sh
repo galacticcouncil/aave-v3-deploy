@@ -94,6 +94,7 @@ forge script script/Deploy.s.sol:Deploy \
 # Extract deployed addresses
 IMPL_ADDR=$(grep "Implementation:" /tmp/hdcl-deploy-output.txt | awk '{print $NF}')
 PROXY_ADDR=$(grep "Proxy (HDCL Vault):" /tmp/hdcl-deploy-output.txt | awk '{print $NF}')
+ORACLE_ADDR=$(grep "WDCLOracle:" /tmp/hdcl-deploy-output.txt | awk '{print $NF}')
 
 echo ""
 echo "============================================"
@@ -102,10 +103,12 @@ echo "============================================"
 echo "Network:        ${LARK_NUM}.lark (chain 222222)"
 echo "Implementation: $IMPL_ADDR"
 echo "Proxy (Vault):  $PROXY_ADDR"
+echo "WDCLOracle:     $ORACLE_ADDR"
 echo "Admin:          $ALICE_ADDR"
 echo ""
 echo "Keeper config:"
 echo "  RPC_URL=$RPC_HTTP"
 echo "  VAULT_ADDRESS=$PROXY_ADDR"
+echo "  ORACLE_ADDRESS=$ORACLE_ADDR"
 echo "  KEEPER_PRIVATE_KEY=$ALICE_PK"
 echo "============================================"

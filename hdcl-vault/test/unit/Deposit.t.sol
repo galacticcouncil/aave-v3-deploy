@@ -267,6 +267,25 @@ contract DepositTest is BaseTest {
         assertEq(nft.ownerOf(tokenId), address(vault), "Vault owns the Decentral NFT");
     }
 
+    /// @notice onERC721Received only accepts callbacks from the configured
+    ///         poolToken. Any other caller (e.g., arbitrary ERC721 contract
+    ///         trying to spam the vault) is rejected. No fund-impact path
+    ///         today, but prevents storage/event spam.
+    function test_onERC721Received_rejectsForeignCaller() public {
+        vm.prank(alice);
+        vm.expectRevert("Only pool NFTs");
+        vault.onERC721Received(alice, alice, 0, "");
+    }
+
+    /// @notice Positive case: when the configured poolToken makes the call,
+    ///         the vault accepts and returns the standard selector. This is
+    ///         the path triggered by `_safeMint` during deposit.
+    function test_onERC721Received_acceptsFromPoolToken() public {
+        vm.prank(address(nft));
+        bytes4 selector = vault.onERC721Received(address(0), address(0), 0, "");
+        assertEq(selector, bytes4(keccak256("onERC721Received(address,address,uint256,bytes)")));
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     //                    APY BUCKET ACCOUNTING
     // ═══════════════════════════════════════════════════════════════════════

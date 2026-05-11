@@ -22,7 +22,7 @@ contract RedeemTest is BaseTest {
 
         vm.prank(alice);
         vm.expectRevert(HDCLVault.BelowMinimumRedeem.selector);
-        vault.requestRedeem(1e18 - 1); // just below 1 HDCL
+        vault.requestRedeem(1e18 - 1, 0); // just below 1 HDCL
     }
 
     function test_requestRedeem_reverts_whenInsufficientBalance() public {
@@ -33,7 +33,7 @@ contract RedeemTest is BaseTest {
         // Try to redeem more than Alice has
         vm.prank(alice);
         vm.expectRevert(); // ERC20 transfer reverts on insufficient balance
-        vault.requestRedeem(aliceBal + 1);
+        vault.requestRedeem(aliceBal + 1, 0);
     }
 
     function test_requestRedeem_reverts_whenGloballyPaused() public {
@@ -44,7 +44,7 @@ contract RedeemTest is BaseTest {
 
         vm.prank(alice);
         vm.expectRevert("Pausable: paused");
-        vault.requestRedeem(ONE_HOLLAR);
+        vault.requestRedeem(ONE_HOLLAR, 0);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -128,7 +128,7 @@ contract RedeemTest is BaseTest {
         emit RedemptionRequested(0, alice, redeemAmt);
 
         vm.prank(alice);
-        vault.requestRedeem(redeemAmt);
+        vault.requestRedeem(redeemAmt, 0);
     }
 
     // ═══════════════════════════════════════════════════════════════════════

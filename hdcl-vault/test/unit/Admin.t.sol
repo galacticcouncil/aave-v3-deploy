@@ -216,7 +216,7 @@ contract AdminTest is BaseTest {
         // requestRedeem
         vm.prank(alice);
         vm.expectRevert("Pausable: paused");
-        vault.requestRedeem(aliceHdcl / 4);
+        vault.requestRedeem(aliceHdcl / 4, 0);
 
         // pokeDecentral
         vm.expectRevert("Pausable: paused");
@@ -364,6 +364,16 @@ contract AdminTest is BaseTest {
         vault.setMinRedeemAmount(10e18);
     }
 
+    /// @notice setMinRedeemAmount(0) reverts. A zero floor would let an
+    ///         attacker post zero-HDCL redemption requests that pass the
+    ///         requestRedeem gate, escrow zero HDCL, and still consume a
+    ///         work iteration per spam entry in the queue processor.
+    function test_setMinRedeemAmount_revertsOnZero() public {
+        vm.prank(admin);
+        vm.expectRevert("Min must be positive");
+        vault.setMinRedeemAmount(0);
+    }
+
     /// @notice Changing minRedeemAmount affects redemption threshold
     function test_setMinRedeemAmount_affectsRedemptions() public {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
@@ -375,11 +385,11 @@ contract AdminTest is BaseTest {
         // Small redeem should revert
         vm.prank(alice);
         vm.expectRevert(HDCLVault.BelowMinimumRedeem.selector);
-        vault.requestRedeem(4999e18);
+        vault.requestRedeem(4999e18, 0);
 
         // At-min redeem should succeed
         vm.prank(alice);
-        vault.requestRedeem(5000e18);
+        vault.requestRedeem(5000e18, 0);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -393,11 +403,14 @@ contract AdminTest is BaseTest {
     }
 
     function test_setOracle_updatesValue() public {
-        address newOracle = makeAddr("oracle");
+        // setOracle now probes the candidate, so it requires a real oracle
+        // implementation. Use WDCLOracle (the production oracle) as the probe
+        // target — it serves the vault's own exchange rate.
+        WDCLOracle newOracle = new WDCLOracle(address(vault));
         vm.prank(admin);
-        vault.setOracle(newOracle);
+        vault.setOracle(address(newOracle));
 
-        assertEq(address(vault.oracle()), newOracle);
+        assertEq(address(vault.oracle()), address(newOracle));
     }
 
     function test_setOracle_revertsOnZeroAddress() public {
@@ -407,13 +420,24 @@ contract AdminTest is BaseTest {
     }
 
     function test_setOracle_emitsEvent() public {
-        address newOracle = makeAddr("oracle");
+        WDCLOracle newOracle = new WDCLOracle(address(vault));
 
         vm.expectEmit(true, false, false, false);
-        emit OracleUpdated(newOracle);
+        emit OracleUpdated(address(newOracle));
 
         vm.prank(admin);
-        vault.setOracle(newOracle);
+        vault.setOracle(address(newOracle));
+    }
+
+    /// @notice setOracle's new probe rejects a plain EOA-style address that
+    ///         doesn't implement IAggregatorV3Interface — the latestRoundData
+    ///         call reverts and propagates up. This guards against fat-finger
+    ///         misconfiguration where admin pastes the wrong address.
+    function test_setOracle_revertsOnNonOracleAddress() public {
+        address notAnOracle = makeAddr("not-an-oracle");
+        vm.prank(admin);
+        vm.expectRevert();
+        vault.setOracle(notAnOracle);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -456,7 +480,7 @@ contract AdminTest is BaseTest {
 
         // Unmark and increase delay
         vm.prank(admin);
-        vault.unmarkPositionStale(0, false);
+        vault.unmarkPositionStale(0);
 
         vm.prank(admin);
         vault.setWithdrawalDelay(72 hours);
@@ -613,7 +637,7 @@ contract AdminTest is BaseTest {
 
         vm.expectRevert(_accessControlRevert(alice, vault.ADMIN_ROLE()));
         vm.prank(alice);
-        vault.unmarkPositionStale(0, false);
+        vault.unmarkPositionStale(0);
     }
 
     function test_unmarkPositionStale_revertsNotStale() public {
@@ -621,11 +645,16 @@ contract AdminTest is BaseTest {
 
         vm.prank(admin);
         vm.expectRevert(HDCLVault.PositionNotStale.selector);
-        vault.unmarkPositionStale(0, false);
+        vault.unmarkPositionStale(0);
     }
 
-    /// @notice backtrackYield=false: yield restarts from now, pre-stale yield forfeited
-    function test_unmarkPositionStale_resetYield() public {
+    /// @notice Under the current model, the `backtrackYield` flag on
+    ///         `unmarkPositionStale` is a no-op for YWR-state positions: the
+    ///         locked pending yield (already agreed to by Decentral) is always
+    ///         restored. Rate is preserved across mark/unmark and stays flat
+    ///         afterward (Decentral has frozen the yield amount, so no further
+    ///         bucket accrual happens for this position).
+    function test_unmarkPositionStale_preservesPendingYield() public {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
         _makePositionStaleEligible(0);
 
@@ -638,18 +667,29 @@ contract AdminTest is BaseTest {
         _warpDays(10);
         assertApproxEqRel(vault.exchangeRate(), rateAtStale, 0.001e18);
 
-        // Unmark with reset (backtrack=false)
+        // Unmark with backtrack=false (flag is ignored; pending yield restored)
         vm.prank(admin);
-        vault.unmarkPositionStale(0, false);
+        vault.unmarkPositionStale(0);
 
-        // Rate drops because pre-stale yield is forfeited
+        // Rate is preserved — stale value removed, pending yield restored to
+        // totalPendingYield by the same amount.
+        assertApproxEqRel(
+            vault.exchangeRate(),
+            rateAtStale,
+            0.001e18,
+            "rate preserved across unmark"
+        );
+
+        // No further accrual: Decentral has locked the amount at original
+        // request time; the vault won't earn more yield on this position.
         uint256 rateAfterUnmark = vault.exchangeRate();
-        // The rate should be lower than rateAtStale because the frozen yield was lost
-        // (totalStaleValue removed, but bucket starts fresh with no accrued yield)
-
-        // After more time passes, rate should grow again
         _warpDays(10);
-        assertGt(vault.exchangeRate(), rateAfterUnmark, "Rate grows after unmark");
+        assertApproxEqRel(
+            vault.exchangeRate(),
+            rateAfterUnmark,
+            0.001e18,
+            "rate stays flat - Decentral has frozen yield"
+        );
     }
 
     /// @notice backtrackYield=true: pre-stale yield is preserved via back-calculated yieldStartTime
@@ -663,7 +703,7 @@ contract AdminTest is BaseTest {
         vault.markPositionStale(0);
 
         vm.prank(admin);
-        vault.unmarkPositionStale(0, true);
+        vault.unmarkPositionStale(0);
 
         uint256 rateAfter = vault.exchangeRate();
         assertApproxEqRel(rateAfter, rateBefore, 0.001e18, "Rate preserved with backtrack");
@@ -680,7 +720,7 @@ contract AdminTest is BaseTest {
         assertEq(vault.totalInvestedPrincipal(), 0);
 
         vm.prank(admin);
-        vault.unmarkPositionStale(0, false);
+        vault.unmarkPositionStale(0);
 
         assertEq(vault.totalStaleValue(), 0, "totalStaleValue cleared");
         assertEq(vault.totalInvestedPrincipal(), TEN_THOUSAND_HOLLAR, "Restored to invested");
@@ -696,7 +736,7 @@ contract AdminTest is BaseTest {
         emit PositionUnmarkedStale(0);
 
         vm.prank(admin);
-        vault.unmarkPositionStale(0, false);
+        vault.unmarkPositionStale(0);
     }
 
     // ═══════════════════════════════════════════════════════════════════════

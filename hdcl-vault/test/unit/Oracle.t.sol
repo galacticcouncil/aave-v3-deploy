@@ -81,14 +81,19 @@ contract OracleTest is BaseTest {
         assertGt(uint256(answerAfter), uint256(answerBefore), "exchange rate should increase after time passes");
     }
 
-    // ─── Reverts when vault is paused ────────────────────────────────────
+    // ─── Works while vault is paused ─────────────────────────────────────
 
-    function test_latestRoundData_revertsWhenPaused() public {
+    /// @notice Pause is a vault-level emergency state, but the oracle keeps serving
+    ///         the rate so downstream lending markets don't break (no liquidation
+    ///         lockup or unprice-able collateral while the vault is paused).
+    function test_latestRoundData_worksWhenPaused() public {
         vm.prank(admin);
         vault.pause();
 
-        vm.expectRevert("Vault paused");
-        oracle.latestRoundData();
+        // Should NOT revert; should return the current rate.
+        (, int256 answer,, uint256 updatedAt,) = oracle.latestRoundData();
+        assertEq(uint256(answer), vault.exchangeRate() / 1e10, "answer = rate / 1e10");
+        assertEq(updatedAt, block.timestamp, "updatedAt = current timestamp");
     }
 
     // ─── Constructor ───────────────────────────────────────────────────────
@@ -118,13 +123,13 @@ contract OracleTest is BaseTest {
         assertGt(answer, 0, "Answer always positive");
     }
 
-    // ─── getRoundData reverts when paused ─────────────────────────────────
+    // ─── getRoundData works while paused ─────────────────────────────────
 
-    function test_getRoundData_revertsWhenPaused() public {
+    function test_getRoundData_worksWhenPaused() public {
         vm.prank(admin);
         vault.pause();
 
-        vm.expectRevert("Vault paused");
-        oracle.getRoundData(0);
+        (, int256 answer,,,) = oracle.getRoundData(0);
+        assertEq(uint256(answer), vault.exchangeRate() / 1e10, "getRoundData should serve current rate while paused");
     }
 }

@@ -261,8 +261,11 @@ contract InvariantVaultTest is Test {
         console.log("--- Call Summary ---");
         console.log("Deposits:         ", userHandler.ghost_depositCount());
         console.log("Redeem requests:  ", userHandler.ghost_redeemRequestCount());
+        console.log("  w/ floor accepted: ", userHandler.ghost_redeemFloorAccepted());
+        console.log("  cap-rejected:    ", userHandler.ghost_redeemCapRejected());
         console.log("pokeDecentral:    ", keeperHandler.ghost_pokeDecentralCalls());
         console.log("pokeQueue:        ", keeperHandler.ghost_pokeQueueCalls());
+        console.log("Shortfalls set:   ", keeperHandler.ghost_shortfallsConfigured());
         console.log("Time warps:       ", keeperHandler.ghost_timeWarps());
         console.log("Mark stale:       ", adminHandler.ghost_markStaleCalls());
         console.log("Unmark stale:     ", adminHandler.ghost_unmarkStaleCalls());

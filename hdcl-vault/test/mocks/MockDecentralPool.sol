@@ -67,6 +67,49 @@ contract MockDecentralPool {
     mapping(uint256 => YieldWithdrawalRequest) public yieldWithdrawalRequests;
     mapping(uint256 => PrincipalWithdrawalRequest) public principalWithdrawalRequests;
 
+    // ── Test-only payout drift injection ───────────────────────────────────
+    /// @dev Per-tokenId signed delta (in wei) added to the principal payout.
+    ///      Lets tests simulate Decentral underpaying or overpaying without
+    ///      modifying production logic. Default 0 = exact payout.
+    mapping(uint256 => int256) public payoutDeltaWei;
+
+    /// @dev Test helper: set the principal payout adjustment for a token.
+    function setPayoutDelta(uint256 _tokenId, int256 _delta) external {
+        payoutDeltaWei[_tokenId] = _delta;
+    }
+
+    /// @dev Apply the configured payout delta to a principal amount.
+    function _applyPayoutDelta(uint256 _tokenId, uint256 _principal)
+        internal
+        view
+        returns (uint256)
+    {
+        int256 delta = payoutDeltaWei[_tokenId];
+        if (delta == 0) return _principal;
+        if (delta > 0) return _principal + uint256(delta);
+        uint256 absDelta = uint256(-delta);
+        return absDelta >= _principal ? 0 : _principal - absDelta;
+    }
+
+    /// @dev Per-tokenId signed delta (in wei) added to the yield payout.
+    mapping(uint256 => int256) public yieldDeltaWei;
+
+    function setYieldDelta(uint256 _tokenId, int256 _delta) external {
+        yieldDeltaWei[_tokenId] = _delta;
+    }
+
+    function _applyYieldDelta(uint256 _tokenId, uint256 _yield)
+        internal
+        view
+        returns (uint256)
+    {
+        int256 delta = yieldDeltaWei[_tokenId];
+        if (delta == 0) return _yield;
+        if (delta > 0) return _yield + uint256(delta);
+        uint256 absDelta = uint256(-delta);
+        return absDelta >= _yield ? 0 : _yield - absDelta;
+    }
+
     // ── Constructor ────────────────────────────────────────────────────────
 
     constructor(
@@ -165,7 +208,11 @@ contract MockDecentralPool {
 
         delete yieldWithdrawalRequests[_tokenId];
 
-        stablecoin.safeTransfer(msg.sender, yieldAmount);
+        // Apply test-controlled yield-payout adjustment (analogous to
+        // payoutDeltaWei for principal). Lets tests force a Decentral
+        // underpayment to exercise the staleYield-shortfall path.
+        uint256 actualYield = _applyYieldDelta(_tokenId, yieldAmount);
+        stablecoin.safeTransfer(msg.sender, actualYield);
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -216,7 +263,12 @@ contract MockDecentralPool {
         delete principalWithdrawalRequests[_tokenId];
         delete mockPositions[_tokenId];
 
-        stablecoin.safeTransfer(msg.sender, principal);
+        // Apply the test-controlled payout adjustment. `payoutDeltaBps[tokenId]`
+        // is signed basis points: -100 = pay 99% (1% shortfall), +100 = pay 101%
+        // (1% bonus). Default 0 = pay exactly principal (no drift).
+        uint256 actualPayout = _applyPayoutDelta(_tokenId, principal);
+
+        stablecoin.safeTransfer(msg.sender, actualPayout);
         poolToken.burn(_tokenId);
     }
 

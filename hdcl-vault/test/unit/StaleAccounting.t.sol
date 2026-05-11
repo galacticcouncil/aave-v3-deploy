@@ -24,9 +24,9 @@ contract StaleAccountingTest is BaseTest {
         vault.markPositionStale(posIdx);
     }
 
-    function _unmarkStale(uint256 posIdx, bool backtrack) internal {
+    function _unmarkStale(uint256 posIdx, bool /* backtrack */) internal {
         vm.prank(admin);
-        vault.unmarkPositionStale(posIdx, backtrack);
+        vault.unmarkPositionStale(posIdx);
     }
 
     function _approveAndClaimYield(uint256 posIdx) internal {

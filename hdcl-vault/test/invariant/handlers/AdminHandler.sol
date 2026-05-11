@@ -39,14 +39,14 @@ contract AdminHandler is Test {
 
     // ── Unmark Position Stale ──────────────────────────────────────────────
 
-    function unmarkStale(uint256 positionSeed, bool backtrack) external {
+    function unmarkStale(uint256 positionSeed) external {
         uint256 count = vault.getPositionCount();
         if (count == 0) return;
 
         uint256 idx = positionSeed % count;
 
         vm.prank(admin);
-        try vault.unmarkPositionStale(idx, backtrack) {
+        try vault.unmarkPositionStale(idx) {
             ghost_unmarkStaleCalls++;
         } catch {
             // Not stale

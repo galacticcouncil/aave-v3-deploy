@@ -66,7 +66,7 @@ contract BaseTest is Test, Constants, Events {
 
     function _requestRedeem(address user, uint256 amount) internal returns (uint256 requestId) {
         vm.prank(user);
-        return vault.requestRedeem(amount);
+        return vault.requestRedeem(amount, 0);
     }
 
     function _processPositionFull(uint256 positionIndex) internal {

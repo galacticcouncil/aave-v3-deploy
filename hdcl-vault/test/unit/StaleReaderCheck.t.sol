@@ -63,7 +63,7 @@ contract StaleReaderCheckTest is BaseTest {
         vault.markPositionStale(0);
 
         vm.prank(admin);
-        vault.unmarkPositionStale(0, false);
+        vault.unmarkPositionStale(0);
 
         (bool isStale, uint256 sp, uint256 sy) = _readViaAssembly(0);
         assertFalse(isStale, "Assembly: isStale false after unmark");
@@ -128,7 +128,7 @@ contract StaleReaderCheckTest is BaseTest {
 
         // === UNMARK (backtrack=true) ===
         vm.prank(admin);
-        vault.unmarkPositionStale(0, true);
+        vault.unmarkPositionStale(0);
 
         (bool s3, uint256 sp3, uint256 sy3) = _readViaAssembly(0);
         assertFalse(s3);
@@ -175,7 +175,7 @@ contract StaleReaderCheckTest is BaseTest {
 
         // Unmark pos 0 (backtrack=true)
         vm.prank(admin);
-        vault.unmarkPositionStale(0, true);
+        vault.unmarkPositionStale(0);
         _assertGlobalConsistency("After unmark pos 0");
 
         // Wait, re-mark pos 0
@@ -186,7 +186,7 @@ contract StaleReaderCheckTest is BaseTest {
 
         // Unmark pos 1 (backtrack=false)
         vm.prank(admin);
-        vault.unmarkPositionStale(1, false);
+        vault.unmarkPositionStale(1);
         _assertGlobalConsistency("After unmark pos 1");
 
         // Yield on pos 1 (normal path now, not stale)

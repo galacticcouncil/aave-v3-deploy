@@ -63,7 +63,8 @@ const REDEEM_FRACTION = 4n; // redeem 1/4 of HDCL
 const VAULT_ABI = parseAbi([
   // user
   'function deposit(uint256 hollarAmount) external returns (uint256 hdclMinted)',
-  'function requestRedeem(uint256 hdclAmount) external returns (uint256 requestId)',
+  'function depositSlippage(uint256 hollarAmount, uint256 minHdclOut) external returns (uint256 hdclMinted)',
+  'function requestRedeem(uint256 hdclAmount, uint256 minRateWad) external returns (uint256 requestId)',
   'function cancelRedeem(uint256 requestId) external',
   // permissionless
   'function pokeDecentral(uint256 positionIndex) external',
