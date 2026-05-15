@@ -96,11 +96,10 @@ contract KeeperHandler is Test {
 
     /// @notice Schedule a small principal-payout shortfall on a random
     ///         position so the eventual `executePrincipalWithdrawal` drops
-    ///         the exchange rate by a bounded amount. This is what causes
-    ///         already-queued redemption requests with a non-zero
-    ///         `minRateWad` to *park* during fuzz — without it, the new
-    ///         park-and-skip path is never exercised under random call
-    ///         sequences (the rate is monotonically non-decreasing).
+    ///         the exchange rate by a bounded amount. Exercises the
+    ///         catastrophic-rate guard and principal-mismatch accounting
+    ///         paths under fuzz, which a monotonically non-decreasing rate
+    ///         would otherwise never reach.
     /// @dev    Shortfall is bounded to leave the rate strictly above 1.0
     ///         so `invariant_exchangeRateAboveInitial` stays satisfied:
     ///           headroom = totalAssets - totalSupply  (positive when rate > 1)

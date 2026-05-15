@@ -41,7 +41,7 @@ contract EstimatedWaitTimeTest is BaseTest {
         _deposit(bob, 1_000e18);
         uint256 bobHdcl = vault.balanceOf(bob);
         vm.prank(bob);
-        uint256 reqId = vault.requestRedeem(bobHdcl, 0);
+        uint256 reqId = vault.requestRedeem(bobHdcl);
 
         // View must not revert and should return a non-zero ETA (position 0
         // is still pre-maturity).
@@ -100,7 +100,7 @@ contract EstimatedWaitTimeTest is BaseTest {
         _deposit(bob, 1_000e18);
         uint256 bobHdcl = vault.balanceOf(bob);
         vm.prank(bob);
-        uint256 reqId = vault.requestRedeem(bobHdcl, 0);
+        uint256 reqId = vault.requestRedeem(bobHdcl);
 
         // Pre-fix: reverts on uint256 underflow. Post-fix: returns cleanly.
         uint256 eta = vault.getEstimatedWaitTime(reqId);
@@ -121,7 +121,7 @@ contract EstimatedWaitTimeTest is BaseTest {
         _deposit(bob, 1_000e18);
         uint256 bobHdcl = vault.balanceOf(bob);
         vm.prank(bob);
-        uint256 reqId = vault.requestRedeem(bobHdcl, 0);
+        uint256 reqId = vault.requestRedeem(bobHdcl);
 
         // For a freshly-deposited position, yieldStartTime == depositTime <
         // maturityTime. The ternary picks the original arithmetic branch.

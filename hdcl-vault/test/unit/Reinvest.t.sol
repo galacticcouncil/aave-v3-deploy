@@ -215,80 +215,24 @@ contract ReinvestTest is BaseTest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //   AUDIT FINDING #5 — reinvest fires when queue is wedged
+    //   reinvest gate uses actual queue progress, not a static check
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice Pre-fix, `pokeQueue` used a static `queueCanProgress` check
-    ///         (totalQueuedHdcl > 0 && idleHollar > 0) to gate reinvest. If
-    ///         the queue's head entry was wedged (parked behind an unmet
-    ///         slippage floor) but funds were idle, that check was still
-    ///         `true` and reinvest was silently suppressed — hoarding funds
-    ///         that should have been earning yield. Post-fix the gate uses
-    ///         the actual `hollarUsed` returned by the processor, so a queue
-    ///         that made no real progress no longer blocks reinvest.
-    function test_reinvest_firesWhenQueueIsWedgedByParkedEntry() public {
-        // Three positions so the rate has headroom to drop without the
-        // invariant rate >= 1.0 going wrong.
-        _deposit(alice, TEN_THOUSAND_HOLLAR); // position 0 — shortfall victim
-        _deposit(bob, 1_000e18);              // position 1
-        _deposit(charlie, 1_000e18);          // position 2
-        _warpDays(61);
-
-        // Bob queues at the highest legal floor — passes the submission cap.
-        uint256 rateAtSubmission = vault.exchangeRate();
-        uint256 bobHdcl = vault.balanceOf(bob);
-        vm.prank(bob);
-        vault.requestRedeem(bobHdcl, rateAtSubmission);
-
-        // Shortfall on alice's position drops the rate below bob's floor when
-        // the principal lands, parking him in the queue.
-        (uint256 tokenId0, , , , , ) = vault.getPosition(0);
-        pool.setPayoutDelta(tokenId0, -100e18);
-        _processPositionFull(0);
-
-        // Sanity: queue is wedged on bob's parked entry, idleHollar is alive.
-        assertGt(vault.idleHollar(), 0, "idleHollar after processing");
-        assertGt(vault.totalQueuedHdcl(), 0, "bob's escrow still queued");
-        // Snapshot the wedge state we expect pokeQueue to break out of.
-        uint256 idleBefore = vault.idleHollar();
-        uint256 posCountBefore = vault.getPositionCount();
-        require(idleBefore >= vault.minReinvestAmount(), "test setup: idle must exceed min reinvest");
-
-        // Externally-called pokeQueue. Pre-fix: queueCanProgress = true →
-        // reinvest skipped → idleHollar hoarded. Post-fix: processor returns
-        // hollarUsed = 0 → reinvest fires.
-        vault.pokeQueue();
-
-        assertEq(
-            vault.getPositionCount(),
-            posCountBefore + 1,
-            "reinvest created a new position despite bob's parked entry"
-        );
-        assertLt(
-            vault.idleHollar(),
-            idleBefore,
-            "idleHollar drained into the new position"
-        );
-        // Bob's entry is untouched — still queued, still escrowed.
-        assertGt(vault.totalQueuedHdcl(), 0, "bob still in queue, unaffected by reinvest");
-    }
-
-    /// @notice Converse of the regression: when the queue actually makes
-    ///         progress (a fulfillable entry behind the parked one), the
-    ///         reinvest stays suppressed — preserving the "service queue
-    ///         first" semantics. The leftover idle will be reinvested on a
-    ///         later pokeQueue call once the queue is fully wedged or empty.
+    /// @notice When the queue actually makes progress, reinvest is suppressed —
+    ///         the contract services the queue this call and lets any leftover
+    ///         idle earn yield on the next pokeQueue (when the queue is
+    ///         empty/wedged). The complementary wedge-frees-reinvest case is
+    ///         covered by QueueTransferFailure.t.sol via the blacklist path.
     function test_reinvest_suppressedWhenQueueMakesProgress() public {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
 
-        // Bob queues a redemption with no floor — easily fulfillable from
-        // idleHollar.
+        // Bob queues a redemption easily fulfillable from idleHollar.
         _deposit(bob, 1_000e18);
         uint256 bobHdcl = vault.balanceOf(bob);
         vm.prank(bob);
-        vault.requestRedeem(bobHdcl, 0);
+        vault.requestRedeem(bobHdcl);
 
         uint256 posCountBefore = vault.getPositionCount();
 

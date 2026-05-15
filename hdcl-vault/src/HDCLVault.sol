@@ -95,15 +95,6 @@ contract HDCLVault is
         address user;
         uint256 hdclAmount;
         uint256 hdclFulfilled;
-        // Minimum HOLLAR-per-HDCL rate (WAD) the redeemer will accept. Set by
-        // requestRedeem; bounded at submission to ≤ exchangeRate() so a
-        // griefer cannot enqueue an unreachable floor. 0 = no floor.
-        // Checked at fulfillment in _processQueueWithHollar; if the current
-        // rate is below this floor, the entry is *parked* — left in place
-        // and scanned past — so entries behind it can still be fulfilled.
-        // The parked entry is re-evaluated on each subsequent call and
-        // fulfills automatically once the rate recovers.
-        uint256 minRateWad;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -297,8 +288,6 @@ contract HDCLVault is
     error DepositsArePaused();
     error ZeroAmount();
     error ExceedsTvlCap();
-    error SlippageExceeded(uint256 expectedMin, uint256 actual);
-    error SlippageFloorAboveCurrentRate(uint256 floor, uint256 currentRate);
     error PositionAlreadyRedeemed();
     error PositionNotMature();
     error NotRequestOwner();
@@ -397,35 +386,12 @@ contract HDCLVault is
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice Deposit HOLLAR and receive HDCL at the current rate.
-    /// @dev    No slippage protection. For production integrations that need
-    ///         to guard against rate movement between submission and execution,
-    ///         use `depositSlippage(hollarAmount, minHdclOut)` instead.
-    ///         (Two functions because the via_ir compiler hits a stack-too-deep
-    ///         when deposit takes a second uint256 parameter together with all
-    ///         the other state-touching helpers in this contract.)
     /// @param hollarAmount Amount of HOLLAR to deposit
     /// @return hdclMinted Amount of HDCL minted to caller
     function deposit(
         uint256 hollarAmount
     ) external nonReentrant whenNotPaused returns (uint256 hdclMinted) {
-        hdclMinted = _previewMint(hollarAmount, 0);
-        if (totalSupply() == 0) _mint(DEAD_ADDRESS, DEAD_SHARES);
-        _mint(msg.sender, hdclMinted);
-        hollar.safeTransferFrom(msg.sender, address(this), hollarAmount);
-        uint256 tokenId = _depositIntoDecentral(hollarAmount);
-        emit Deposited(msg.sender, hollarAmount, hdclMinted, tokenId);
-    }
-
-    /// @notice Deposit HOLLAR with slippage protection.
-    /// @param hollarAmount Amount of HOLLAR to deposit
-    /// @param minHdclOut Minimum HDCL the caller will accept; revert if the
-    ///        rate would mint less. Use this for production integrations.
-    /// @return hdclMinted Amount of HDCL minted to caller
-    function depositSlippage(
-        uint256 hollarAmount,
-        uint256 minHdclOut
-    ) external nonReentrant whenNotPaused returns (uint256 hdclMinted) {
-        hdclMinted = _previewMint(hollarAmount, minHdclOut);
+        hdclMinted = _previewMint(hollarAmount);
         if (totalSupply() == 0) _mint(DEAD_ADDRESS, DEAD_SHARES);
         _mint(msg.sender, hdclMinted);
         hollar.safeTransferFrom(msg.sender, address(this), hollarAmount);
@@ -463,36 +429,12 @@ contract HDCLVault is
     }
 
     /// @notice Queue HDCL for redemption to HOLLAR.
-    /// @dev    The redeemer can optionally set `minRateWad` — the minimum
-    ///         HOLLAR-per-HDCL rate (WAD) they'll accept. The floor is capped
-    ///         at the current exchange rate at submission time: a floor
-    ///         strictly above the current rate would never be reachable and
-    ///         could be used to grief the queue, so submission reverts with
-    ///         `SlippageFloorAboveCurrentRate`. At fulfillment time, if the
-    ///         current rate is below the floor, the request is *parked* —
-    ///         skipped without removal — until the rate recovers or the user
-    ///         cancels. Pass 0 to disable the slippage check entirely.
     /// @param hdclAmount Amount of HDCL to redeem
-    /// @param minRateWad Minimum acceptable rate (WAD); 0 = no floor. Must
-    ///        be ≤ current exchange rate.
     /// @return requestId ID of the redemption request
     function requestRedeem(
-        uint256 hdclAmount,
-        uint256 minRateWad
+        uint256 hdclAmount
     ) external nonReentrant whenNotPaused returns (uint256 requestId) {
         if (hdclAmount < minRedeemAmount) revert BelowMinimumRedeem();
-
-        // Submission-time floor cap. A floor strictly above the current rate
-        // is unreachable by construction (the rate can only drop transiently
-        // via stale-position write-offs or principal mismatch — it cannot be
-        // commanded upward by a redeemer). Rejecting unreachable floors
-        // closes the obvious DoS surface where an attacker would park an
-        // entry that the queue could never satisfy.
-        if (minRateWad > 0) {
-            uint256 currentRate = exchangeRate();
-            if (minRateWad > currentRate)
-                revert SlippageFloorAboveCurrentRate(minRateWad, currentRate);
-        }
 
         // Escrow HDCL in the vault (not burned yet — _transfer reverts on insufficient balance)
         _transfer(msg.sender, address(this), hdclAmount);
@@ -501,8 +443,7 @@ contract HDCLVault is
         redemptionQueue[requestId] = RedemptionRequest({
             user: msg.sender,
             hdclAmount: hdclAmount,
-            hdclFulfilled: 0,
-            minRateWad: minRateWad
+            hdclFulfilled: 0
         });
         queueTail++;
         totalQueuedHdcl += hdclAmount;
@@ -815,10 +756,10 @@ contract HDCLVault is
         }
     }
 
-    /// @dev Validate a deposit, compute the HDCL to mint at the current rate,
-    ///      and enforce the slippage floor. Extracted from `deposit` to keep
-    ///      that function's stack depth shallow enough for via_ir compilation.
-    function _previewMint(uint256 hollarAmount, uint256 minHdclOut)
+    /// @dev Validate a deposit and compute the HDCL to mint at the current
+    ///      rate. Extracted from `deposit` to keep its stack depth shallow
+    ///      enough for via_ir compilation.
+    function _previewMint(uint256 hollarAmount)
         internal
         view
         returns (uint256 hdclMinted)
@@ -841,8 +782,6 @@ contract HDCLVault is
             hdclMinted = (hollarAmount * supply) / assets;
             require(hdclMinted > 0, "Deposit too small");
         }
-        if (hdclMinted < minHdclOut)
-            revert SlippageExceeded(minHdclOut, hdclMinted);
     }
 
     /// @dev Internal reinvest logic. The cap check here uses the principal
@@ -1372,16 +1311,10 @@ contract HDCLVault is
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @dev Process queue entries using available HOLLAR.
-    ///      Uses two pointers:
-    ///        - `queueHead`: lowest slot that is still active (parked entries
-    ///          count as active — they hold their FIFO position so a transient
-    ///          rate dip doesn't force the user to resubmit).
-    ///        - `cursor`: the slot the loop is currently inspecting; may run
-    ///          ahead of `queueHead` when scanning past parked entries.
-    ///      `queueHead` only advances when the head slot itself is settled
-    ///      (fulfilled, refunded, or already a cancelled hole). This is what
-    ///      makes the slippage gate a *park* instead of a head-of-line block:
-    ///      entries behind a parked one keep getting served.
+    ///      Advances `queueHead` past cancelled holes (bounded by
+    ///      MAX_QUEUE_SKIPS so mass cancellations can't starve real
+    ///      redemptions of the iteration budget) and through fulfilled
+    ///      entries (bounded by MAX_QUEUE_ITERATIONS for predictable gas).
     /// @param available HOLLAR available for distribution
     /// @param rate Current exchange rate (WAD)
     /// @return hollarUsed Total HOLLAR distributed
@@ -1392,42 +1325,25 @@ contract HDCLVault is
     ) internal returns (uint256 hollarUsed, uint256 hdclBurned) {
         uint256 iterations;
         uint256 skips;
-        uint256 cursor = queueHead;
 
         while (
-            cursor < queueTail &&
+            queueHead < queueTail &&
             iterations < MAX_QUEUE_ITERATIONS &&
             skips < MAX_QUEUE_SKIPS
         ) {
-            RedemptionRequest storage request = redemptionQueue[cursor];
+            RedemptionRequest storage request = redemptionQueue[queueHead];
 
             if (request.user == address(0)) {
                 // Cancelled hole — sweep past without consuming work budget.
                 // Bounded by MAX_QUEUE_SKIPS to keep gas predictable under
                 // mass cancellations. This sweep happens even with
                 // `available == 0` so the queue can be cleaned without funds.
-                // Advance queueHead only while it's still co-located with the
-                // cursor — i.e., all holes encountered so far are at the head.
-                if (cursor == queueHead) {
-                    unchecked { queueHead++; }
-                }
-                unchecked { cursor++; skips++; }
+                unchecked { queueHead++; skips++; }
                 continue;
             }
 
             // Hit a real entry. Stop if there's no funds left.
             if (available == 0) break;
-
-            // Slippage gate: park the entry instead of blocking the queue.
-            // The entry stays at its slot (no delete, no head advance) so
-            // future calls can re-evaluate against a recovered rate. Counted
-            // toward the skip budget — not the iteration budget — because no
-            // funds changed hands; this also bounds the gas a griefer can
-            // burn even with the submission cap in place.
-            if (request.minRateWad > 0 && rate < request.minRateWad) {
-                unchecked { cursor++; skips++; }
-                continue;
-            }
 
             iterations++;
 
@@ -1453,7 +1369,7 @@ contract HDCLVault is
                     available -= hollarValue;
 
                     emit RedemptionFulfilled(
-                        cursor,
+                        queueHead,
                         request.user,
                         hollarValue,
                         remainingHdcl
@@ -1465,21 +1381,14 @@ contract HDCLVault is
                     _transfer(address(this), request.user, remainingHdcl);
                     totalQueuedHdcl -= remainingHdcl;
                     emit RedemptionTransferFailed(
-                        cursor,
+                        queueHead,
                         request.user,
                         hollarValue,
                         remainingHdcl
                     );
                 }
-                delete redemptionQueue[cursor];
-                // Settled the head slot? Advance head with it. Otherwise we
-                // leave a hole between queueHead and the next live entry;
-                // it'll be swept by the cancelled-entry branch on a future
-                // call (bounded by MAX_QUEUE_SKIPS).
-                if (cursor == queueHead) {
-                    unchecked { queueHead++; }
-                }
-                unchecked { cursor++; }
+                delete redemptionQueue[queueHead];
+                unchecked { queueHead++; }
             } else {
                 // Partially fulfill
                 uint256 hdclToBurn = (available * WAD) / rate;
@@ -1498,7 +1407,7 @@ contract HDCLVault is
                     totalQueuedHdcl -= hdclToBurn;
 
                     emit RedemptionPartiallyFulfilled(
-                        cursor,
+                        queueHead,
                         request.user,
                         hollarToTransfer,
                         hdclToBurn
@@ -1507,9 +1416,9 @@ contract HDCLVault is
                     hollarUsed += hollarToTransfer;
                     hdclBurned += hdclToBurn;
                     available = 0;
-                    // Entry stays at `cursor` (not deleted). queueHead stays
-                    // put. The available==0 check on the next iteration will
-                    // break us out, leaving the partial entry for next call.
+                    // Entry stays at `queueHead` (not deleted). The
+                    // available==0 check on the next iteration will break us
+                    // out, leaving the partial entry for the next call.
                 } else {
                     // Transfer failed mid-partial. Refund the user's full
                     // outstanding HDCL escrow, remove from queue, and continue
@@ -1518,16 +1427,13 @@ contract HDCLVault is
                     _transfer(address(this), request.user, refund);
                     totalQueuedHdcl -= refund;
                     emit RedemptionTransferFailed(
-                        cursor,
+                        queueHead,
                         request.user,
                         hollarToTransfer,
                         refund
                     );
-                    delete redemptionQueue[cursor];
-                    if (cursor == queueHead) {
-                        unchecked { queueHead++; }
-                    }
-                    unchecked { cursor++; }
+                    delete redemptionQueue[queueHead];
+                    unchecked { queueHead++; }
                 }
             }
         }

@@ -55,9 +55,9 @@ contract QueueTransferFailureTest is BaseTest {
         uint256 charlieHdcl = vault.balanceOf(charlie);
 
         vm.prank(bob);
-        vault.requestRedeem(bobHdcl, 0);
+        vault.requestRedeem(bobHdcl);
         vm.prank(charlie);
-        vault.requestRedeem(charlieHdcl, 0);
+        vault.requestRedeem(charlieHdcl);
 
         // Bob is now blocked from receiving HOLLAR
         hollar.setBlocked(bob, true);
@@ -92,7 +92,7 @@ contract QueueTransferFailureTest is BaseTest {
 
         uint256 bobHdcl = vault.balanceOf(bob);
         vm.prank(bob);
-        vault.requestRedeem(bobHdcl, 0);
+        vault.requestRedeem(bobHdcl);
 
         hollar.setBlocked(bob, true);
 
@@ -127,9 +127,9 @@ contract QueueTransferFailureTest is BaseTest {
         uint256 charlieHdcl = vault.balanceOf(charlie);
 
         vm.prank(bob);
-        vault.requestRedeem(bobHdcl, 0); // can't be fully filled with current idle
+        vault.requestRedeem(bobHdcl); // can't be fully filled with current idle
         vm.prank(charlie);
-        vault.requestRedeem(charlieHdcl, 0);
+        vault.requestRedeem(charlieHdcl);
 
         hollar.setBlocked(bob, true);
 
@@ -177,7 +177,7 @@ contract QueueTransferFailureTest is BaseTest {
         // Bob queues redemption first (will be at head when alice's position completes)
         uint256 bobHdcl = vault.balanceOf(bob);
         vm.prank(bob);
-        vault.requestRedeem(bobHdcl, 0);
+        vault.requestRedeem(bobHdcl);
 
         hollar.setBlocked(bob, true);
 
@@ -203,9 +203,9 @@ contract QueueTransferFailureTest is BaseTest {
         uint256 charlieHdcl = vault.balanceOf(charlie);
 
         vm.prank(bob);
-        vault.requestRedeem(bobHdcl, 0);
+        vault.requestRedeem(bobHdcl);
         vm.prank(charlie);
-        vault.requestRedeem(charlieHdcl, 0);
+        vault.requestRedeem(charlieHdcl);
 
         // Both blocked
         hollar.setBlocked(bob, true);
