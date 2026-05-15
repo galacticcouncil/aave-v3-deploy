@@ -12,17 +12,9 @@ import {HDCLVault} from "../../src/HDCLVault.sol";
 ///         the payout amount at T2 — when the actual yield arrived at T3, the
 ///         vault dropped its inflated accrual and the rate ticked down.
 contract YieldRequestWindowTest is BaseTest {
-    /// @dev Per-position pendingYield via low-level call (struct getter index 11).
+    /// @dev Per-position pendingYield via the public struct getter (last tuple element).
     function _pendingYield(uint256 idx) internal view returns (uint256 py) {
-        (bool ok, bytes memory data) = address(vault).staticcall(
-            abi.encodeWithSignature("positions(uint256)", idx)
-        );
-        require(ok);
-        // 12 fields, each 32 bytes. pendingYield = word 11 (last).
-        // 32 (length prefix) + 11*32 = 384
-        assembly {
-            py := mload(add(data, 384))
-        }
+        (,,,,,,, py) = vault.positions(idx);
     }
 
     /// @dev Bring position 0 to YieldWithdrawalRequested.
@@ -125,50 +117,6 @@ contract YieldRequestWindowTest is BaseTest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //   STALE-DURING-YWR: pending yield moves into stale value
-    // ═══════════════════════════════════════════════════════════════════════
-
-    function test_markStaleDuringYWR_movesPendingToStale() public {
-        _toYWR(alice, 100_000e18);
-
-        uint256 pending = _pendingYield(0);
-        uint256 totalPendingBefore = vault.totalPendingYield();
-        assertGt(pending, 0, "pending should be set");
-
-        vm.warp(block.timestamp + FORTY_EIGHT_HOURS + 1);
-
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        // Pending cleared
-        assertEq(vault.totalPendingYield(), totalPendingBefore - pending, "pending removed");
-        assertEq(_pendingYield(0), 0, "pos.pendingYield cleared");
-
-        // Stale value includes principal + the same pending amount as staleYield
-        assertEq(vault.totalStaleValue(), 100_000e18 + pending, "stale value = principal + pending");
-    }
-
-    function test_unmarkStaleDuringYWR_restoresPending() public {
-        _toYWR(alice, 100_000e18);
-        uint256 pendingBefore = _pendingYield(0);
-
-        vm.warp(block.timestamp + FORTY_EIGHT_HOURS + 1);
-
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        vm.prank(admin);
-        vault.unmarkPositionStale(0);
-
-        // Pending restored to original amount
-        assertEq(_pendingYield(0), pendingBefore, "pos.pendingYield restored");
-        assertEq(vault.totalPendingYield(), pendingBefore, "totalPendingYield restored");
-
-        // Stale value cleared
-        assertEq(vault.totalStaleValue(), 0, "stale cleared");
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
     //   ACCOUNTING INVARIANT after fix
     // ═══════════════════════════════════════════════════════════════════════
 
@@ -179,14 +127,13 @@ contract YieldRequestWindowTest is BaseTest {
 
         uint256 invested = vault.totalInvestedPrincipal();
         uint256 idle = vault.idleHollar();
-        uint256 stale = vault.totalStaleValue();
         uint256 pending = vault.totalPendingYield();
 
         // No active yield bucket (cleared at request); accruedYield = 0
-        // totalAssets must equal invested + idle + stale + pending
+        // totalAssets must equal invested + idle + pending
         assertEq(
             vault.totalAssets(),
-            invested + idle + stale + pending,
+            invested + idle + pending,
             "totalAssets includes pendingYield"
         );
     }

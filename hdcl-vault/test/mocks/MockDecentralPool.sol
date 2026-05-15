@@ -210,7 +210,7 @@ contract MockDecentralPool {
 
         // Apply test-controlled yield-payout adjustment (analogous to
         // payoutDeltaWei for principal). Lets tests force a Decentral
-        // underpayment to exercise the staleYield-shortfall path.
+        // underpayment to exercise the yield-mismatch socialization path.
         uint256 actualYield = _applyYieldDelta(_tokenId, yieldAmount);
         stablecoin.safeTransfer(msg.sender, actualYield);
     }

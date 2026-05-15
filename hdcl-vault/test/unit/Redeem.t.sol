@@ -844,70 +844,6 @@ contract RedeemTest is BaseTest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //           pokeDecentral - WITHDRAWAL DELAYED EVENTS
-    // ═══════════════════════════════════════════════════════════════════════
-
-    /// @notice WithdrawalDelayed emitted when yield unapproved > 2*withdrawalDelay
-    function test_pokeDecentral_emitsWithdrawalDelayed_yieldStuck() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _warpDays(61);
-        vault.pokeDecentral(0); // -> YieldWithdrawalRequested
-        // DON'T approve yield — warp past 2*48h
-        vm.warp(block.timestamp + 2 * FORTY_EIGHT_HOURS + 1);
-
-        vm.expectEmit(true, false, false, false);
-        emit WithdrawalDelayed(0, 0); // data fields don't matter for check
-        vault.pokeDecentral(0);
-
-        // State unchanged
-        (, , , , , uint8 state) = vault.getPosition(0);
-        assertEq(state, 1, "Still YieldWithdrawalRequested");
-    }
-
-    /// @notice WithdrawalDelayed emitted when principal request reverts > 2*delay
-    function test_pokeDecentral_emitsWithdrawalDelayed_principalRequestReverts() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _warpDays(61);
-        vault.pokeDecentral(0);
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
-        pool.approveYieldWithdrawal(tokenId);
-
-        // Make principal request fail by extending investment period
-        pool.setMinimumInvestmentPeriodSeconds(200 days);
-
-        // Yield executes but principal request reverts -> state = YieldClaimed
-        vault.pokeDecentral(0);
-        (, , , , , uint8 s1) = vault.getPosition(0);
-        assertEq(s1, 2, "YieldClaimed (principal request failed)");
-
-        // Warp past 2*delay
-        vm.warp(block.timestamp + 2 * FORTY_EIGHT_HOURS + 1);
-
-        vm.expectEmit(true, false, false, false);
-        emit WithdrawalDelayed(0, 0);
-        vault.pokeDecentral(0);
-    }
-
-    /// @notice WithdrawalDelayed emitted when principal execute stuck > 2*delay
-    function test_pokeDecentral_emitsWithdrawalDelayed_principalExecuteStuck() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _warpDays(61);
-        vault.pokeDecentral(0);
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
-        pool.approveYieldWithdrawal(tokenId);
-        vault.pokeDecentral(0); // -> PrincipalWithdrawalRequested
-        // DON'T approve principal — warp past 2*delay
-        vm.warp(block.timestamp + 2 * FORTY_EIGHT_HOURS + 1);
-
-        vm.expectEmit(true, false, false, false);
-        emit WithdrawalDelayed(0, 0);
-        vault.pokeDecentral(0);
-
-        (, , , , , uint8 state) = vault.getPosition(0);
-        assertEq(state, 3, "Still PrincipalWithdrawalRequested");
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
     //         getEstimatedWaitTime - EDGE CASES
     // ═══════════════════════════════════════════════════════════════════════
 
@@ -921,24 +857,6 @@ contract RedeemTest is BaseTest {
 
         uint256 wait = vault.getEstimatedWaitTime(0);
         assertEq(wait, 0, "Wait = 0 when maturity + delay already passed");
-    }
-
-    /// @notice When all positions are stale -> can't cover -> returns type(uint256).max
-    function test_getEstimatedWaitTime_returnsMax_whenAllStale() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _warpDays(61);
-        vault.pokeDecentral(0); // -> YieldWithdrawalRequested
-        vm.warp(block.timestamp + FORTY_EIGHT_HOURS + 1);
-
-        // Mark stale (skipped in wait time loop)
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        // Queue a redeem
-        _requestRedeem(alice, aliceHdcl / 4);
-
-        uint256 wait = vault.getEstimatedWaitTime(0);
-        assertEq(wait, type(uint256).max, "Max wait when all positions stale");
     }
 
     // ═══════════════════════════════════════════════════════════════════════

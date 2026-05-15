@@ -66,7 +66,6 @@ contract HDCLVault is
 
     struct APYBucket {
         uint256 totalPrincipal;
-        uint256 weightedYieldStart;
     }
 
     struct NFTPosition {
@@ -77,10 +76,6 @@ contract HDCLVault is
         uint256 maturityTime;
         uint256 yieldStartTime;
         NFTState state;
-        bool isStale;
-        uint256 stalePrincipal;
-        uint256 staleYield;
-        uint256 stateChangedAt;
         // Yield amount Decentral has locked in for this position after the
         // requestYieldWithdrawal call but before executeYieldWithdrawal. While
         // the position is in YieldWithdrawalRequested, this is the deterministic
@@ -120,10 +115,10 @@ contract HDCLVault is
     ///         Integrators MUST NOT treat this as a hard ceiling on TVL — it
     ///         is a deposit-side rate-limit, not an invariant over total value.
     ///         The deposit check (`totalAssets() + hollarAmount > tvlCap`) and
-    ///         the reinvest check (`totalInvestedPrincipal + totalStaleValue
-    ///         + amount > tvlCap`) intentionally use different reference
-    ///         quantities — both gate new principal but neither prevents yield
-    ///         from inflating `totalAssets()` once existing positions are productive.
+    ///         the reinvest check (`totalInvestedPrincipal + amount > tvlCap`)
+    ///         intentionally use different reference quantities — both gate new
+    ///         principal but neither prevents yield from inflating
+    ///         `totalAssets()` once existing positions are productive.
     uint256 public tvlCap;
     /// @notice Whether new deposits are accepted
     bool public depositsPaused;
@@ -131,8 +126,6 @@ contract HDCLVault is
     uint256 public minReinvestAmount;
     /// @notice Minimum HDCL to request redemption
     uint256 public minRedeemAmount;
-    /// @notice Time a position must be stuck in withdrawal-requested state before it can be marked stale
-    uint256 public withdrawalDelay;
     /// @notice Chainlink-compatible oracle for wDCL/HOLLAR price
     IAggregatorV3Interface public oracle;
 
@@ -148,14 +141,12 @@ contract HDCLVault is
     mapping(uint256 => bool) public isActiveAPY;
     /// @notice Sum of principal across all buckets
     uint256 public totalInvestedPrincipal;
-    /// @notice Aggregate: sum(apyWad_i * totalPrincipal_i) for O(1) yield calc
+    /// @notice Aggregate: sum(apyWad * principal) across all yield-bearing positions
     uint256 public yieldRateSum;
-    /// @notice Aggregate: sum(apyWad_i * weightedYieldStart_i) for O(1) yield calc
+    /// @notice Aggregate: sum(apyWad * principal * yieldStartTime) across all yield-bearing positions
     uint256 public yieldOffsetSum;
     /// @notice HOLLAR in vault available for queue fulfillment or reinvestment
     uint256 public idleHollar;
-    /// @notice Sum of (stalePrincipal + staleYield) for stale positions
-    uint256 public totalStaleValue;
     /// @notice Sum of pendingYield across positions in YieldWithdrawalRequested
     ///         state. Tracks the yield Decentral has locked in but not yet paid;
     ///         keeps totalAssets() flat across the admin-approval delay.
@@ -248,38 +239,12 @@ contract HDCLVault is
         uint256 received,
         int256 delta
     );
-    event PositionMarkedStale(uint256 indexed positionIndex);
-    event PositionUnmarkedStale(uint256 indexed positionIndex);
-    /// @notice Emitted when unmarkPositionStale writes off residual staleYield
-    ///         on a position whose state has already advanced past
-    ///         YieldWithdrawalRequested. The residual represents yield Decentral
-    ///         underpaid in an earlier stale yield-execute; there is no HOLLAR
-    ///         to recover, so it's absorbed into the exchange rate. Operators
-    ///         should monitor this — repeated write-offs indicate an ongoing
-    ///         Decentral integration drift.
-    event StaleYieldShortfallWritten(
-        uint256 indexed positionIndex,
-        uint256 amount
-    );
-    /// @notice Emitted when pokeDecentral hits a stale-Active position. The
-    ///         bucket bookkeeping for this position was already cleared at
-    ///         mark-stale time, so resuming the Active → YWR transition here
-    ///         would underflow the aggregates and double-count the yield
-    ///         (it's already parked in totalStaleValue). The keeper-driven
-    ///         lifecycle is paused for this position until admin runs
-    ///         unmarkPositionStale to restore the bookkeeping.
-    event PositionPokeSkippedStale(uint256 indexed positionIndex);
     event DepositsPaused();
     event DepositsUnpaused();
     event TvlCapUpdated(uint256 newCap);
     event MinReinvestAmountUpdated(uint256 newAmount);
     event MinRedeemAmountUpdated(uint256 newAmount);
     event OracleUpdated(address indexed oracle);
-    event WithdrawalDelayUpdated(uint256 newDelay);
-    event WithdrawalDelayed(
-        uint256 indexed positionIndex,
-        uint256 delaySeconds
-    );
 
     // ═══════════════════════════════════════════════════════════════════════
     //                            ERRORS
@@ -289,16 +254,10 @@ contract HDCLVault is
     error ZeroAmount();
     error ExceedsTvlCap();
     error PositionAlreadyRedeemed();
-    error PositionNotMature();
     error NotRequestOwner();
     error RequestNotActive();
     error InvalidRequestId();
-    error QueueNotEmpty();
-    error InsufficientIdleHollar();
-    error PositionNotStale();
     error BelowMinimumRedeem();
-    error PositionAlreadyStale();
-    error PositionNotStuckLongEnough();
 
     // ═══════════════════════════════════════════════════════════════════════
     //                         INITIALIZER
@@ -314,14 +273,12 @@ contract HDCLVault is
     /// @param _poolToken Decentral NFT contract address
     /// @param _hollar HOLLAR stablecoin address
     /// @param _tvlCap Maximum total HOLLAR deposited
-    /// @param _withdrawalDelay Time (seconds) a position must be stuck before it can be marked stale
     /// @param _admin Governance admin address
     function initialize(
         address _decentralPool,
         address _poolToken,
         address _hollar,
         uint256 _tvlCap,
-        uint256 _withdrawalDelay,
         address _admin
     ) external initializer {
         require(_decentralPool != address(0), "Zero decentralPool");
@@ -339,7 +296,6 @@ contract HDCLVault is
         poolToken = IPoolToken(_poolToken);
         hollar = IERC20(_hollar);
         tvlCap = _tvlCap;
-        withdrawalDelay = _withdrawalDelay;
         minReinvestAmount = 10e18; // 10 HOLLAR
         minRedeemAmount = 1e18; // 1 HDCL
 
@@ -354,7 +310,7 @@ contract HDCLVault is
 
     /// @notice Total value of all vault assets in HOLLAR
     /// @return Total assets including invested principal, accrued yield, idle HOLLAR,
-    ///         stale value, and pending-yield (locked amounts owed by Decentral).
+    ///         and pending-yield (locked amounts owed by Decentral).
     function totalAssets() public view returns (uint256) {
         uint256 accruedYield = 0;
         if (yieldRateSum > 0) {
@@ -369,7 +325,6 @@ contract HDCLVault is
             totalInvestedPrincipal +
             accruedYield +
             idleHollar +
-            totalStaleValue +
             totalPendingYield;
     }
 
@@ -417,10 +372,6 @@ contract HDCLVault is
                 maturityTime: block.timestamp + _investmentPeriod(),
                 yieldStartTime: block.timestamp,
                 state: NFTState.Active,
-                isStale: false,
-                stalePrincipal: 0,
-                staleYield: 0,
-                stateChangedAt: block.timestamp,
                 pendingYield: 0
             })
         );
@@ -510,28 +461,10 @@ contract HDCLVault is
         if (
             pos.state == NFTState.Active && block.timestamp >= pos.maturityTime
         ) {
-            // Stale-Active gate. `markPositionStale` on an Active position
-            // already calls `_removeYieldFromBucket` and `_removePrincipalFromBucket`
-            // and parks the value in `totalStaleValue`. Re-running this branch's
-            // success body would (a) call `_removeYieldFromBucket` a second
-            // time, underflowing the aggregates if no other position absorbs
-            // the subtraction (and the revert is inside the success block, so
-            // try/catch below does NOT catch it), and (b) set `pos.pendingYield`
-            // while `pos.staleYield` is still live in `totalStaleValue`,
-            // double-counting the same yield in `totalAssets()`. The fix is
-            // to pause the permissionless lifecycle for stale positions; admin
-            // must call `unmarkPositionStale` to restore the bucket bookkeeping
-            // (see `unmarkPositionStale`'s Active branch) before keeper
-            // progression can resume.
-            if (pos.isStale) {
-                emit PositionPokeSkippedStale(positionIndex);
-                return;
-            }
             // Wrapped in try/catch like every other Decentral interaction in
             // this function — without it, a paused/shutdown Decentral pool at
             // a position's maturity would revert the whole call and leave the
-            // position permanently stuck (markPositionStale used to reject
-            // Active state; that guard has been relaxed below).
+            // position permanently stuck.
             try decentralPool.requestYieldWithdrawal(pos.tokenId) {
                 // Decentral has now locked the yield amount Decentral will pay
                 // at execute. Stop the bucket from accruing more yield for
@@ -553,7 +486,6 @@ contract HDCLVault is
                 );
 
                 pos.state = NFTState.YieldWithdrawalRequested;
-                pos.stateChangedAt = block.timestamp;
                 emit PositionProcessed(
                     positionIndex,
                     pos.tokenId,
@@ -561,16 +493,7 @@ contract HDCLVault is
                 );
             } catch {
                 // Decentral may be paused/shutdown — no-op so the position
-                // stays Active. Admin can rescue via markPositionStale once
-                // the position has been stuck past `withdrawalDelay`.
-                if (
-                    block.timestamp - pos.maturityTime > 2 * withdrawalDelay
-                ) {
-                    emit WithdrawalDelayed(
-                        positionIndex,
-                        block.timestamp - pos.maturityTime
-                    );
-                }
+                // stays Active. The next pokeDecentral call retries.
                 return;
             }
         }
@@ -583,29 +506,15 @@ contract HDCLVault is
                     balBefore;
 
                 // Bucket bookkeeping was already cleared at request time. Move
-                // the locked yield from pending → idle. If pendingYield was
-                // moved into staleValue when the position was marked stale
-                // while in YWR, it's already 0 here and the stale branch below
-                // handles the reconciliation via staleYield.
-                if (pos.pendingYield > 0) {
-                    totalPendingYield -= pos.pendingYield;
-                    pos.pendingYield = 0;
-                }
+                // the locked yield from pending → idle. Discrepancies between
+                // pendingYield (the locked estimate) and yieldReceived (what
+                // Decentral actually paid) flow through naturally: any shortfall
+                // is socialized into the exchange rate, any surplus lifts it.
+                totalPendingYield -= pos.pendingYield;
+                pos.pendingYield = 0;
                 idleHollar += yieldReceived;
 
-                // For stale positions: deduct only what actually arrived from totalStaleValue.
-                // If Decentral paid less than the frozen estimate, keep the shortfall
-                // in totalStaleValue to be reconciled at principal redemption.
-                if (pos.isStale) {
-                    uint256 staleYieldDeduction = pos.staleYield <=
-                        yieldReceived
-                        ? pos.staleYield
-                        : yieldReceived;
-                    totalStaleValue -= staleYieldDeduction;
-                    pos.staleYield -= staleYieldDeduction;
-                }
                 pos.state = NFTState.YieldClaimed;
-                pos.stateChangedAt = block.timestamp;
                 emit PositionProcessed(
                     positionIndex,
                     pos.tokenId,
@@ -613,14 +522,6 @@ contract HDCLVault is
                 );
             } catch {
                 // Not yet approved by Decentral — no-op, retry next cycle
-                if (
-                    block.timestamp - pos.stateChangedAt > 2 * withdrawalDelay
-                ) {
-                    emit WithdrawalDelayed(
-                        positionIndex,
-                        block.timestamp - pos.stateChangedAt
-                    );
-                }
                 return;
             }
         }
@@ -629,7 +530,6 @@ contract HDCLVault is
         if (pos.state == NFTState.YieldClaimed) {
             try decentralPool.requestPrincipalWithdrawal(pos.tokenId) {
                 pos.state = NFTState.PrincipalWithdrawalRequested;
-                pos.stateChangedAt = block.timestamp;
                 emit PositionProcessed(
                     positionIndex,
                     pos.tokenId,
@@ -637,14 +537,6 @@ contract HDCLVault is
                 );
             } catch {
                 // Decentral pool may be paused or broken — no-op, retry next cycle
-                if (
-                    block.timestamp - pos.stateChangedAt > 2 * withdrawalDelay
-                ) {
-                    emit WithdrawalDelayed(
-                        positionIndex,
-                        block.timestamp - pos.stateChangedAt
-                    );
-                }
                 return;
             }
         }
@@ -656,47 +548,25 @@ contract HDCLVault is
                 uint256 principalReceived = hollar.balanceOf(address(this)) -
                     balBefore;
 
-                // Surface any drift between the principal Decentral paid and what
-                // the vault recorded. For non-stale positions, the expected
-                // figure is the original deposit amount; for stale positions,
-                // it's the principal frozen at stale-time. Mismatches are
-                // silently absorbed into idleHollar (positive delta) or come
-                // out of the exchange rate (negative delta) — the event lets
-                // operators monitor for repeated drift without changing the
+                // Surface any drift between the principal Decentral paid and
+                // what the vault recorded. Mismatches are silently absorbed
+                // into idleHollar (positive delta) or come out of the
+                // exchange rate (negative delta) — the event lets operators
+                // monitor for repeated drift without changing the
                 // socialization behavior.
-                uint256 expectedPrincipal = pos.isStale
-                    ? pos.stalePrincipal
-                    : pos.principal;
-                if (principalReceived != expectedPrincipal) {
+                if (principalReceived != pos.principal) {
                     int256 delta = int256(principalReceived) -
-                        int256(expectedPrincipal);
+                        int256(pos.principal);
                     emit PrincipalMismatch(
                         positionIndex,
                         pos.tokenId,
-                        expectedPrincipal,
+                        pos.principal,
                         principalReceived,
                         delta
                     );
                 }
 
-                if (!pos.isStale) {
-                    _adjustBucketOnPrincipalRedemption(pos);
-                } else {
-                    // A residual `staleYield` here = Decentral underpaid in
-                    // an earlier stale yield-execute (yieldReceived <
-                    // staleYield). Reducing totalStaleValue by the full
-                    // amount socializes the loss into the exchange rate.
-                    // Surface it via the same event the admin-unmark path
-                    // emits so monitoring catches keeper-driven write-offs
-                    // too — otherwise this loss is invisible on-chain.
-                    if (pos.staleYield > 0) {
-                        emit StaleYieldShortfallWritten(
-                            positionIndex,
-                            pos.staleYield
-                        );
-                    }
-                    totalStaleValue -= (pos.stalePrincipal + pos.staleYield);
-                }
+                _adjustBucketOnPrincipalRedemption(pos);
 
                 idleHollar += principalReceived;
                 pos.state = NFTState.Redeemed;
@@ -716,14 +586,6 @@ contract HDCLVault is
                 }
             } catch {
                 // Not yet approved or delay not elapsed — no-op
-                if (
-                    block.timestamp - pos.stateChangedAt > 2 * withdrawalDelay
-                ) {
-                    emit WithdrawalDelayed(
-                        positionIndex,
-                        block.timestamp - pos.stateChangedAt
-                    );
-                }
                 return;
             }
         }
@@ -785,22 +647,21 @@ contract HDCLVault is
     }
 
     /// @dev Internal reinvest logic. The cap check here uses the principal
-    ///      components only — `totalInvestedPrincipal + totalStaleValue` —
-    ///      not full `totalAssets()`. That's intentional and matches the
-    ///      protocol's deposit-cap semantics (see `tvlCap` natspec): reinvest
-    ///      only adds NEW principal to Decentral, so it should be limited by
-    ///      the same "principal entering the system" rule as deposits, not
-    ///      by inflated `totalAssets()` that includes already-accrued yield.
+    ///      component only — `totalInvestedPrincipal` — not full
+    ///      `totalAssets()`. That's intentional and matches the protocol's
+    ///      deposit-cap semantics (see `tvlCap` natspec): reinvest only adds
+    ///      NEW principal to Decentral, so it should be limited by the same
+    ///      "principal entering the system" rule as deposits, not by inflated
+    ///      `totalAssets()` that includes already-accrued yield.
     function _reinvest() internal {
         uint256 amount = idleHollar;
 
-        // Early return if stale marking pushed principal sum past cap (prevents underflow)
-        if (totalInvestedPrincipal + totalStaleValue >= tvlCap) return;
+        if (totalInvestedPrincipal >= tvlCap) return;
 
-        // Cap reinvestment so principal + stale doesn't exceed tvlCap. Yield
+        // Cap reinvestment so principal doesn't exceed tvlCap. Yield
         // already in idleHollar / accruedYield / pendingYield is unaffected.
-        if (totalInvestedPrincipal + totalStaleValue + amount > tvlCap) {
-            amount = tvlCap - totalInvestedPrincipal - totalStaleValue;
+        if (totalInvestedPrincipal + amount > tvlCap) {
+            amount = tvlCap - totalInvestedPrincipal;
         }
         if (amount < minReinvestAmount) return;
 
@@ -818,10 +679,6 @@ contract HDCLVault is
                 maturityTime: block.timestamp + _investmentPeriod(),
                 yieldStartTime: block.timestamp,
                 state: NFTState.Active,
-                isStale: false,
-                stalePrincipal: 0,
-                staleYield: 0,
-                stateChangedAt: block.timestamp,
                 pendingYield: 0
             })
         );
@@ -896,22 +753,11 @@ contract HDCLVault is
         for (uint256 i = positionHead; i < positions.length; i++) {
             NFTPosition storage pos = positions[i];
             if (pos.state == NFTState.Redeemed) continue;
-            if (pos.isStale) continue;
 
-            // Expected return: principal + yield. `yieldStartTime` can drift
-            // *past* `maturityTime` after a long stale → unmark cycle on an
-            // Active position: unmark sets yieldStartTime = block.timestamp −
-            // elapsed (back-calculated from staleYield), and a long stale
-            // duration pushes that result beyond the immutable maturityTime.
-            // Without the clamp, the subtraction below underflows and reverts
-            // this view for every redemption whose walk reaches this position,
-            // bricking ETAs until the position fully redeems.
-            uint256 yieldElapsed = pos.maturityTime > pos.yieldStartTime
-                ? pos.maturityTime - pos.yieldStartTime
-                : 0;
+            // Expected return: principal + yield.
             uint256 expectedYield = (pos.principal *
                 pos.apyWad *
-                yieldElapsed) /
+                (pos.maturityTime - pos.yieldStartTime)) /
                 (SECONDS_PER_YEAR * WAD);
             accumulated += pos.principal + expectedYield;
 
@@ -1128,164 +974,6 @@ contract HDCLVault is
         emit OracleUpdated(_oracle);
     }
 
-    /// @notice Cap yield for a stuck position.
-    /// @dev    Allowed when the position is stuck in any post-deposit lifecycle
-    ///         state (Active past maturity, YieldWithdrawalRequested,
-    ///         YieldClaimed, or PrincipalWithdrawalRequested) for longer than
-    ///         `withdrawalDelay`. The Active branch covers the case where
-    ///         Decentral is paused/shutdown and pokeDecentral can't even
-    ///         transition to YWR; without this branch the principal would be
-    ///         permanently trapped.
-    function markPositionStale(
-        uint256 positionIndex
-    ) external onlyRole(ADMIN_ROLE) {
-        NFTPosition storage pos = positions[positionIndex];
-        if (pos.isStale) revert PositionAlreadyStale();
-        if (pos.state == NFTState.Redeemed) revert PositionAlreadyRedeemed();
-
-        // State + delay guard. For each acceptable state, "stuck" is measured
-        // from the time the position entered that state (stateChangedAt) — except
-        // for Active, where we measure from maturityTime (the Active state itself
-        // isn't "stuck" until the position has matured but pokeDecentral can't
-        // advance it).
-        uint256 stuckSince;
-        if (pos.state == NFTState.Active) {
-            if (block.timestamp < pos.maturityTime)
-                revert PositionNotStuckLongEnough();
-            stuckSince = pos.maturityTime;
-        } else if (
-            pos.state == NFTState.YieldWithdrawalRequested ||
-            pos.state == NFTState.YieldClaimed ||
-            pos.state == NFTState.PrincipalWithdrawalRequested
-        ) {
-            stuckSince = pos.stateChangedAt;
-        } else {
-            revert PositionNotStuckLongEnough();
-        }
-        if (block.timestamp - stuckSince < withdrawalDelay)
-            revert PositionNotStuckLongEnough();
-
-        // Calculate current yield for this position. The bookkeeping for yield
-        // depends on lifecycle state:
-        //   - Active: bucket is still accruing; compute owed yield up to now
-        //     and remove from bucket.
-        //   - YieldWithdrawalRequested: yield bookkeeping was already cleared
-        //     at request time (totalPendingYield holds the locked amount).
-        //     Move pendingYield → staleYield.
-        //   - YieldClaimed / PrincipalWithdrawalRequested: yield was already
-        //     paid by Decentral; pendingYield is 0 and bucket is clean.
-        uint256 currentYield;
-        if (pos.state == NFTState.Active) {
-            currentYield =
-                (pos.principal *
-                    pos.apyWad *
-                    (block.timestamp - pos.yieldStartTime)) /
-                (SECONDS_PER_YEAR * WAD);
-            _removeYieldFromBucket(
-                pos.apyWad,
-                pos.principal,
-                pos.yieldStartTime
-            );
-        } else if (pos.state == NFTState.YieldWithdrawalRequested) {
-            currentYield = pos.pendingYield;
-            if (pos.pendingYield > 0) {
-                totalPendingYield -= pos.pendingYield;
-                pos.pendingYield = 0;
-            }
-            // No bucket-yield removal needed — already done at request time.
-        } else {
-            // YieldClaimed or PrincipalWithdrawalRequested
-            currentYield = 0;
-        }
-
-        // Always remove principal — once stale, value moves to totalStaleValue.
-        _removePrincipalFromBucket(pos.apyWad, pos.principal);
-
-        // Record stale values
-        pos.isStale = true;
-        pos.stalePrincipal = pos.principal;
-        pos.staleYield = currentYield;
-        totalStaleValue += pos.principal + currentYield;
-
-        emit PositionMarkedStale(positionIndex);
-    }
-
-    /// @notice Restore a stale position to normal accounting.
-    /// @dev    Restoration semantics depend on the lifecycle state at unmark:
-    ///         - Active: re-add yield bookkeeping with a back-calculated
-    ///           yieldStartTime so the bucket reproduces staleYield. Position
-    ///           resumes accruing.
-    ///         - YieldWithdrawalRequested: restore pendingYield (Decentral's
-    ///           locked amount); bucket stays cleared (no future accrual).
-    ///         - YieldClaimed / PrincipalWithdrawalRequested: principal-only
-    ///           restoration. Any residual staleYield > 0 means Decentral
-    ///           underpaid in a stale yield-execute; that residual is a real
-    ///           loss that gets written off. Emit `StaleYieldShortfallWritten`
-    ///           so operators can see and investigate the loss.
-    /// @param positionIndex Index of the stale position
-    function unmarkPositionStale(
-        uint256 positionIndex
-    ) external onlyRole(ADMIN_ROLE) {
-        NFTPosition storage pos = positions[positionIndex];
-        if (!pos.isStale) revert PositionNotStale();
-        // Guard: a position that was poked through to Redeemed while stale still has
-        // isStale=true but is fully settled. Re-adding it to active accounting would
-        // recreate phantom principal.
-        if (pos.state == NFTState.Redeemed) revert PositionAlreadyRedeemed();
-
-        // Remove from stale accounting
-        totalStaleValue -= (pos.stalePrincipal + pos.staleYield);
-
-        pos.isStale = false;
-
-        // Always restore principal — Decentral still owes the principal until it's redeemed.
-        _addPrincipalToBucket(pos.apyWad, pos.principal);
-
-        if (pos.state == NFTState.Active) {
-            // Re-add yield bookkeeping with back-calculated yieldStartTime so
-            // the bucket reproduces staleYield exactly.
-            if (pos.staleYield > 0 && pos.principal > 0 && pos.apyWad > 0) {
-                uint256 elapsed = (pos.staleYield * SECONDS_PER_YEAR * WAD) /
-                    (pos.principal * pos.apyWad);
-                pos.yieldStartTime = block.timestamp - elapsed;
-            } else {
-                pos.yieldStartTime = block.timestamp;
-            }
-            _addYieldToBucket(pos.apyWad, pos.principal, pos.yieldStartTime);
-        } else if (
-            pos.state == NFTState.YieldWithdrawalRequested &&
-            pos.staleYield > 0
-        ) {
-            // Decentral has the amount locked; restore as pending.
-            pos.pendingYield = pos.staleYield;
-            totalPendingYield += pos.staleYield;
-        } else if (
-            (pos.state == NFTState.YieldClaimed ||
-                pos.state == NFTState.PrincipalWithdrawalRequested) &&
-            pos.staleYield > 0
-        ) {
-            // Decentral already underpaid this position in a stale yield-execute
-            // (yieldReceived < staleYield). The residual `staleYield` is a real
-            // loss — there is no HOLLAR to recover and no Decentral promise to
-            // pay it. Emit explicitly so operators see the write-off instead of
-            // it being absorbed silently into the exchange rate.
-            emit StaleYieldShortfallWritten(positionIndex, pos.staleYield);
-        }
-
-        pos.stalePrincipal = 0;
-        pos.staleYield = 0;
-
-        emit PositionUnmarkedStale(positionIndex);
-    }
-
-    /// @notice Update the withdrawal delay for stale marking
-    function setWithdrawalDelay(
-        uint256 _withdrawalDelay
-    ) external onlyRole(ADMIN_ROLE) {
-        withdrawalDelay = _withdrawalDelay;
-        emit WithdrawalDelayUpdated(_withdrawalDelay);
-    }
-
     // ═══════════════════════════════════════════════════════════════════════
     //                         ERC-721 RECEIVER
     // ═══════════════════════════════════════════════════════════════════════
@@ -1498,24 +1186,22 @@ contract HDCLVault is
         }
     }
 
-    /// @dev Add a position's yield contribution to bucket + global aggregates (no principal).
+    /// @dev Add a position's yield contribution to the global aggregates.
     function _addYieldToBucket(
         uint256 apyWad,
         uint256 principal,
         uint256 yieldStartTime
     ) internal {
-        apyBuckets[apyWad].weightedYieldStart += principal * yieldStartTime;
         yieldRateSum += apyWad * principal;
         yieldOffsetSum += apyWad * principal * yieldStartTime;
     }
 
-    /// @dev Remove a position's yield contribution from bucket + global aggregates (no principal).
+    /// @dev Remove a position's yield contribution from the global aggregates.
     function _removeYieldFromBucket(
         uint256 apyWad,
         uint256 principal,
         uint256 yieldStartTime
     ) internal {
-        apyBuckets[apyWad].weightedYieldStart -= principal * yieldStartTime;
         yieldRateSum -= apyWad * principal;
         yieldOffsetSum -= apyWad * principal * yieldStartTime;
     }

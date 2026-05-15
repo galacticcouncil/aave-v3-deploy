@@ -9,8 +9,7 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 /// @title Comprehensive Admin Test Suite
 /// @notice Covers initialize, pause/unpause, setTvlCap, setMinReinvestAmount,
-///         setMinRedeemAmount, setOracle, setWithdrawalDelay, markPositionStale,
-///         unmarkPositionStale, and UUPS upgrade authorization.
+///         setMinRedeemAmount, setOracle, and UUPS upgrade authorization.
 contract AdminTest is BaseTest {
 
     // ── Helpers ─────────────────────────────────────────────────────────────
@@ -30,13 +29,6 @@ contract AdminTest is BaseTest {
         return (principal * apyWad * days_ * SECONDS_PER_DAY) / (365 days * 1e18);
     }
 
-    /// @dev Advance position to YieldWithdrawalRequested and warp past withdrawalDelay
-    function _makePositionStaleEligible(uint256 positionIndex) internal {
-        _warpDays(61);
-        vault.pokeDecentral(positionIndex);
-        vm.warp(block.timestamp + FORTY_EIGHT_HOURS + 1);
-    }
-
     // ═══════════════════════════════════════════════════════════════════════
     //                         INITIALIZE
     // ═══════════════════════════════════════════════════════════════════════
@@ -46,7 +38,6 @@ contract AdminTest is BaseTest {
         assertEq(address(vault.poolToken()), address(nft));
         assertEq(address(vault.hollar()), address(hollar));
         assertEq(vault.tvlCap(), INITIAL_TVL_CAP);
-        assertEq(vault.withdrawalDelay(), FORTY_EIGHT_HOURS);
     }
 
     function test_initialize_setsDefaults() public view {
@@ -74,34 +65,34 @@ contract AdminTest is BaseTest {
         vm.expectRevert("Zero decentralPool");
         new ERC1967Proxy(address(impl), abi.encodeCall(
             HDCLVault.initialize,
-            (address(0), address(nft), address(hollar), INITIAL_TVL_CAP, FORTY_EIGHT_HOURS, admin)
+            (address(0), address(nft), address(hollar), INITIAL_TVL_CAP, admin)
         ));
 
         // Zero poolToken
         vm.expectRevert("Zero poolToken");
         new ERC1967Proxy(address(impl), abi.encodeCall(
             HDCLVault.initialize,
-            (address(pool), address(0), address(hollar), INITIAL_TVL_CAP, FORTY_EIGHT_HOURS, admin)
+            (address(pool), address(0), address(hollar), INITIAL_TVL_CAP, admin)
         ));
 
         // Zero hollar
         vm.expectRevert("Zero hollar");
         new ERC1967Proxy(address(impl), abi.encodeCall(
             HDCLVault.initialize,
-            (address(pool), address(nft), address(0), INITIAL_TVL_CAP, FORTY_EIGHT_HOURS, admin)
+            (address(pool), address(nft), address(0), INITIAL_TVL_CAP, admin)
         ));
 
         // Zero admin
         vm.expectRevert("Zero admin");
         new ERC1967Proxy(address(impl), abi.encodeCall(
             HDCLVault.initialize,
-            (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, FORTY_EIGHT_HOURS, address(0))
+            (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, address(0))
         ));
     }
 
     function test_initialize_cannotReinitialize() public {
         vm.expectRevert("Initializable: contract is already initialized");
-        vault.initialize(address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, FORTY_EIGHT_HOURS, admin);
+        vault.initialize(address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, admin);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -438,356 +429,6 @@ contract AdminTest is BaseTest {
         vm.prank(admin);
         vm.expectRevert();
         vault.setOracle(notAnOracle);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //                      setWithdrawalDelay
-    // ═══════════════════════════════════════════════════════════════════════
-
-    function test_setWithdrawalDelay_onlyAdmin() public {
-        vm.expectRevert(_accessControlRevert(alice, vault.ADMIN_ROLE()));
-        vm.prank(alice);
-        vault.setWithdrawalDelay(1 days);
-    }
-
-    function test_setWithdrawalDelay_updatesValue() public {
-        vm.prank(admin);
-        vault.setWithdrawalDelay(72 hours);
-
-        assertEq(vault.withdrawalDelay(), 72 hours);
-    }
-
-    function test_setWithdrawalDelay_emitsEvent() public {
-        vm.expectEmit(false, false, false, true);
-        emit WithdrawalDelayUpdated(72 hours);
-
-        vm.prank(admin);
-        vault.setWithdrawalDelay(72 hours);
-    }
-
-    /// @notice Changing delay affects when positions can be marked stale
-    function test_setWithdrawalDelay_affectsStaleEligibility() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _warpDays(61);
-        vault.pokeDecentral(0); // -> YieldWithdrawalRequested
-
-        // Default delay is 48h. Warp 49h.
-        vm.warp(block.timestamp + 49 hours);
-
-        // Should be stale-eligible at default delay
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        // Unmark and increase delay
-        vm.prank(admin);
-        vault.unmarkPositionStale(0);
-
-        vm.prank(admin);
-        vault.setWithdrawalDelay(72 hours);
-
-        // Now 49h < 72h, so not eligible
-        vm.prank(admin);
-        vm.expectRevert(HDCLVault.PositionNotStuckLongEnough.selector);
-        vault.markPositionStale(0);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //                    markPositionStale
-    // ═══════════════════════════════════════════════════════════════════════
-
-    function test_markPositionStale_onlyAdmin() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _makePositionStaleEligible(0);
-
-        vm.expectRevert(_accessControlRevert(alice, vault.ADMIN_ROLE()));
-        vm.prank(alice);
-        vault.markPositionStale(0);
-    }
-
-    function test_markPositionStale_revertsOnActivePosition() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _warpDays(30); // still Active
-
-        vm.prank(admin);
-        vm.expectRevert(HDCLVault.PositionNotStuckLongEnough.selector);
-        vault.markPositionStale(0);
-    }
-
-    function test_markPositionStale_revertsBeforeDelay() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _warpDays(61);
-        vault.pokeDecentral(0); // -> YieldWithdrawalRequested
-        // Do NOT warp past withdrawalDelay
-
-        vm.prank(admin);
-        vm.expectRevert(HDCLVault.PositionNotStuckLongEnough.selector);
-        vault.markPositionStale(0);
-    }
-
-    function test_markPositionStale_revertsOnRedeemed() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _warpDays(61);
-        _processPositionFull(0);
-
-        vm.prank(admin);
-        vm.expectRevert(HDCLVault.PositionAlreadyRedeemed.selector);
-        vault.markPositionStale(0);
-    }
-
-    function test_markPositionStale_revertsAlreadyStale() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _makePositionStaleEligible(0);
-
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        vm.prank(admin);
-        vm.expectRevert(HDCLVault.PositionAlreadyStale.selector);
-        vault.markPositionStale(0);
-    }
-
-    /// @notice Marking stale freezes yield - rate stops growing
-    function test_markPositionStale_freezesYield() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _makePositionStaleEligible(0);
-
-        uint256 rateBefore = vault.exchangeRate();
-
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        uint256 rateAfter = vault.exchangeRate();
-        assertApproxEqRel(rateAfter, rateBefore, 0.001e18, "Rate preserved on mark");
-
-        // Warp 30 days - rate should NOT increase
-        _warpDays(30);
-        uint256 rateLater = vault.exchangeRate();
-        assertApproxEqRel(rateLater, rateAfter, 0.001e18, "Rate frozen while stale");
-    }
-
-    /// @notice Stale position moves value to totalStaleValue, out of bucket accounting
-    function test_markPositionStale_updatesAccounting() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _makePositionStaleEligible(0);
-
-        uint256 investedBefore = vault.totalInvestedPrincipal();
-        assertEq(investedBefore, TEN_THOUSAND_HOLLAR);
-
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        assertEq(vault.totalInvestedPrincipal(), 0, "Removed from invested principal");
-        assertGt(vault.totalStaleValue(), 0, "totalStaleValue includes principal + frozen yield");
-
-        // totalAssets should be preserved
-        uint256 totalAssets = vault.totalAssets();
-        assertGt(totalAssets, TEN_THOUSAND_HOLLAR, "totalAssets still accounts for stale value");
-    }
-
-    function test_markPositionStale_emitsEvent() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _makePositionStaleEligible(0);
-
-        vm.expectEmit(true, false, false, false);
-        emit PositionMarkedStale(0);
-
-        vm.prank(admin);
-        vault.markPositionStale(0);
-    }
-
-    /// @notice Position in PrincipalWithdrawalRequested: stale yield should be 0
-    ///         (yield already claimed at that stage)
-    function test_markPositionStale_principalRequested_zeroYield() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _warpDays(61);
-
-        // Advance to PrincipalWithdrawalRequested
-        vault.pokeDecentral(0);
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
-        pool.approveYieldWithdrawal(tokenId);
-        vault.pokeDecentral(0); // -> PrincipalWithdrawalRequested
-
-        // Warp past delay
-        vm.warp(block.timestamp + FORTY_EIGHT_HOURS + 1);
-
-        uint256 totalAssetsBefore = vault.totalAssets();
-
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        // staleYield should be 0 since yield was already claimed
-        // totalStaleValue = stalePrincipal only
-        assertEq(vault.totalStaleValue(), TEN_THOUSAND_HOLLAR, "Stale value = principal only");
-
-        // totalAssets should decrease by the accrued yield that was removed from bucket
-        // but idle already has the yield, so net effect depends on accounting
-        uint256 totalAssetsAfter = vault.totalAssets();
-        assertApproxEqRel(totalAssetsAfter, totalAssetsBefore, 0.01e18, "totalAssets approximately preserved");
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //                   unmarkPositionStale
-    // ═══════════════════════════════════════════════════════════════════════
-
-    function test_unmarkPositionStale_onlyAdmin() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _makePositionStaleEligible(0);
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        vm.expectRevert(_accessControlRevert(alice, vault.ADMIN_ROLE()));
-        vm.prank(alice);
-        vault.unmarkPositionStale(0);
-    }
-
-    function test_unmarkPositionStale_revertsNotStale() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-
-        vm.prank(admin);
-        vm.expectRevert(HDCLVault.PositionNotStale.selector);
-        vault.unmarkPositionStale(0);
-    }
-
-    /// @notice Under the current model, the `backtrackYield` flag on
-    ///         `unmarkPositionStale` is a no-op for YWR-state positions: the
-    ///         locked pending yield (already agreed to by Decentral) is always
-    ///         restored. Rate is preserved across mark/unmark and stays flat
-    ///         afterward (Decentral has frozen the yield amount, so no further
-    ///         bucket accrual happens for this position).
-    function test_unmarkPositionStale_preservesPendingYield() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _makePositionStaleEligible(0);
-
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        uint256 rateAtStale = vault.exchangeRate();
-
-        // Warp while stale - rate frozen
-        _warpDays(10);
-        assertApproxEqRel(vault.exchangeRate(), rateAtStale, 0.001e18);
-
-        // Unmark with backtrack=false (flag is ignored; pending yield restored)
-        vm.prank(admin);
-        vault.unmarkPositionStale(0);
-
-        // Rate is preserved — stale value removed, pending yield restored to
-        // totalPendingYield by the same amount.
-        assertApproxEqRel(
-            vault.exchangeRate(),
-            rateAtStale,
-            0.001e18,
-            "rate preserved across unmark"
-        );
-
-        // No further accrual: Decentral has locked the amount at original
-        // request time; the vault won't earn more yield on this position.
-        uint256 rateAfterUnmark = vault.exchangeRate();
-        _warpDays(10);
-        assertApproxEqRel(
-            vault.exchangeRate(),
-            rateAfterUnmark,
-            0.001e18,
-            "rate stays flat - Decentral has frozen yield"
-        );
-    }
-
-    /// @notice backtrackYield=true: pre-stale yield is preserved via back-calculated yieldStartTime
-    function test_unmarkPositionStale_backtrackYield() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _makePositionStaleEligible(0);
-
-        uint256 rateBefore = vault.exchangeRate();
-
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        vm.prank(admin);
-        vault.unmarkPositionStale(0);
-
-        uint256 rateAfter = vault.exchangeRate();
-        assertApproxEqRel(rateAfter, rateBefore, 0.001e18, "Rate preserved with backtrack");
-    }
-
-    /// @notice Unmark clears stale accounting
-    function test_unmarkPositionStale_clearsAccounting() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _makePositionStaleEligible(0);
-
-        vm.prank(admin);
-        vault.markPositionStale(0);
-        assertGt(vault.totalStaleValue(), 0);
-        assertEq(vault.totalInvestedPrincipal(), 0);
-
-        vm.prank(admin);
-        vault.unmarkPositionStale(0);
-
-        assertEq(vault.totalStaleValue(), 0, "totalStaleValue cleared");
-        assertEq(vault.totalInvestedPrincipal(), TEN_THOUSAND_HOLLAR, "Restored to invested");
-    }
-
-    function test_unmarkPositionStale_emitsEvent() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _makePositionStaleEligible(0);
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        vm.expectEmit(true, false, false, false);
-        emit PositionUnmarkedStale(0);
-
-        vm.prank(admin);
-        vault.unmarkPositionStale(0);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //           STALE POSITION LIFECYCLE (through Decentral)
-    // ═══════════════════════════════════════════════════════════════════════
-
-    /// @notice Yield claim on a stale position deducts from totalStaleValue
-    function test_staleLifecycle_yieldClaimDeductsStaleValue() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _makePositionStaleEligible(0);
-
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        uint256 staleValueBefore = vault.totalStaleValue();
-        assertGt(staleValueBefore, 0);
-
-        // Approve yield and execute on the stale position
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
-        pool.approveYieldWithdrawal(tokenId);
-        vault.pokeDecentral(0);
-
-        // Stale yield deducted
-        uint256 staleValueAfter = vault.totalStaleValue();
-        assertLt(staleValueAfter, staleValueBefore, "totalStaleValue decreased after yield claim");
-    }
-
-    /// @notice Full stale lifecycle: mark stale -> yield -> principal -> Redeemed
-    function test_staleLifecycle_fullRedemption() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _makePositionStaleEligible(0);
-
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        assertGt(vault.totalStaleValue(), 0);
-
-        // Process yield
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
-        pool.approveYieldWithdrawal(tokenId);
-        vault.pokeDecentral(0); // yield claimed + principal requested
-
-        // Process principal
-        pool.approvePrincipalWithdrawal(tokenId);
-        vm.warp(block.timestamp + FORTY_EIGHT_HOURS + 1);
-        vault.pokeDecentral(0); // -> Redeemed
-
-        (, , , , , uint8 state) = vault.getPosition(0);
-        assertEq(state, 4, "Redeemed");
-        assertEq(vault.totalStaleValue(), 0, "totalStaleValue zeroed after full redemption");
-        assertGt(vault.idleHollar(), 0, "HOLLAR recovered");
     }
 
     // ═══════════════════════════════════════════════════════════════════════

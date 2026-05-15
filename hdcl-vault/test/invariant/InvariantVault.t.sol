@@ -10,7 +10,6 @@ import {MockPoolToken} from "../mocks/MockPoolToken.sol";
 
 import {UserHandler} from "./handlers/UserHandler.sol";
 import {KeeperHandler} from "./handlers/KeeperHandler.sol";
-import {AdminHandler} from "./handlers/AdminHandler.sol";
 import {PositionReader} from "./helpers/PositionReader.sol";
 
 /// @title HDCLVault Invariant Tests
@@ -23,7 +22,6 @@ contract InvariantVaultTest is Test {
 
     UserHandler public userHandler;
     KeeperHandler public keeperHandler;
-    AdminHandler public adminHandler;
     PositionReader public posReader;
 
     address public admin = makeAddr("admin");
@@ -47,7 +45,7 @@ contract InvariantVaultTest is Test {
         HDCLVault impl = new HDCLVault();
         bytes memory initData = abi.encodeCall(
             HDCLVault.initialize,
-            (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, FORTY_EIGHT_HOURS, admin)
+            (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, admin)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         vault = HDCLVault(address(proxy));
@@ -68,19 +66,15 @@ contract InvariantVaultTest is Test {
         // Deploy handlers and helpers
         userHandler = new UserHandler(vault, hollar, actors);
         keeperHandler = new KeeperHandler(vault, pool);
-        adminHandler = new AdminHandler(vault, admin);
         posReader = new PositionReader(vault);
 
         // Tell Foundry which contracts to call
         targetContract(address(userHandler));
         targetContract(address(keeperHandler));
-        targetContract(address(adminHandler));
 
         excludeContract(address(this));
         excludeContract(address(posReader));
     }
-
-    // ── Helpers (use PositionReader to avoid struct destructuring issues) ──
 
     // ═══════════════════════════════════════════════════════════════════════
     //               SPEC INVARIANT 1: Shares Have Backing
@@ -144,7 +138,6 @@ contract InvariantVaultTest is Test {
 
     /// @notice Exchange rate should always be >= 1e18 (initial rate).
     ///         The rate starts at 1e18 and should only go up as yield accrues.
-    ///         Spec §4.3 notes "small corrections" from rounding but never below 1:1.
     function invariant_exchangeRateAboveInitial() public view {
         if (vault.totalSupply() > 0) {
             assertGe(
@@ -172,18 +165,13 @@ contract InvariantVaultTest is Test {
     //           ACCOUNTING INVARIANT 7: totalInvestedPrincipal
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice totalInvestedPrincipal == sum of principal for non-stale, non-redeemed positions.
-    ///         NOTE: This invariant intermittently triggers a "replay failure" in Foundry's
-    ///         sequence shrinking. The fuzzer detects a violation during random execution but
-    ///         cannot minimize/reproduce it. This warrants manual investigation of the
-    ///         mark/unmark stale accounting paths. All other 10 invariants pass consistently.
+    /// @notice totalInvestedPrincipal == sum of principal for non-redeemed positions.
     function invariant_totalInvestedPrincipalAccurate() public view {
         uint256 count = vault.getPositionCount();
         uint256 sumPrincipal = 0;
         for (uint256 i = 0; i < count; i++) {
             (, uint256 principal, , , , uint8 state) = vault.getPosition(i);
-            // Only count positions that are: not redeemed AND not stale
-            if (state != 4 && !posReader.isStale(i)) {
+            if (state != 4) {
                 sumPrincipal += principal;
             }
         }
@@ -195,39 +183,7 @@ contract InvariantVaultTest is Test {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //           ACCOUNTING INVARIANT 8: totalStaleValue
-    // ═══════════════════════════════════════════════════════════════════════
-
-    /// @notice totalStaleValue == sum of (stalePrincipal + staleYield) for non-redeemed stale positions.
-    function invariant_totalStaleValueAccurate() public view {
-        uint256 count = vault.getPositionCount();
-        uint256 sumStale = 0;
-        for (uint256 i = 0; i < count; i++) {
-            (, , , , , uint8 state) = vault.getPosition(i);
-            if (state != 4 && posReader.isStale(i)) {
-                (uint256 sp, uint256 sy) = posReader.staleValues(i);
-                sumStale += sp + sy;
-            }
-        }
-        if (vault.totalStaleValue() != sumStale) {
-            // Dump all positions for diagnosis
-            for (uint256 i = 0; i < count; i++) {
-                (, uint256 principal, , , , uint8 s) = vault.getPosition(i);
-                bool stale = posReader.isStale(i);
-                (uint256 sp2, uint256 sy2) = posReader.staleValues(i);
-                console.log("--- pos", i, "---");
-                console.log("  state:", s, "isStale:", stale ? 1 : 0);
-                console.log("  principal:", principal);
-                console.log("  stalePrincipal:", sp2, "staleYield:", sy2);
-            }
-            console.log("Contract totalStaleValue:", vault.totalStaleValue());
-            console.log("Computed sum:", sumStale);
-        }
-        assertEq(vault.totalStaleValue(), sumStale, "INV-8: totalStaleValue mismatch");
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //          ACCOUNTING INVARIANT 9: positionHead Validity
+    //          ACCOUNTING INVARIANT 8: positionHead Validity
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice All positions before positionHead must be Redeemed
@@ -235,21 +191,21 @@ contract InvariantVaultTest is Test {
         uint256 head = vault.getPositionHead();
         for (uint256 i = 0; i < head; i++) {
             (, , , , , uint8 state) = vault.getPosition(i);
-            assertEq(state, 4, "INV-9: non-redeemed position before head");
+            assertEq(state, 4, "INV-8: non-redeemed position before head");
         }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //         ACCOUNTING INVARIANT 10: totalAssets Solvency
+    //         ACCOUNTING INVARIANT 9: totalAssets Solvency
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice totalAssets >= idleHollar + totalInvestedPrincipal + totalStaleValue
+    /// @notice totalAssets >= idleHollar + totalInvestedPrincipal
     function invariant_totalAssetsSolvency() public view {
-        uint256 floor = vault.totalInvestedPrincipal() + vault.idleHollar() + vault.totalStaleValue();
+        uint256 floor = vault.totalInvestedPrincipal() + vault.idleHollar();
         assertGe(
             vault.totalAssets(),
             floor,
-            "INV-10: totalAssets below component floor"
+            "INV-9: totalAssets below component floor"
         );
     }
 
@@ -265,8 +221,6 @@ contract InvariantVaultTest is Test {
         console.log("pokeQueue:        ", keeperHandler.ghost_pokeQueueCalls());
         console.log("Shortfalls set:   ", keeperHandler.ghost_shortfallsConfigured());
         console.log("Time warps:       ", keeperHandler.ghost_timeWarps());
-        console.log("Mark stale:       ", adminHandler.ghost_markStaleCalls());
-        console.log("Unmark stale:     ", adminHandler.ghost_unmarkStaleCalls());
         console.log("Positions:        ", vault.getPositionCount());
         console.log("Exchange rate:    ", vault.exchangeRate());
         console.log("Total assets:     ", vault.totalAssets());

@@ -290,19 +290,12 @@ contract DepositTest is BaseTest {
     //                    APY BUCKET ACCOUNTING
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice Spec §4.2 step 8: bucket.totalPrincipal and bucket.weightedYieldStart updated
+    /// @notice Spec §4.2 step 8: bucket.totalPrincipal updated on deposit
     function test_deposit_updatesBucketAccounting() public {
-        uint256 ts = block.timestamp;
-
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
-        (uint256 totalPrincipal, uint256 weightedYieldStart) = vault.apyBuckets(APY_18_PERCENT);
+        uint256 totalPrincipal = vault.apyBuckets(APY_18_PERCENT);
         assertEq(totalPrincipal, TEN_THOUSAND_HOLLAR, "Bucket totalPrincipal");
-        assertEq(
-            weightedYieldStart,
-            TEN_THOUSAND_HOLLAR * ts,
-            "Bucket weightedYieldStart = principal * timestamp"
-        );
     }
 
     /// @notice Spec §4.2 step 8: totalInvestedPrincipal += hollarAmount
@@ -337,8 +330,8 @@ contract DepositTest is BaseTest {
         assertEq(vault.getActiveAPYCount(), 2, "Two distinct APY buckets");
         assertEq(vault.getActiveAPY(1), APY_20_PERCENT, "New bucket at 20%");
 
-        (uint256 principal18,) = vault.apyBuckets(APY_18_PERCENT);
-        (uint256 principal20,) = vault.apyBuckets(APY_20_PERCENT);
+        uint256 principal18 = vault.apyBuckets(APY_18_PERCENT);
+        uint256 principal20 = vault.apyBuckets(APY_20_PERCENT);
         assertEq(principal18, TEN_THOUSAND_HOLLAR, "18% bucket principal");
         assertEq(principal20, TEN_THOUSAND_HOLLAR, "20% bucket principal");
     }

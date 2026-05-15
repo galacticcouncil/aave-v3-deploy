@@ -22,7 +22,6 @@ contract DeployTest is Test {
 
     uint256 internal constant APY_18_PERCENT = 0.18e18;
     uint256 internal constant TVL_CAP = 2_000_000e18;
-    uint256 internal constant WITHDRAWAL_DELAY = 48 hours;
 
     function setUp() public {
         // Deploy the mock back-ends the vault will integrate with.
@@ -49,8 +48,7 @@ contract DeployTest is Test {
             address(pool),
             address(nft),
             address(hollar),
-            TVL_CAP,
-            WITHDRAWAL_DELAY
+            TVL_CAP
         );
 
         // All three deployed
@@ -76,7 +74,6 @@ contract DeployTest is Test {
         assertEq(address(vault.poolToken()), address(nft), "poolToken wired");
         assertEq(address(vault.hollar()), address(hollar), "hollar wired");
         assertEq(vault.tvlCap(), TVL_CAP, "tvlCap set");
-        assertEq(vault.withdrawalDelay(), WITHDRAWAL_DELAY, "withdrawalDelay set");
 
         // Admin role granted
         assertTrue(vault.hasRole(vault.ADMIN_ROLE(), admin), "admin has ADMIN_ROLE");
@@ -97,8 +94,7 @@ contract DeployTest is Test {
             address(pool),
             address(nft),
             address(hollar),
-            TVL_CAP,
-            WITHDRAWAL_DELAY
+            TVL_CAP
         );
 
         HDCLVault vault = HDCLVault(proxy);
@@ -123,8 +119,7 @@ contract DeployTest is Test {
             address(pool),
             address(nft),
             address(hollar),
-            TVL_CAP,
-            WITHDRAWAL_DELAY
+            TVL_CAP
         );
     }
 
@@ -142,8 +137,7 @@ contract DeployTest is Test {
             address(pool),
             address(nft),
             address(hollar),
-            TVL_CAP,
-            WITHDRAWAL_DELAY
+            TVL_CAP
         );
 
         HDCLVault vault = HDCLVault(proxy);

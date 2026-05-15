@@ -89,14 +89,6 @@ interface IHDCLVault {
         uint256 indexed positionIndex, uint256 tokenId, uint256 yieldReceived, uint256 principalReceived
     );
 
-    /// @notice Emitted when an admin marks a position as stale (stuck or unresponsive).
-    /// @param positionIndex The index of the stale position.
-    event PositionMarkedStale(uint256 indexed positionIndex);
-
-    /// @notice Emitted when an admin removes the stale mark from a position.
-    /// @param positionIndex The index of the position no longer marked stale.
-    event PositionUnmarkedStale(uint256 indexed positionIndex);
-
     /// @notice Emitted when deposits are paused by an admin.
     event DepositsPaused();
 
@@ -110,11 +102,6 @@ interface IHDCLVault {
     /// @notice Emitted when the minimum reinvestment amount is updated.
     /// @param newAmount The new minimum idle balance required before reinvestment.
     event MinReinvestAmountUpdated(uint256 newAmount);
-
-    /// @notice Emitted when a position withdrawal is delayed.
-    /// @param positionIndex The index of the delayed position.
-    /// @param delaySeconds The delay duration in seconds.
-    event WithdrawalDelayed(uint256 indexed positionIndex, uint256 delaySeconds);
 
     // ──────────────────────────────────────────────
     //  User Functions
@@ -250,14 +237,4 @@ interface IHDCLVault {
     /// @param amount The new minimum reinvest amount in stablecoin decimals.
     function setMinReinvestAmount(uint256 amount) external;
 
-    /// @notice Marks a position as stale, excluding it from normal processing.
-    /// @dev Restricted to admin role. Used when a position is stuck or unresponsive
-    ///      in the Decentral pool. Stale positions are skipped during automated processing.
-    /// @param positionIndex The index of the position to mark as stale.
-    function markPositionStale(uint256 positionIndex) external;
-
-    /// @notice Removes the stale mark from a position, returning it to normal processing.
-    /// @dev Restricted to admin role. Used when a previously stale position becomes responsive.
-    /// @param positionIndex The index of the position to unmark.
-    function unmarkPositionStale(uint256 positionIndex, bool backtrackYield) external;
 }

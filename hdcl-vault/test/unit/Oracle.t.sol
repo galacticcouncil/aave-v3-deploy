@@ -110,7 +110,7 @@ contract OracleTest is BaseTest {
         HDCLVault impl = new HDCLVault();
         bytes memory initData = abi.encodeCall(
             HDCLVault.initialize,
-            (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, FORTY_EIGHT_HOURS, admin)
+            (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, admin)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         HDCLVault emptyVault = HDCLVault(address(proxy));

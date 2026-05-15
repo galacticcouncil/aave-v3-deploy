@@ -11,14 +11,10 @@ contract Events {
     event Reinvested(uint256 hollarAmount, uint256 tokenId);
     event PositionProcessed(uint256 indexed positionIndex, uint256 tokenId, uint8 newState);
     event PositionRedeemed(uint256 indexed positionIndex, uint256 tokenId, uint256 yieldReceived, uint256 principalReceived);
-    event PositionMarkedStale(uint256 indexed positionIndex);
-    event PositionUnmarkedStale(uint256 indexed positionIndex);
     event DepositsPaused();
     event DepositsUnpaused();
     event TvlCapUpdated(uint256 newCap);
     event MinReinvestAmountUpdated(uint256 newAmount);
     event MinRedeemAmountUpdated(uint256 newAmount);
     event OracleUpdated(address indexed oracle);
-    event WithdrawalDelayUpdated(uint256 newDelay);
-    event WithdrawalDelayed(uint256 indexed positionIndex, uint256 delaySeconds);
 }

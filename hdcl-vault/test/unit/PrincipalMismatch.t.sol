@@ -160,37 +160,6 @@ contract PrincipalMismatchTest is BaseTest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //   STALE PATH: expected = stalePrincipal, not pos.principal
-    // ═══════════════════════════════════════════════════════════════════════
-
-    /// @notice For stale positions, the "expected" amount in the mismatch event
-    ///         is `stalePrincipal` (the frozen value at stale-time), not the
-    ///         original `pos.principal`. Currently they're identical because
-    ///         `markPositionStale` sets `stalePrincipal = pos.principal`, but
-    ///         the event must use the right field for forward-compatibility.
-    function test_principalRedemption_stale_expectedFromStalePrincipal() public {
-        // Get position into PWR state
-        uint256 tokenId = _readyForPrincipalRedemption();
-
-        // Mark it stale BEFORE redemption (state must be in valid stale states
-        // and stuck for withdrawalDelay — we just warped past in setup)
-        vm.prank(admin);
-        vault.markPositionStale(0);
-
-        // Inject a -50 wei shortfall
-        pool.setPayoutDelta(tokenId, -50);
-
-        vm.recordLogs();
-        vault.pokeDecentral(0);
-
-        Mismatch[] memory ms = _collectMismatches();
-        assertEq(ms.length, 1, "one mismatch on stale redemption");
-        assertEq(ms[0].expected, TEN_THOUSAND_HOLLAR, "expected = stalePrincipal");
-        assertEq(ms[0].received, TEN_THOUSAND_HOLLAR - 50, "received = stalePrincipal - 50");
-        assertEq(ms[0].delta, int256(-50));
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
     //   EVENT INTEGRITY: PositionRedeemed still fires alongside Mismatch
     // ═══════════════════════════════════════════════════════════════════════
 

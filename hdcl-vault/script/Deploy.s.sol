@@ -12,7 +12,6 @@ contract Deploy is Script {
     address constant POOL_TOKEN = 0xC91808c129C9766b13D22c9f0cD53Db459c0bc48;
     address constant HOLLAR = 0x531a654d1696ED52e7275A8cede955E82620f99a;
     uint256 constant TVL_CAP = 2_000_000e18;
-    uint256 constant WITHDRAWAL_DELAY = 48 hours;
 
     function run() external {
         address admin = vm.envAddress("ADMIN_ADDRESS");
@@ -24,8 +23,7 @@ contract Deploy is Script {
             DECENTRAL_POOL,
             POOL_TOKEN,
             HOLLAR,
-            TVL_CAP,
-            WITHDRAWAL_DELAY
+            TVL_CAP
         );
 
         console.log("Implementation:", impl);
@@ -45,8 +43,7 @@ contract Deploy is Script {
         address decentralPool,
         address poolToken,
         address hollarToken,
-        uint256 tvlCap,
-        uint256 withdrawalDelay
+        uint256 tvlCap
     ) public returns (address impl, address proxy, address oracle) {
         require(
             vm.addr(deployerKey) == admin,
@@ -58,7 +55,7 @@ contract Deploy is Script {
         HDCLVault implementation = new HDCLVault();
         bytes memory initData = abi.encodeCall(
             HDCLVault.initialize,
-            (decentralPool, poolToken, hollarToken, tvlCap, withdrawalDelay, admin)
+            (decentralPool, poolToken, hollarToken, tvlCap, admin)
         );
         ERC1967Proxy proxyContract = new ERC1967Proxy(
             address(implementation),

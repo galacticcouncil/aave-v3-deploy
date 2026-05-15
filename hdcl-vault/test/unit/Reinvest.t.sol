@@ -113,8 +113,8 @@ contract ReinvestTest is BaseTest {
         //    After processing a 10,000 HOLLAR position with yield, idle will be ~10,000 + yield.
         //    We set the cap so that reinvestment can only use part of the idle.
         //    totalAssets after processing: idle = principal + yield (~10,295 for 61 days at 18%).
-        //    totalInvestedPrincipal = 0 (position is redeemed), totalStaleValue = 0.
-        //    _reinvest caps: totalInvestedPrincipal + totalStaleValue + amount <= tvlCap
+        //    totalInvestedPrincipal = 0 (position is redeemed).
+        //    _reinvest caps: totalInvestedPrincipal + amount <= tvlCap
         //    So cap = half of idle means reinvest amount = cap (since invested = 0).
         vm.prank(admin);
         vault.setTvlCap(TEN_THOUSAND_HOLLAR); // enough for the deposit
@@ -132,17 +132,17 @@ contract ReinvestTest is BaseTest {
         assertGt(idle, TEN_THOUSAND_HOLLAR, "Idle should include yield on top of principal");
 
         // 4. Now set a tvlCap that is less than idle but >= totalAssets.
-        //    totalAssets = totalInvestedPrincipal(0) + accruedYield(0) + idle + totalStaleValue(0) = idle
+        //    totalAssets = totalInvestedPrincipal(0) + accruedYield(0) + idle = idle
         //    So we can only set cap >= idle. But we want to CAP reinvestment.
-        //    _reinvest caps: totalInvestedPrincipal + totalStaleValue + amount <= tvlCap
+        //    _reinvest caps: totalInvestedPrincipal + amount <= tvlCap
         //    After full processing, totalInvestedPrincipal = 0, so amount <= tvlCap.
         //    Setting tvlCap = idle/2 would fail the setTvlCap check.
         //    Instead, keep the cap at TEN_THOUSAND_HOLLAR (which is < idle = ~10,295).
         //    Wait — setTvlCap requires newCap >= totalAssets(). totalAssets = idle here.
         //    So we can't set it below idle. But we CAN keep the existing cap if it was set before.
         //    The current tvlCap is already TEN_THOUSAND_HOLLAR which is < idle.
-        //    The _reinvest check is: totalInvestedPrincipal + totalStaleValue + amount > tvlCap
-        //    => 0 + 0 + amount > 10,000 => amount capped at 10,000.
+        //    The _reinvest check is: totalInvestedPrincipal + amount > tvlCap
+        //    => 0 + amount > 10,000 => amount capped at 10,000.
         //    Since idle > 10,000, the reinvest should only use 10,000.
 
         uint256 posCountBefore = vault.getPositionCount();
