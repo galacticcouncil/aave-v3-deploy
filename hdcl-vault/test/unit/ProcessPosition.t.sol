@@ -305,7 +305,7 @@ contract ProcessPositionTest is BaseTest {
         _warpDays(61);
 
         // Before processing Bob's position, check queue state
-        // (The queue may have been partially/fully cleared by Bob's deposit
+        // (The queue may have been halfly/fully cleared by Bob's deposit
         //  using existing idle HOLLAR. If not, processing Bob's position will do it.)
         uint256 queueBefore = vault.totalQueuedHdcl();
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
@@ -430,16 +430,148 @@ contract ProcessPositionTest is BaseTest {
         assertEq(sC, 3, "Position advances to PrincipalWithdrawalRequested");
     }
 
-    /// @notice Async-only vault: maxWithdraw, maxRedeem, previewWithdraw all
-    ///         return 0 regardless of caller / state. Pure constant returns.
-    function test_asyncOnlyViews_alwaysZero() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
+    /// @notice ERC-7540 §maxRedeem/maxWithdraw: returns the value of all
+    ///         settled-but-unclaimed requests for the caller. Pre-settle
+    ///         returns 0; after pokeQueue settles, returns the claimable
+    ///         amount; drops back as the user redeems. `previewWithdraw`
+    ///         stays at 0 — documented sync-not-supported sentinel.
+    function test_maxRedeem_maxWithdraw_reflectClaimable() public {
+        // Pre-deposit: nothing claimable for anyone.
+        assertEq(vault.maxRedeem(alice), 0, "maxRedeem pre-deposit");
+        assertEq(vault.maxWithdraw(alice), 0, "maxWithdraw pre-deposit");
+        assertEq(vault.maxRedeem(address(0)), 0, "zero addr has nothing");
 
-        assertEq(vault.maxWithdraw(alice), 0, "maxWithdraw is always 0");
-        assertEq(vault.maxRedeem(alice), 0, "maxRedeem is always 0");
+        // Alice deposits + requests redeem, but pokeQueue hasn't run.
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _warpDays(61);
+        _processPositionFull(0); // idle accumulates
+        uint256 aliceHdcl = vault.balanceOf(alice);
+        uint256 reqId = _requestRedeem(alice, aliceHdcl / 4);
+
+        // Still 0 before settlement.
+        assertEq(vault.maxRedeem(alice), 0, "no settle yet -> 0");
+        assertEq(vault.maxWithdraw(alice), 0, "no settle yet -> 0");
+
+        // Settle.
+        vault.pokeQueue();
+
+        uint256 claimableShares = vault.claimableRedeemRequest(reqId, alice);
+        assertGt(claimableShares, 0, "settled some shares");
+
+        // maxRedeem matches claimable shares.
+        assertEq(vault.maxRedeem(alice), claimableShares, "maxRedeem == hdclSettled sum");
+
+        // maxWithdraw matches the reserved HOLLAR for those shares.
+        (, , , uint256 hollarOwed, ) = vault.getRedemptionRequest(reqId);
+        assertEq(vault.maxWithdraw(alice), hollarOwed, "maxWithdraw == hollarOwed sum");
+
+        // Unrelated address sees 0.
+        assertEq(vault.maxRedeem(bob), 0, "bob has nothing");
+        assertEq(vault.maxWithdraw(bob), 0, "bob has nothing");
+
+        // Partial claim drops the maxes pro-rata.
+        uint256 half = claimableShares / 2;
+        vm.prank(alice);
+        vault.redeem(half, alice, alice);
+        assertApproxEqAbs(vault.maxRedeem(alice), claimableShares - half, 1, "maxRedeem after half claim");
+
+        // previewWithdraw stays at 0 (documented sync-not-supported sentinel).
         assertEq(vault.previewWithdraw(1e18), 0, "previewWithdraw is always 0");
         assertEq(vault.previewWithdraw(0), 0, "previewWithdraw(0) is 0");
-        assertEq(vault.maxWithdraw(address(0)), 0, "maxWithdraw(zero addr) is 0");
-        assertEq(vault.maxRedeem(address(0)), 0, "maxRedeem(zero addr) is 0");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //   _advancePositionHead bounded sweep (Finding #13 regression)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @dev Create N small positions, mature them, then redeem all of them
+    ///      in REVERSE order. After this every position is Redeemed but
+    ///      positionHead is still at 0 — the eventual head sweep would have
+    ///      to advance N slots in one call without the bound.
+    function _redeemAllInReverseOrder(uint256 n) internal {
+        // Need a controlled deposit size. 1 HOLLAR units (= 1e18) hit the
+        // mock pool's minimum-investment exactly.
+        uint256 each = 1e18 * 10; // 10 HOLLAR per position
+        hollar.mint(alice, each * n);
+        vm.prank(alice);
+        hollar.approve(address(vault), type(uint256).max);
+
+        for (uint256 i = 0; i < n; i++) {
+            vm.prank(alice);
+            vault.deposit(each, alice);
+        }
+
+        // Mature all positions simultaneously.
+        _warpDays(61);
+
+        // Redeem positions [n-1, n-2, ..., 1], leaving 0 Active so that
+        // _advancePositionHead won't advance during the loop.
+        for (uint256 i = n - 1; i >= 1; i--) {
+            _processPositionFull(i);
+        }
+    }
+
+    /// @notice Sweep cap fires after exactly MAX_POSITION_HEAD_SWEEP advances.
+    function test_advancePositionHead_respectsSweepCap() public {
+        uint256 n = 55; // > sweep cap of 50
+        _redeemAllInReverseOrder(n);
+
+        // positionHead is still 0 because every Redeemed transition above
+        // was for an index > 0; _advancePositionHead saw position[0] Active
+        // and stopped immediately.
+        assertEq(vault.positionHead(), 0, "head unmoved while index 0 is Active");
+
+        // Now redeem index 0. _advancePositionHead runs from head=0, sees
+        // 0..49 Redeemed (n=55, so 0..54 all Redeemed once index 0 transitions),
+        // advances up to the cap and stops.
+        _processPositionFull(0);
+
+        assertEq(
+            vault.positionHead(),
+            50,
+            "head advanced exactly MAX_POSITION_HEAD_SWEEP slots"
+        );
+    }
+
+    /// @notice Subsequent calls drain the backlog batch-at-a-time.
+    function test_advancePositionHead_drainsBacklogAcrossCalls() public {
+        uint256 n = 55;
+        _redeemAllInReverseOrder(n);
+        _processPositionFull(0); // first sweep, head = 50
+
+        assertEq(vault.positionHead(), 50, "first batch advanced");
+
+        // pokeQueue triggers another sweep without requiring a new redemption.
+        vault.pokeQueue();
+
+        assertEq(vault.positionHead(), n, "second sweep finishes the backlog");
+    }
+
+    /// @notice pokeQueue advances positionHead even when there's no queue
+    ///         settlement work — the keeper's regular cadence keeps head
+    ///         in sync with redeemed positions without needing a fresh
+    ///         pokeDecentral.
+    function test_pokeQueue_advancesPositionHead() public {
+        // Create 5 positions, mature, redeem 4 in reverse, leaving index 0 Active.
+        uint256 each = 10e18;
+        for (uint256 i = 0; i < 5; i++) {
+            vm.prank(alice);
+            vault.deposit(each, alice);
+        }
+        _warpDays(61);
+        for (uint256 i = 4; i >= 1; i--) {
+            _processPositionFull(i);
+        }
+        // Head is still 0 (we never redeemed index 0).
+        assertEq(vault.positionHead(), 0, "head untouched");
+
+        // Redeem index 0 — its sweep would advance through all 5 (≤ cap).
+        _processPositionFull(0);
+        assertEq(vault.positionHead(), 5, "head advanced through all 5");
+
+        // Subsequent pokeQueue on a "settled" state is a no-op for head.
+        uint256 headBefore = vault.positionHead();
+        vault.pokeQueue();
+        assertEq(vault.positionHead(), headBefore, "no-op when nothing to advance");
     }
 }

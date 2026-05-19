@@ -35,21 +35,30 @@ contract HDCLVault is
     //                            CONSTANTS
     // ═══════════════════════════════════════════════════════════════════════
 
-    uint256 public constant WAD = 1e18;
-    uint256 public constant SECONDS_PER_YEAR = 365 days;
+    uint256 internal constant WAD = 1e18;
+    uint256 internal constant SECONDS_PER_YEAR = 365 days;
 
     /// @dev Dead shares minted on first deposit to mitigate inflation attack
     uint256 private constant DEAD_SHARES = 1000;
     address private constant DEAD_ADDRESS = address(0xdead);
 
-    uint256 public constant MAX_QUEUE_ITERATIONS = 50;
+    uint256 internal constant MAX_QUEUE_ITERATIONS = 50;
 
     /// @dev Per-call cap on skipping cancelled (zero-address) queue entries.
     ///      Separate from the work cap so a wave of cancels doesn't starve real
     ///      redemptions of their per-call iteration budget. Bounded so a single
     ///      pokeQueue call cannot exceed the block gas limit even if the queue
     ///      contains an unbounded number of holes.
-    uint256 public constant MAX_QUEUE_SKIPS = 500;
+    uint256 internal constant MAX_QUEUE_SKIPS = 500;
+
+    /// @dev Per-call cap on advancing `positionHead` past consecutive Redeemed
+    ///      positions. In a multi-pool deployment positions can mature
+    ///      out-of-order across pools; if many redeem before their head-side
+    ///      neighbors, the eventual head sweep could blow the block gas limit.
+    ///      The advancer is idempotent — subsequent calls drain the backlog
+    ///      another batch at a time. Also invoked from `pokeQueue` so keeper
+    ///      cadence keeps head in sync without requiring a fresh redemption.
+    uint256 internal constant MAX_POSITION_HEAD_SWEEP = 50;
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
@@ -842,6 +851,12 @@ contract HDCLVault is
         // the queue compact in adversarial cancel-spam scenarios.
         (uint256 hollarUsed, ) = _processQueueWithHollar(idleHollar, rate);
 
+        // Drain a batch of stacked Redeemed positions off the head if any.
+        // Cheap when there's nothing to do (loop exits on first non-Redeemed).
+        // In multi-pool deployments positions mature out-of-order; without this
+        // call the cleanup only happens on the next pokeDecentral redemption.
+        _advancePositionHead();
+
         // Reinvest when the queue made no actual progress this call — i.e., we
         // didn't fulfill (or partial-fulfill) any entry. A purely-static
         // "queue has funds + entries" check would suppress reinvest whenever
@@ -981,15 +996,34 @@ contract HDCLVault is
         return convertToShares(maxDeposit(receiver));
     }
 
-    /// @notice Max HOLLAR `owner` can sync-withdraw. Always 0 — this vault
-    ///         is async-only. Use `requestRedeem` then `withdraw` (claim).
-    function maxWithdraw(address /* owner */) external pure returns (uint256) {
-        return 0;
+    /// @notice ERC-7540 `maxWithdraw`: total HOLLAR currently claimable by
+    ///         `controller` across all of their settled requests.
+    /// @dev    Walks the per-controller settled-index — bounded by the user's
+    ///         own outstanding settled-but-unclaimed requests (immune to
+    ///         cancel-spam DoS). Per ERC-7540 §maxRedeem/maxWithdraw, returns
+    ///         the value of all settled-but-unclaimed requests for the caller.
+    function maxWithdraw(address controller) external view returns (uint256 max) {
+        uint256[] storage ids = _settledByController[controller];
+        uint256 len = ids.length;
+        for (uint256 i = 0; i < len; i++) {
+            QueueLib.Request storage r = redemptionQueue[ids[i]];
+            // Defensive: the index may briefly hold stale entries that claim
+            // hasn't swap-popped yet. Filter on user match keeps the answer
+            // accurate without requiring eager index pruning.
+            if (r.user == controller) max += r.hollarOwed;
+        }
     }
 
-    /// @notice Max hDCL `owner` can sync-redeem. Always 0 — async-only.
-    function maxRedeem(address /* owner */) external pure returns (uint256) {
-        return 0;
+    /// @notice ERC-7540 `maxRedeem`: total hDCL currently claimable by
+    ///         `controller` across all of their settled requests. Same
+    ///         iteration bound as `maxWithdraw`.
+    function maxRedeem(address controller) external view returns (uint256 max) {
+        uint256[] storage ids = _settledByController[controller];
+        uint256 len = ids.length;
+        for (uint256 i = 0; i < len; i++) {
+            QueueLib.Request storage r = redemptionQueue[ids[i]];
+            if (r.user == controller) max += r.hdclSettled;
+        }
     }
 
     /// @notice Preview how much HOLLAR is needed to mint exactly `shares` hDCL.
@@ -1015,22 +1049,29 @@ contract HDCLVault is
     ///         first-deposit dust below DEAD_SHARES). Lets off-chain callers
     ///         distinguish "would succeed with N HDCL" from "would revert"
     ///         without forcing them to catch a Solidity revert.
+    /// @notice ERC-4626 `previewDeposit`. Returns the hDCL that `deposit`
+    ///         would mint for `hollarAmount` HOLLAR at the current rate.
+    /// @dev    Per ERC-4626, preview MUST reflect what the actual `deposit`
+    ///         call would do "in the same transaction" — so this reverts on
+    ///         every math edge that `deposit` reverts on. It does NOT honor
+    ///         `depositsPaused` or `tvlCap` (the spec excludes "user/global
+    ///         limits" from preview), so callers can still preview-size an
+    ///         eventual unpaused deposit.
     function previewDeposit(
         uint256 hollarAmount
     ) external view returns (uint256 hdclAmount) {
-        if (hollarAmount == 0) return 0;
+        if (hollarAmount == 0) revert ZeroAmount();
         uint256 supply = totalSupply();
         if (supply == 0) {
-            // Mirror deposit's `require(hollarAmount > DEAD_SHARES)`.
-            if (hollarAmount <= DEAD_SHARES) return 0;
+            if (hollarAmount <= DEAD_SHARES) revert DepositTooSmall();
             return hollarAmount - DEAD_SHARES;
         }
         uint256 assets = totalAssets();
-        // Catastrophic state (shares exist but no backing): deposit would
-        // panic on division by zero. Mirror the deposit reject by returning
-        // 0, so off-chain callers don't see an opaque panic.
-        if (assets == 0) return 0;
-        return (hollarAmount * supply) / assets;
+        // Catastrophic state: shares exist but no backing. `deposit` would
+        // revert with VaultEmpty before the divide; mirror that here.
+        if (assets == 0) revert VaultEmpty();
+        hdclAmount = (hollarAmount * supply) / assets;
+        if (hdclAmount == 0) revert DepositTooSmall();
     }
 
     /// @notice Preview the HOLLAR value of a HDCL redemption at current rate
@@ -1477,12 +1518,17 @@ contract HDCLVault is
 
     /// @dev Advance positionHead past redeemed positions
     function _advancePositionHead() internal {
+        uint256 head = positionHead;
+        uint256 len = positions.length;
+        uint256 swept;
         while (
-            positionHead < positions.length &&
-            positions[positionHead].state == NFTState.Redeemed
+            head < len &&
+            positions[head].state == NFTState.Redeemed &&
+            swept < MAX_POSITION_HEAD_SWEEP
         ) {
-            positionHead++;
+            unchecked { head++; swept++; }
         }
+        positionHead = head;
     }
 
     /// @dev Record a fresh position: bump principal counter and add to the
