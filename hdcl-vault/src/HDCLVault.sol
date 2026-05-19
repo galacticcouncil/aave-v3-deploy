@@ -317,12 +317,33 @@ contract HDCLVault is
 
     error DepositsArePaused();
     error ZeroAmount();
+    error ZeroAddress();
     error ExceedsTvlCap();
     error PositionAlreadyRedeemed();
     error NotRequestOwner();
     error RequestNotActive();
     error InvalidRequestId();
     error BelowMinimumRedeem();
+    error InsufficientClaimable();
+    error DepositTooSmall();
+    error VaultEmpty();
+    error OracleNotSet();
+    error OracleInvalidAnswer();
+    error OracleRoundIncomplete();
+    error OracleStaleRound();
+    error OracleDecimalsOutOfRange();
+    error NotAdminOrGuardian();
+    error NotAuthorized();
+    error CapBelowAssets();
+    error MinMustBePositive();
+    error PoolNotRegistered();
+    error CannotRetireActivePool();
+    error PoolAlreadyRegistered();
+    error PoolWrongStablecoin();
+    error PoolNoNFTContract();
+    error PoolTokenMismatch();
+    error OnlyPoolNFTs();
+    error PoolHasOpenPositions();
 
     // ═══════════════════════════════════════════════════════════════════════
     //                         INITIALIZER
@@ -346,10 +367,10 @@ contract HDCLVault is
         uint256 _tvlCap,
         address _admin
     ) external initializer {
-        require(_decentralPool != address(0), "Zero decentralPool");
-        require(_poolToken != address(0), "Zero poolToken");
-        require(_hollar != address(0), "Zero hollar");
-        require(_admin != address(0), "Zero admin");
+        if (_decentralPool == address(0)) revert ZeroAddress();
+        if (_poolToken == address(0)) revert ZeroAddress();
+        if (_hollar == address(0)) revert ZeroAddress();
+        if (_admin == address(0)) revert ZeroAddress();
 
         __ERC20_init("Hydrated Decentral", "HDCL");
         __AccessControl_init();
@@ -417,7 +438,7 @@ contract HDCLVault is
         uint256 assets,
         address receiver
     ) external nonReentrant whenNotPaused returns (uint256 shares) {
-        require(receiver != address(0), "Zero receiver");
+        if (receiver == address(0)) revert ZeroAddress();
         shares = _validateAndPreviewShares(assets);
         _deposit(msg.sender, receiver, assets, shares);
     }
@@ -431,8 +452,8 @@ contract HDCLVault is
         uint256 shares,
         address receiver
     ) external nonReentrant whenNotPaused returns (uint256 assets) {
-        require(receiver != address(0), "Zero receiver");
-        require(shares > 0, "Zero shares");
+        if (receiver == address(0)) revert ZeroAddress();
+        if (shares == 0) revert ZeroAmount();
         assets = previewMint(shares);
         // Reuse the same validation path: paused/zero/cap checks
         // run again on the computed asset amount.
@@ -497,12 +518,9 @@ contract HDCLVault is
         address owner
     ) external nonReentrant whenNotPaused returns (uint256 requestId) {
         if (shares < minRedeemAmount) revert BelowMinimumRedeem();
-        require(controller != address(0), "Zero controller");
-        require(owner != address(0), "Zero owner");
-        require(
-            msg.sender == owner || isOperator[owner][msg.sender],
-            "Not authorized"
-        );
+        if (controller == address(0)) revert ZeroAddress();
+        if (owner == address(0)) revert ZeroAddress();
+        if (msg.sender != owner && !isOperator[owner][msg.sender]) revert NotAuthorized();
 
         // Escrow HDCL from owner. The vault's per-user operator approval
         // covers this — no per-token allowance needed.
@@ -532,7 +550,7 @@ contract HDCLVault is
     /// @param  operator  Address being approved or revoked
     /// @param  approved  Approval state
     function setOperator(address operator, bool approved) external {
-        require(operator != address(0), "Zero operator");
+        if (operator == address(0)) revert ZeroAddress();
         isOperator[msg.sender][operator] = approved;
         emit OperatorSet(msg.sender, operator, approved);
     }
@@ -624,8 +642,8 @@ contract HDCLVault is
         address receiver,
         address controller
     ) external nonReentrant whenNotPaused returns (uint256 assets) {
-        require(shares > 0, "Zero shares");
-        require(receiver != address(0), "Zero receiver");
+        if (shares == 0) revert ZeroAmount();
+        if (receiver == address(0)) revert ZeroAddress();
         _authorizeClaim(receiver, controller);
 
         assets = _claimByShares(controller, shares);
@@ -645,8 +663,8 @@ contract HDCLVault is
         address receiver,
         address controller
     ) external nonReentrant whenNotPaused returns (uint256 shares) {
-        require(assets > 0, "Zero assets");
-        require(receiver != address(0), "Zero receiver");
+        if (assets == 0) revert ZeroAmount();
+        if (receiver == address(0)) revert ZeroAddress();
         _authorizeClaim(receiver, controller);
 
         (shares, assets) = _claimByAssets(controller, assets);
@@ -667,12 +685,11 @@ contract HDCLVault is
         // Role path: must be a CLAIM_OPERATOR_ROLE holder, controller must
         // have opted in, and receiver must be the controller itself (no
         // redirect — the role grants timing, not destination).
-        require(
-            hasRole(CLAIM_OPERATOR_ROLE, msg.sender)
-                && autoClaimEnabled[controller]
-                && receiver == controller,
-            "Not authorized"
-        );
+        if (
+            !hasRole(CLAIM_OPERATOR_ROLE, msg.sender)
+                || !autoClaimEnabled[controller]
+                || receiver != controller
+        ) revert NotAuthorized();
     }
 
     /// @dev Walk the controller's settled requests in FIFO order, drawing
@@ -707,7 +724,7 @@ contract HDCLVault is
             }
         }
 
-        require(remaining == 0, "Insufficient claimable");
+        if (remaining != 0) revert InsufficientClaimable();
     }
 
     /// @dev Walk the controller's settled requests in FIFO order, drawing
@@ -740,7 +757,7 @@ contract HDCLVault is
             }
         }
 
-        require(remaining == 0, "Insufficient claimable");
+        if (remaining != 0) revert InsufficientClaimable();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -940,7 +957,7 @@ contract HDCLVault is
 
         uint256 supply = totalSupply();
         if (supply == 0) {
-            require(assets > DEAD_SHARES, "Deposit too small");
+            if (assets <= DEAD_SHARES) revert DepositTooSmall();
             shares = assets - DEAD_SHARES;
         } else {
             uint256 totalA = totalAssets();
@@ -948,9 +965,9 @@ contract HDCLVault is
             // deposit at a zero rate — the depositor would receive no HDCL
             // and lose their HOLLAR. Solidity 0.8+ would panic on the
             // division below; this gives a clear revert reason instead.
-            require(totalA > 0, "Vault has no assets");
+            if (totalA == 0) revert VaultEmpty();
             shares = (assets * supply) / totalA;
-            require(shares > 0, "Deposit too small");
+            if (shares == 0) revert DepositTooSmall();
         }
     }
 
@@ -1281,13 +1298,13 @@ contract HDCLVault is
     ///           - `answeredInRound >= roundId` — answer isn't carry-over
     ///             from a prior round (stale data).
     function getOraclePrice() external view returns (uint256) {
-        require(address(oracle) != address(0), "Oracle not set");
+        if (address(oracle) == address(0)) revert OracleNotSet();
         (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) =
             oracle.latestRoundData();
-        require(answer > 0, "Invalid oracle price");
-        require(roundId != 0, "Invalid round ID");
-        require(updatedAt > 0, "Round not complete");
-        require(answeredInRound >= roundId, "Stale price round");
+        if (answer <= 0) revert OracleInvalidAnswer();
+        if (roundId == 0) revert OracleRoundIncomplete();
+        if (updatedAt == 0) revert OracleRoundIncomplete();
+        if (answeredInRound < roundId) revert OracleStaleRound();
 
         uint8 oracleDecimals = oracle.decimals();
         return (uint256(answer) * WAD) / (10 ** oracleDecimals);
@@ -1301,10 +1318,9 @@ contract HDCLVault is
     ///      GUARDIAN_ROLE. Admin retains a strict superset of guardian's
     ///      authority — anything the guardian can do, the admin can do too.
     modifier onlyAdminOrGuardian() {
-        require(
-            hasRole(ADMIN_ROLE, msg.sender) || hasRole(GUARDIAN_ROLE, msg.sender),
-            "Not admin or guardian"
-        );
+        if (!hasRole(ADMIN_ROLE, msg.sender) && !hasRole(GUARDIAN_ROLE, msg.sender)) {
+            revert NotAdminOrGuardian();
+        }
         _;
     }
 
@@ -1339,7 +1355,7 @@ contract HDCLVault is
     ///         `totalAssets()` above `newCap` over time. The cap continues to
     ///         restrict NEW principal entering via deposit/reinvest.
     function setTvlCap(uint256 newCap) external onlyRole(ADMIN_ROLE) {
-        require(newCap >= totalAssets(), "Cap below current assets");
+        if (newCap < totalAssets()) revert CapBelowAssets();
         tvlCap = newCap;
         emit TvlCapUpdated(newCap);
     }
@@ -1359,7 +1375,7 @@ contract HDCLVault is
     ///         and still consume one iteration of `_processQueueWithHollar`'s
     ///         work budget per spam entry — a cheap queue grief.
     function setMinRedeemAmount(uint256 amount) external onlyRole(ADMIN_ROLE) {
-        require(amount > 0, "Min must be positive");
+        if (amount == 0) revert MinMustBePositive();
         minRedeemAmount = amount;
         emit MinRedeemAmountUpdated(amount);
     }
@@ -1375,14 +1391,14 @@ contract HDCLVault is
     ///         feed, exotic decimals) before it can propagate to every
     ///         `getOraclePrice` consumer.
     function setOracle(address _oracle) external onlyRole(ADMIN_ROLE) {
-        require(_oracle != address(0), "Zero address");
+        if (_oracle == address(0)) revert ZeroAddress();
 
         IAggregatorV3Interface candidate = IAggregatorV3Interface(_oracle);
         (, int256 answer, , uint256 updatedAt, ) = candidate.latestRoundData();
-        require(answer > 0, "Oracle: invalid answer");
-        require(updatedAt > 0, "Oracle: zero updatedAt");
+        if (answer <= 0) revert OracleInvalidAnswer();
+        if (updatedAt == 0) revert OracleRoundIncomplete();
         uint8 d = candidate.decimals();
-        require(d >= 6 && d <= 18, "Oracle: decimals out of range");
+        if (d < 6 || d > 18) revert OracleDecimalsOutOfRange();
 
         oracle = candidate;
         emit OracleUpdated(_oracle);
@@ -1404,7 +1420,7 @@ contract HDCLVault is
     ///         reinvestments. Existing positions stay anchored to whichever
     ///         pool minted them.
     function setActiveDepositPool(IDecentralPool pool) external onlyRole(ADMIN_ROLE) {
-        require(isPoolRegistered[pool], "Pool not registered");
+        if (!isPoolRegistered[pool]) revert PoolNotRegistered();
         activeDepositPool = pool;
         emit ActiveDepositPoolSet(address(pool));
     }
@@ -1415,8 +1431,8 @@ contract HDCLVault is
     ///         the operator to drain a pool before forgetting about it; keeps
     ///         the invariant that every registered pool is reachable.
     function retirePool(IDecentralPool pool) external onlyRole(ADMIN_ROLE) {
-        require(isPoolRegistered[pool], "Pool not registered");
-        require(pool != activeDepositPool, "Cannot retire active pool");
+        if (!isPoolRegistered[pool]) revert PoolNotRegistered();
+        if (pool == activeDepositPool) revert CannotRetireActivePool();
 
         // Reject if any non-redeemed position references this pool.
         uint256 len = positions.length;
@@ -1425,7 +1441,7 @@ contract HDCLVault is
                 positions[i].state != NFTState.Redeemed &&
                 positionPool[i] == pool
             ) {
-                revert("Pool has open positions");
+                revert PoolHasOpenPositions();
             }
         }
 
@@ -1456,13 +1472,13 @@ contract HDCLVault is
     ///      param (which would otherwise be unused). Pass `address(0)` to
     ///      skip the assertion.
     function _registerPool(IDecentralPool newPool, address expectedPoolToken) internal {
-        require(address(newPool) != address(0), "Zero pool");
-        require(!isPoolRegistered[newPool], "Pool already registered");
-        require(address(newPool.stablecoin()) == address(hollar), "Pool: wrong stablecoin");
+        if (address(newPool) == address(0)) revert ZeroAddress();
+        if (isPoolRegistered[newPool]) revert PoolAlreadyRegistered();
+        if (address(newPool.stablecoin()) != address(hollar)) revert PoolWrongStablecoin();
         address poolTokenAddr = address(newPool.poolToken());
-        require(poolTokenAddr != address(0), "Pool: no NFT contract");
+        if (poolTokenAddr == address(0)) revert PoolNoNFTContract();
         if (expectedPoolToken != address(0)) {
-            require(poolTokenAddr == expectedPoolToken, "Pool: poolToken mismatch");
+            if (poolTokenAddr != expectedPoolToken) revert PoolTokenMismatch();
         }
 
         isPoolRegistered[newPool] = true;
@@ -1488,7 +1504,7 @@ contract HDCLVault is
         uint256,
         bytes calldata
     ) external view returns (bytes4) {
-        require(isRegisteredPoolToken[msg.sender], "Only pool NFTs");
+        if (!isRegisteredPoolToken[msg.sender]) revert OnlyPoolNFTs();
         return IERC721Receiver.onERC721Received.selector;
     }
 

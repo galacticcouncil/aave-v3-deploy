@@ -65,28 +65,28 @@ contract AdminTest is BaseTest {
         HDCLVault impl = new HDCLVault();
 
         // Zero decentralPool
-        vm.expectRevert("Zero decentralPool");
+        vm.expectRevert(HDCLVault.ZeroAddress.selector);
         new ERC1967Proxy(address(impl), abi.encodeCall(
             HDCLVault.initialize,
             (address(0), address(nft), address(hollar), INITIAL_TVL_CAP, admin)
         ));
 
         // Zero poolToken
-        vm.expectRevert("Zero poolToken");
+        vm.expectRevert(HDCLVault.ZeroAddress.selector);
         new ERC1967Proxy(address(impl), abi.encodeCall(
             HDCLVault.initialize,
             (address(pool), address(0), address(hollar), INITIAL_TVL_CAP, admin)
         ));
 
         // Zero hollar
-        vm.expectRevert("Zero hollar");
+        vm.expectRevert(HDCLVault.ZeroAddress.selector);
         new ERC1967Proxy(address(impl), abi.encodeCall(
             HDCLVault.initialize,
             (address(pool), address(nft), address(0), INITIAL_TVL_CAP, admin)
         ));
 
         // Zero admin
-        vm.expectRevert("Zero admin");
+        vm.expectRevert(HDCLVault.ZeroAddress.selector);
         new ERC1967Proxy(address(impl), abi.encodeCall(
             HDCLVault.initialize,
             (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, address(0))
@@ -103,7 +103,7 @@ contract AdminTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_pauseDeposits_rejectsNonRoleHolder() public {
-        vm.expectRevert("Not admin or guardian");
+        vm.expectRevert(HDCLVault.NotAdminOrGuardian.selector);
         vm.prank(alice);
         vault.pauseDeposits();
     }
@@ -112,7 +112,7 @@ contract AdminTest is BaseTest {
         vm.prank(admin);
         vault.pauseDeposits();
 
-        vm.expectRevert("Not admin or guardian");
+        vm.expectRevert(HDCLVault.NotAdminOrGuardian.selector);
         vm.prank(alice);
         vault.unpauseDeposits();
     }
@@ -197,7 +197,7 @@ contract AdminTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_pause_rejectsNonRoleHolder() public {
-        vm.expectRevert("Not admin or guardian");
+        vm.expectRevert(HDCLVault.NotAdminOrGuardian.selector);
         vm.prank(alice);
         vault.pause();
     }
@@ -206,7 +206,7 @@ contract AdminTest is BaseTest {
         vm.prank(admin);
         vault.pause();
 
-        vm.expectRevert("Not admin or guardian");
+        vm.expectRevert(HDCLVault.NotAdminOrGuardian.selector);
         vm.prank(alice);
         vault.unpause();
     }
@@ -316,7 +316,7 @@ contract AdminTest is BaseTest {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
         vm.prank(admin);
-        vm.expectRevert("Cap below current assets");
+        vm.expectRevert(HDCLVault.CapBelowAssets.selector);
         vault.setTvlCap(TEN_THOUSAND_HOLLAR - 1);
     }
 
@@ -416,7 +416,7 @@ contract AdminTest is BaseTest {
     ///         work iteration per spam entry in the queue processor.
     function test_setMinRedeemAmount_revertsOnZero() public {
         vm.prank(admin);
-        vm.expectRevert("Min must be positive");
+        vm.expectRevert(HDCLVault.MinMustBePositive.selector);
         vault.setMinRedeemAmount(0);
     }
 
@@ -461,7 +461,7 @@ contract AdminTest is BaseTest {
 
     function test_setOracle_revertsOnZeroAddress() public {
         vm.prank(admin);
-        vm.expectRevert("Zero address");
+        vm.expectRevert(HDCLVault.ZeroAddress.selector);
         vault.setOracle(address(0));
     }
 
@@ -491,7 +491,7 @@ contract AdminTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_getOraclePrice_revertsWithoutOracle() public {
-        vm.expectRevert("Oracle not set");
+        vm.expectRevert(HDCLVault.OracleNotSet.selector);
         vault.getOraclePrice();
     }
 

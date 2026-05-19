@@ -139,7 +139,7 @@ contract ERC4626Test is BaseTest {
 
     function test_deposit_zeroReceiver_reverts() public {
         vm.prank(alice);
-        vm.expectRevert("Zero receiver");
+        vm.expectRevert(HDCLVault.ZeroAddress.selector);
         vault.deposit(10_000e18, address(0));
     }
 
@@ -181,13 +181,13 @@ contract ERC4626Test is BaseTest {
 
     function test_mint_zeroReceiver_reverts() public {
         vm.prank(alice);
-        vm.expectRevert("Zero receiver");
+        vm.expectRevert(HDCLVault.ZeroAddress.selector);
         vault.mint(5_000e18, address(0));
     }
 
     function test_mint_zeroShares_reverts() public {
         vm.prank(alice);
-        vm.expectRevert("Zero shares");
+        vm.expectRevert(HDCLVault.ZeroAmount.selector);
         vault.mint(0, alice);
     }
 

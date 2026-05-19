@@ -37,7 +37,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
     }
 
     function test_setOperator_revertsOnZeroOperator() public {
-        vm.expectRevert("Zero operator");
+        vm.expectRevert(HDCLVault.ZeroAddress.selector);
         vm.prank(alice);
         vault.setOperator(address(0), true);
     }
@@ -66,7 +66,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
 
         // Bob is NOT an operator. Cannot initiate on alice's behalf.
         vm.prank(bob);
-        vm.expectRevert("Not authorized");
+        vm.expectRevert(HDCLVault.NotAuthorized.selector);
         vault.requestRedeem(aliceHdcl / 4, alice, alice);
     }
 
@@ -103,7 +103,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
 
         // Bob is not an operator and not the controller. Reverts.
         vm.prank(bob);
-        vm.expectRevert("Not authorized");
+        vm.expectRevert(HDCLVault.NotAuthorized.selector);
         vault.redeem(settled, alice, alice);
     }
 
@@ -178,7 +178,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
 
         // Alice did NOT opt in.
         vm.prank(keeperBot);
-        vm.expectRevert("Not authorized");
+        vm.expectRevert(HDCLVault.NotAuthorized.selector);
         vault.redeem(settled, alice, alice);
     }
 
@@ -193,7 +193,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
         // Keeper has role + alice opted in, BUT tries to redirect HOLLAR to bob.
         // Must revert: receiver == controller is load-bearing.
         vm.prank(keeperBot);
-        vm.expectRevert("Not authorized");
+        vm.expectRevert(HDCLVault.NotAuthorized.selector);
         vault.redeem(settled, bob, alice);
     }
 
@@ -224,7 +224,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
         (,, uint256 settled2,,) = vault.getRedemptionRequest(reqId);
         if (settled2 > 0) {
             vm.prank(keeperBot);
-            vm.expectRevert("Not authorized");
+            vm.expectRevert(HDCLVault.NotAuthorized.selector);
             vault.redeem(settled2, alice, alice);
         }
     }
@@ -237,7 +237,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
 
         // keeperBot does NOT hold CLAIM_OPERATOR_ROLE
         vm.prank(keeperBot);
-        vm.expectRevert("Not authorized");
+        vm.expectRevert(HDCLVault.NotAuthorized.selector);
         vault.redeem(settled, alice, alice);
     }
 

@@ -82,7 +82,7 @@ contract DepositTest is BaseTest {
         _warpDays(365 * 6);
 
         // Depositing 1 wei → 1 * supply / totalAssets rounds to 0
-        vm.expectRevert("Deposit too small");
+        vm.expectRevert(HDCLVault.DepositTooSmall.selector);
         _deposit(bob, 1);
     }
 
@@ -90,7 +90,7 @@ contract DepositTest is BaseTest {
     function test_deposit_reverts_whenFirstDepositTooSmall() public {
         pool.setMinimumInvestmentAmount(1);
 
-        vm.expectRevert("Deposit too small");
+        vm.expectRevert(HDCLVault.DepositTooSmall.selector);
         _deposit(alice, 1000); // exactly DEAD_SHARES
     }
 
@@ -273,7 +273,7 @@ contract DepositTest is BaseTest {
     ///         today, but prevents storage/event spam.
     function test_onERC721Received_rejectsForeignCaller() public {
         vm.prank(alice);
-        vm.expectRevert("Only pool NFTs");
+        vm.expectRevert(HDCLVault.OnlyPoolNFTs.selector);
         vault.onERC721Received(alice, alice, 0, "");
     }
 

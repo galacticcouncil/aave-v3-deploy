@@ -120,7 +120,7 @@ contract PullRedemptionTest is BaseTest {
 
         // Bob tries to claim alice's redemption
         vm.prank(bob);
-        vm.expectRevert("Not authorized");
+        vm.expectRevert(HDCLVault.NotAuthorized.selector);
         vault.redeem(aliceHdcl / 4, bob, alice);
     }
 
@@ -133,7 +133,7 @@ contract PullRedemptionTest is BaseTest {
 
         // Try to claim more than settled
         vm.prank(alice);
-        vm.expectRevert("Insufficient claimable");
+        vm.expectRevert(HDCLVault.InsufficientClaimable.selector);
         vault.redeem(aliceHdcl, alice, alice);
     }
 

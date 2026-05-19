@@ -46,7 +46,7 @@ contract MultiPoolTest is BaseTest {
         vm.prank(admin);
         vault.registerPool(IDecentralPool(address(pool2)));
 
-        vm.expectRevert("Pool already registered");
+        vm.expectRevert(HDCLVault.PoolAlreadyRegistered.selector);
         vm.prank(admin);
         vault.registerPool(IDecentralPool(address(pool2)));
     }
@@ -60,7 +60,7 @@ contract MultiPoolTest is BaseTest {
             APY_25
         );
 
-        vm.expectRevert("Pool: wrong stablecoin");
+        vm.expectRevert(HDCLVault.PoolWrongStablecoin.selector);
         vm.prank(admin);
         vault.registerPool(IDecentralPool(address(pool3)));
     }
@@ -76,7 +76,7 @@ contract MultiPoolTest is BaseTest {
     }
 
     function test_setActiveDepositPool_rejectsUnregistered() public {
-        vm.expectRevert("Pool not registered");
+        vm.expectRevert(HDCLVault.PoolNotRegistered.selector);
         vm.prank(admin);
         vault.setActiveDepositPool(IDecentralPool(address(pool2)));
     }
@@ -96,7 +96,7 @@ contract MultiPoolTest is BaseTest {
 
     function test_retirePool_revertsOnActivePool() public {
         // The initial pool is the active one; can't retire it
-        vm.expectRevert("Cannot retire active pool");
+        vm.expectRevert(HDCLVault.CannotRetireActivePool.selector);
         vm.prank(admin);
         vault.retirePool(IDecentralPool(address(pool)));
     }
@@ -112,7 +112,7 @@ contract MultiPoolTest is BaseTest {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
         // Now try to retire pool2 — it's still active, blocked by that check
-        vm.expectRevert("Cannot retire active pool");
+        vm.expectRevert(HDCLVault.CannotRetireActivePool.selector);
         vm.prank(admin);
         vault.retirePool(IDecentralPool(address(pool2)));
 
@@ -120,7 +120,7 @@ contract MultiPoolTest is BaseTest {
         vm.prank(admin);
         vault.setActiveDepositPool(IDecentralPool(address(pool)));
 
-        vm.expectRevert("Pool has open positions");
+        vm.expectRevert(HDCLVault.PoolHasOpenPositions.selector);
         vm.prank(admin);
         vault.retirePool(IDecentralPool(address(pool2)));
     }
@@ -204,7 +204,7 @@ contract MultiPoolTest is BaseTest {
 
         // Random NFT contract rejected
         MockPoolToken stranger = new MockPoolToken();
-        vm.expectRevert("Only pool NFTs");
+        vm.expectRevert(HDCLVault.OnlyPoolNFTs.selector);
         vm.prank(address(stranger));
         vault.onERC721Received(address(0), address(0), 0, "");
     }
