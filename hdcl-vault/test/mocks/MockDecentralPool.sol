@@ -31,6 +31,12 @@ contract MockDecentralPool {
     bool public isShutdown;
     bool public isPaused;
 
+    /// @dev Test-only surgical revert flags. Let tests force a revert on a
+    ///      single specific Decentral entry point without affecting the rest,
+    ///      so coverage can hit individual try/catch arms in the vault.
+    bool public revertOnRequestYield;
+    bool public revertOnRequestPrincipal;
+
     // ── Reward accrual state ───────────────────────────────────────────────
     uint256 public cumulativeRewardPerShare;
     uint256 public lastUpdateTime;
@@ -162,6 +168,7 @@ contract MockDecentralPool {
     // ═════════════════════════════════════════════════════════════════════════
 
     function requestYieldWithdrawal(uint256 _tokenId) external {
+        require(!revertOnRequestYield, "Test: requestYield reverted");
         require(!isPaused, "Pool paused");
         require(!isShutdown, "Pool shutdown");
         require(poolToken.ownerOf(_tokenId) == msg.sender, "Not token owner");
@@ -220,6 +227,7 @@ contract MockDecentralPool {
     // ═════════════════════════════════════════════════════════════════════════
 
     function requestPrincipalWithdrawal(uint256 _tokenId) external {
+        require(!revertOnRequestPrincipal, "Test: requestPrincipal reverted");
         require(!isPaused, "Pool paused");
         require(!isShutdown, "Pool shutdown");
         require(poolToken.ownerOf(_tokenId) == msg.sender, "Not token owner");
@@ -411,6 +419,14 @@ contract MockDecentralPool {
 
     function setShutdown(bool _shutdown) external {
         isShutdown = _shutdown;
+    }
+
+    function setRevertOnRequestYield(bool _revert) external {
+        revertOnRequestYield = _revert;
+    }
+
+    function setRevertOnRequestPrincipal(bool _revert) external {
+        revertOnRequestPrincipal = _revert;
     }
 
     function setMinimumInvestmentPeriodSeconds(uint256 _seconds) external {

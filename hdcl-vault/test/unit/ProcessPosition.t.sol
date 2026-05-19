@@ -366,4 +366,80 @@ contract ProcessPositionTest is BaseTest {
         (, , , , , uint8 state1b) = vault.getPosition(1);
         assertEq(state1b, 1, "Position 1 should now advance to YieldWithdrawalRequested");
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //   CATCH ARMS: pool.requestYieldWithdrawal / requestPrincipalWithdrawal
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice If Decentral reverts on `requestYieldWithdrawal` at maturity,
+    ///         the try/catch swallows it and the position stays Active for
+    ///         the next pokeDecentral to retry. Without the catch, a broken
+    ///         pool at maturity would permanently lock the position.
+    function test_processPosition_requestYieldRevert_staysActive() public {
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _warpDays(61);
+
+        // Surgical: revert only requestYieldWithdrawal, leave everything else
+        // working so we isolate the catch arm under test.
+        pool.setRevertOnRequestYield(true);
+        vault.pokeDecentral(0);
+
+        (, , , , , uint8 state) = vault.getPosition(0);
+        assertEq(state, 0, "Position stays Active when requestYield reverts");
+
+        // Recovery: clear the flag and the next poke advances normally.
+        pool.setRevertOnRequestYield(false);
+        vault.pokeDecentral(0);
+        (, , , , , uint8 state2) = vault.getPosition(0);
+        assertEq(state2, 1, "Position advances after pool recovers");
+    }
+
+    /// @notice If Decentral reverts on `requestPrincipalWithdrawal`, the
+    ///         try/catch keeps the position in YieldClaimed for retry.
+    ///         pokeDecentral falls through state transitions in one call, so
+    ///         the only way to land in YieldClaimed at the start of a fresh
+    ///         poke is for the request-principal step to have reverted —
+    ///         which is exactly the path this test exercises.
+    function test_processPosition_requestPrincipalRevert_staysYieldClaimed() public {
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _warpDays(61);
+
+        // Block the request-principal step. The first poke will do
+        // Active -> YWR (yield approve gates the next step).
+        pool.setRevertOnRequestPrincipal(true);
+
+        vault.pokeDecentral(0);
+        (uint256 tokenId, , , , , uint8 sA) = vault.getPosition(0);
+        assertEq(sA, 1, "Position is YieldWithdrawalRequested");
+
+        // Approve yield, then poke again: executes yield -> YieldClaimed,
+        // then falls through to requestPrincipalWithdrawal which reverts.
+        // The catch returns and leaves state at YieldClaimed.
+        pool.approveYieldWithdrawal(tokenId);
+        vault.pokeDecentral(0);
+        (, , , , , uint8 sB) = vault.getPosition(0);
+        assertEq(sB, 2, "Position is YieldClaimed (request-principal caught)");
+
+        // Idle HOLLAR should reflect the yield payout — yield exec ran fine.
+        assertGt(vault.idleHollar(), 0, "yield was claimed before catch fired");
+
+        // Recovery: clear the flag and the next poke advances to PWR.
+        pool.setRevertOnRequestPrincipal(false);
+        vault.pokeDecentral(0);
+        (, , , , , uint8 sC) = vault.getPosition(0);
+        assertEq(sC, 3, "Position advances to PrincipalWithdrawalRequested");
+    }
+
+    /// @notice Async-only vault: maxWithdraw, maxRedeem, previewWithdraw all
+    ///         return 0 regardless of caller / state. Pure constant returns.
+    function test_asyncOnlyViews_alwaysZero() public {
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+
+        assertEq(vault.maxWithdraw(alice), 0, "maxWithdraw is always 0");
+        assertEq(vault.maxRedeem(alice), 0, "maxRedeem is always 0");
+        assertEq(vault.previewWithdraw(1e18), 0, "previewWithdraw is always 0");
+        assertEq(vault.previewWithdraw(0), 0, "previewWithdraw(0) is 0");
+        assertEq(vault.maxWithdraw(address(0)), 0, "maxWithdraw(zero addr) is 0");
+        assertEq(vault.maxRedeem(address(0)), 0, "maxRedeem(zero addr) is 0");
+    }
 }
