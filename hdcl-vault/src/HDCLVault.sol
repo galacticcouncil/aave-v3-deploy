@@ -51,6 +51,12 @@ contract HDCLVault is
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+    /// @notice Fast-path role for the Hydration technical committee.
+    ///         Authorized to halt and resume deposits and the full vault,
+    ///         without going through the slower economics-params governance
+    ///         track. Cannot perform any other admin operations.
+    ///         Granted post-deploy via `grantRole(GUARDIAN_ROLE, committee)`.
+    bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
 
     // ═══════════════════════════════════════════════════════════════════════
     //                          STRUCTS & ENUMS
@@ -875,25 +881,37 @@ contract HDCLVault is
     //                        ADMIN FUNCTIONS
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice Stop new deposits
-    function pauseDeposits() external onlyRole(ADMIN_ROLE) {
+    /// @dev Restricts a function to addresses holding either ADMIN_ROLE or
+    ///      GUARDIAN_ROLE. Admin retains a strict superset of guardian's
+    ///      authority — anything the guardian can do, the admin can do too.
+    modifier onlyAdminOrGuardian() {
+        require(
+            hasRole(ADMIN_ROLE, msg.sender) || hasRole(GUARDIAN_ROLE, msg.sender),
+            "Not admin or guardian"
+        );
+        _;
+    }
+
+    /// @notice Stop new deposits. Callable by ADMIN_ROLE or GUARDIAN_ROLE.
+    function pauseDeposits() external onlyAdminOrGuardian {
         depositsPaused = true;
         emit DepositsPaused();
     }
 
-    /// @notice Resume deposits
-    function unpauseDeposits() external onlyRole(ADMIN_ROLE) {
+    /// @notice Resume deposits. Callable by ADMIN_ROLE or GUARDIAN_ROLE.
+    function unpauseDeposits() external onlyAdminOrGuardian {
         depositsPaused = false;
         emit DepositsUnpaused();
     }
 
-    /// @notice Emergency pause — stops all state-changing operations
-    function pause() external onlyRole(ADMIN_ROLE) {
+    /// @notice Emergency pause — stops all state-changing operations.
+    ///         Callable by ADMIN_ROLE or GUARDIAN_ROLE.
+    function pause() external onlyAdminOrGuardian {
         _pause();
     }
 
-    /// @notice Resume all operations
-    function unpause() external onlyRole(ADMIN_ROLE) {
+    /// @notice Resume all operations. Callable by ADMIN_ROLE or GUARDIAN_ROLE.
+    function unpause() external onlyAdminOrGuardian {
         _unpause();
     }
 

@@ -99,19 +99,34 @@ contract AdminTest is BaseTest {
     //                    pauseDeposits / unpauseDeposits
     // ═══════════════════════════════════════════════════════════════════════
 
-    function test_pauseDeposits_onlyAdmin() public {
-        vm.expectRevert(_accessControlRevert(alice, vault.ADMIN_ROLE()));
+    function test_pauseDeposits_rejectsNonRoleHolder() public {
+        vm.expectRevert("Not admin or guardian");
         vm.prank(alice);
         vault.pauseDeposits();
     }
 
-    function test_unpauseDeposits_onlyAdmin() public {
+    function test_unpauseDeposits_rejectsNonRoleHolder() public {
         vm.prank(admin);
         vault.pauseDeposits();
 
-        vm.expectRevert(_accessControlRevert(alice, vault.ADMIN_ROLE()));
+        vm.expectRevert("Not admin or guardian");
         vm.prank(alice);
         vault.unpauseDeposits();
+    }
+
+    function test_pauseDeposits_allowedByGuardian() public {
+        address guardian = makeAddr("guardian");
+        bytes32 role = vault.GUARDIAN_ROLE();
+        vm.prank(admin);
+        vault.grantRole(role, guardian);
+
+        vm.prank(guardian);
+        vault.pauseDeposits();
+        assertTrue(vault.depositsPaused());
+
+        vm.prank(guardian);
+        vault.unpauseDeposits();
+        assertFalse(vault.depositsPaused());
     }
 
     function test_pauseDeposits_blocksDeposits() public {
@@ -178,19 +193,56 @@ contract AdminTest is BaseTest {
     //                      pause / unpause (global)
     // ═══════════════════════════════════════════════════════════════════════
 
-    function test_pause_onlyAdmin() public {
-        vm.expectRevert(_accessControlRevert(alice, vault.ADMIN_ROLE()));
+    function test_pause_rejectsNonRoleHolder() public {
+        vm.expectRevert("Not admin or guardian");
         vm.prank(alice);
         vault.pause();
     }
 
-    function test_unpause_onlyAdmin() public {
+    function test_unpause_rejectsNonRoleHolder() public {
         vm.prank(admin);
         vault.pause();
 
-        vm.expectRevert(_accessControlRevert(alice, vault.ADMIN_ROLE()));
+        vm.expectRevert("Not admin or guardian");
         vm.prank(alice);
         vault.unpause();
+    }
+
+    function test_pause_allowedByGuardian() public {
+        address guardian = makeAddr("guardian");
+        bytes32 role = vault.GUARDIAN_ROLE();
+        vm.prank(admin);
+        vault.grantRole(role, guardian);
+
+        vm.prank(guardian);
+        vault.pause();
+        assertTrue(vault.paused());
+
+        // Guardian can also unpause — symmetric authority by design.
+        vm.prank(guardian);
+        vault.unpause();
+        assertFalse(vault.paused());
+    }
+
+    function test_guardian_cannotCallAdminFunctions() public {
+        address guardian = makeAddr("guardian");
+        bytes32 guardianRole = vault.GUARDIAN_ROLE();
+        bytes32 adminRole = vault.ADMIN_ROLE();
+        vm.prank(admin);
+        vault.grantRole(guardianRole, guardian);
+
+        // Guardian gets pause authority but NOT general admin authority.
+        vm.expectRevert(_accessControlRevert(guardian, adminRole));
+        vm.prank(guardian);
+        vault.setTvlCap(1);
+
+        vm.expectRevert(_accessControlRevert(guardian, adminRole));
+        vm.prank(guardian);
+        vault.setMinReinvestAmount(1);
+
+        vm.expectRevert(_accessControlRevert(guardian, adminRole));
+        vm.prank(guardian);
+        vault.setMinRedeemAmount(1);
     }
 
     /// @notice Spec: emergency pause stops ALL state-changing operations
