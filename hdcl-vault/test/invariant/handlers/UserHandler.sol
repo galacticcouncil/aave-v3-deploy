@@ -66,7 +66,7 @@ contract UserHandler is Test {
         amount = bound(amount, minRedeem, hdclBal);
 
         vm.prank(actor);
-        try vault.requestRedeem(amount) returns (uint256 requestId) {
+        try vault.requestRedeem(amount, actor, actor) returns (uint256 requestId) {
             activeRequestIds.push(requestId);
             requestOwner[requestId] = actor;
             ghost_redeemRequestCount++;

@@ -35,7 +35,7 @@ contract QueueGriefTest is BaseTest {
         uint256[] memory ids = new uint256[](n);
         for (uint256 i = 0; i < n; i++) {
             vm.prank(user);
-            ids[i] = vault.requestRedeem(minR);
+            ids[i] = vault.requestRedeem(minR, user, user);
         }
         for (uint256 i = 0; i < n; i++) {
             vm.prank(user);
@@ -49,7 +49,7 @@ contract QueueGriefTest is BaseTest {
         uint256[] memory ids = new uint256[](n);
         for (uint256 i = 0; i < n; i++) {
             vm.prank(user);
-            ids[i] = vault.requestRedeem(minR);
+            ids[i] = vault.requestRedeem(minR, user, user);
         }
         for (uint256 i = n; i > 0; i--) {
             vm.prank(user);
@@ -81,7 +81,7 @@ contract QueueGriefTest is BaseTest {
         vault.deposit(50_000e18, alice);
 
         vm.prank(alice);
-        uint256 aliceReqId = vault.requestRedeem(1_000e18);
+        uint256 aliceReqId = vault.requestRedeem(1_000e18, alice, alice);
         assertEq(aliceReqId, 0, "alice's request at id=0");
 
         // Bob spams 200 mid-queue cancellations (cancel in reverse so Fix B's
@@ -116,7 +116,7 @@ contract QueueGriefTest is BaseTest {
         vm.prank(alice);
         vault.deposit(50_000e18, alice);
         vm.prank(alice);
-        vault.requestRedeem(1_000e18);
+        vault.requestRedeem(1_000e18, alice, alice);
 
         // Bob makes 500 mid-queue holes
         vm.prank(bob);
@@ -142,7 +142,7 @@ contract QueueGriefTest is BaseTest {
         vm.prank(alice);
         vault.deposit(50_000e18, alice);
         vm.prank(alice);
-        vault.requestRedeem(1_000e18); // alice's redemption at id=0
+        vault.requestRedeem(1_000e18, alice, alice); // alice's redemption at id=0
 
         // Bob makes 700 mid-queue holes (above MAX_QUEUE_SKIPS=500)
         vm.prank(bob);
@@ -177,7 +177,7 @@ contract QueueGriefTest is BaseTest {
         vm.prank(alice);
         vault.deposit(50_000e18, alice);
         vm.prank(alice);
-        uint256 aliceId = vault.requestRedeem(1_000e18);
+        uint256 aliceId = vault.requestRedeem(1_000e18, alice, alice);
         assertEq(aliceId, 100, "alice's real request at id=100");
 
         // Process matured position 0 → fills idleHollar
@@ -204,7 +204,7 @@ contract QueueGriefTest is BaseTest {
         vault.deposit(10_000e18, alice);
 
         vm.prank(alice);
-        uint256 reqId = vault.requestRedeem(1_000e18);
+        uint256 reqId = vault.requestRedeem(1_000e18, alice, alice);
         assertEq(vault.queueHead(), 0);
         assertEq(vault.queueTail(), 1);
 
@@ -225,9 +225,9 @@ contract QueueGriefTest is BaseTest {
 
         // alice creates id=0, bob creates id=1
         vm.prank(alice);
-        vault.requestRedeem(1_000e18);
+        vault.requestRedeem(1_000e18, alice, alice);
         vm.prank(bob);
-        uint256 bobId = vault.requestRedeem(1_000e18);
+        uint256 bobId = vault.requestRedeem(1_000e18, bob, bob);
 
         assertEq(vault.queueHead(), 0);
         assertEq(vault.queueTail(), 2);
@@ -250,7 +250,7 @@ contract QueueGriefTest is BaseTest {
         uint256[] memory ids = new uint256[](5);
         for (uint256 i = 0; i < 5; i++) {
             vm.prank(alice);
-            ids[i] = vault.requestRedeem(1_000e18);
+            ids[i] = vault.requestRedeem(1_000e18, alice, alice);
         }
 
         assertEq(vault.queueHead(), 0);
@@ -282,10 +282,10 @@ contract QueueGriefTest is BaseTest {
         uint256[] memory ids = new uint256[](3);
         for (uint256 i = 0; i < 3; i++) {
             vm.prank(alice);
-            ids[i] = vault.requestRedeem(1_000e18);
+            ids[i] = vault.requestRedeem(1_000e18, alice, alice);
         }
         vm.prank(bob);
-        vault.requestRedeem(1_000e18); // id=3, NOT cancelled
+        vault.requestRedeem(1_000e18, bob, bob); // id=3, NOT cancelled
 
         // Cancel alice's 1 and 2 first (mid-queue, no sweep)
         vm.prank(alice);
@@ -314,7 +314,7 @@ contract QueueGriefTest is BaseTest {
         uint256[] memory ids = new uint256[](60);
         for (uint256 i = 0; i < 60; i++) {
             vm.prank(alice);
-            ids[i] = vault.requestRedeem(1_000e18);
+            ids[i] = vault.requestRedeem(1_000e18, alice, alice);
         }
 
         // Cancel ids 1..59 first (mid-queue, no sweep)
@@ -348,9 +348,9 @@ contract QueueGriefTest is BaseTest {
 
         // alice id=0, bob id=1
         vm.prank(alice);
-        uint256 aliceId = vault.requestRedeem(1_000e18);
+        uint256 aliceId = vault.requestRedeem(1_000e18, alice, alice);
         vm.prank(bob);
-        vault.requestRedeem(1_000e18);
+        vault.requestRedeem(1_000e18, bob, bob);
 
         // alice cancels her own (head). Bob's slot is non-zero → sweep stops at 1.
         vm.prank(alice);
@@ -397,7 +397,7 @@ contract QueueGriefTest is BaseTest {
         vm.prank(alice);
         vault.deposit(50_000e18, alice);
         vm.prank(alice);
-        vault.requestRedeem(1_000e18);
+        vault.requestRedeem(1_000e18, alice, alice);
 
         // Mature & process bob's position (id 0) to fund idleHollar and trigger
         // queue processing internally on principal redemption.

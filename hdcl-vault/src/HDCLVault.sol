@@ -56,6 +56,14 @@ contract HDCLVault is
     ///         track. Cannot perform any other admin operations.
     ///         Granted post-deploy via `grantRole(GUARDIAN_ROLE, committee)`.
     bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
+    /// @notice Role authorized to call `redeem`/`withdraw` on behalf of any
+    ///         controller that has opted in via `setAutoClaim(true)`. The
+    ///         role-holder is constrained to `receiver == controller` — they
+    ///         can move the controller's claim timing forward, but cannot
+    ///         redirect HOLLAR to a different address. Typically granted to a
+    ///         keeper bot that auto-claims for opted-in users right after
+    ///         each pokeQueue settlement.
+    bytes32 public constant CLAIM_OPERATOR_ROLE = keccak256("CLAIM_OPERATOR_ROLE");
 
     // ═══════════════════════════════════════════════════════════════════════
     //                          STRUCTS & ENUMS
@@ -188,6 +196,21 @@ contract HDCLVault is
     uint256 public totalQueuedHdcl;
 
     // ═══════════════════════════════════════════════════════════════════════
+    //                  ERC-7540 OPERATOR + AUTO-CLAIM
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Per-user operator approval per ERC-7540. The operator may call
+    ///         `requestRedeem`, `redeem`, `withdraw` on the controller's
+    ///         behalf, and may redirect HOLLAR to any `receiver`.
+    mapping(address => mapping(address => bool)) public isOperator;
+    /// @notice Per-controller opt-in flag for the `CLAIM_OPERATOR_ROLE` path.
+    ///         When true, role-holders may claim on this controller's behalf
+    ///         — but `receiver` is forced to equal `controller` (no redirect).
+    ///         Users toggle this themselves via `setAutoClaim`; protocol
+    ///         contracts that hold hDCL toggle from their own contract logic.
+    mapping(address => bool) public autoClaimEnabled;
+
+    // ═══════════════════════════════════════════════════════════════════════
     //                              EVENTS
     // ═══════════════════════════════════════════════════════════════════════
 
@@ -214,6 +237,24 @@ contract HDCLVault is
         uint256 assets,
         uint256 shares
     );
+    /// @notice ERC-7540 canonical async-redemption request event.
+    event RedeemRequest(
+        address indexed controller,
+        address indexed owner,
+        uint256 indexed requestId,
+        address sender,
+        uint256 shares
+    );
+    /// @notice ERC-7540 canonical operator approval event.
+    event OperatorSet(
+        address indexed controller,
+        address indexed operator,
+        bool approved
+    );
+    /// @notice Emitted when a controller toggles their `autoClaimEnabled`
+    ///         flag. Users emit this for themselves; protocol contracts emit
+    ///         from their own contract logic.
+    event AutoClaimSet(address indexed controller, bool enabled);
     event RedemptionRequested(
         uint256 indexed requestId,
         address indexed user,
@@ -440,28 +481,69 @@ contract HDCLVault is
         _addToBucket(apyWad, amount, block.timestamp);
     }
 
-    /// @notice Queue HDCL for redemption to HOLLAR.
-    /// @param hdclAmount Amount of HDCL to redeem
-    /// @return requestId ID of the redemption request
+    /// @notice ERC-7540 async-redemption request. Escrows `shares` hDCL
+    ///         from `owner` and creates a queue entry the `controller`
+    ///         will manage and claim.
+    /// @dev    msg.sender must be `owner` or an approved operator of `owner`.
+    /// @param shares      Amount of hDCL to escrow
+    /// @param controller  Address authorized to claim the resulting HOLLAR
+    /// @param owner       Address whose hDCL is escrowed
+    /// @return requestId  ID of the redemption request
     function requestRedeem(
-        uint256 hdclAmount
+        uint256 shares,
+        address controller,
+        address owner
     ) external nonReentrant whenNotPaused returns (uint256 requestId) {
-        if (hdclAmount < minRedeemAmount) revert BelowMinimumRedeem();
+        if (shares < minRedeemAmount) revert BelowMinimumRedeem();
+        require(controller != address(0), "Zero controller");
+        require(owner != address(0), "Zero owner");
+        require(
+            msg.sender == owner || isOperator[owner][msg.sender],
+            "Not authorized"
+        );
 
-        // Escrow HDCL in the vault (not burned yet — _transfer reverts on insufficient balance)
-        _transfer(msg.sender, address(this), hdclAmount);
+        // Escrow HDCL from owner. The vault's per-user operator approval
+        // covers this — no per-token allowance needed.
+        _transfer(owner, address(this), shares);
 
         requestId = queueTail;
         redemptionQueue[requestId] = RedemptionRequest({
-            user: msg.sender,
-            hdclAmount: hdclAmount,
+            user: controller,
+            hdclAmount: shares,
             hdclSettled: 0,
             hollarOwed: 0
         });
         queueTail++;
-        totalQueuedHdcl += hdclAmount;
+        totalQueuedHdcl += shares;
 
-        emit RedemptionRequested(requestId, msg.sender, hdclAmount);
+        emit RedemptionRequested(requestId, controller, shares);
+        emit RedeemRequest(controller, owner, requestId, msg.sender, shares);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //                  OPERATOR + AUTO-CLAIM (ERC-7540)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Per-user operator approval. Approved operators may call
+    ///         `requestRedeem`, `redeem`, `withdraw` on the controller's
+    ///         behalf, including redirecting HOLLAR to any receiver.
+    /// @param  operator  Address being approved or revoked
+    /// @param  approved  Approval state
+    function setOperator(address operator, bool approved) external {
+        require(operator != address(0), "Zero operator");
+        isOperator[msg.sender][operator] = approved;
+        emit OperatorSet(msg.sender, operator, approved);
+    }
+
+    /// @notice Toggle the role-based auto-claim flag for msg.sender.
+    /// @dev    When `enabled` is true, addresses holding `CLAIM_OPERATOR_ROLE`
+    ///         may call `redeem`/`withdraw` on msg.sender's behalf — but
+    ///         `receiver` is forced to equal msg.sender (no redirect).
+    ///         Users opt in for themselves; protocol contracts opt in from
+    ///         their own contract logic.
+    function setAutoClaim(bool enabled) external {
+        autoClaimEnabled[msg.sender] = enabled;
+        emit AutoClaimSet(msg.sender, enabled);
     }
 
     /// @notice Cancel the still-unsettled portion of a redemption request.
@@ -473,14 +555,18 @@ contract HDCLVault is
     function cancelRedeem(uint256 requestId) external nonReentrant {
         if (requestId >= queueTail) revert InvalidRequestId();
         RedemptionRequest storage request = redemptionQueue[requestId];
-        if (request.user == address(0)) revert RequestNotActive();
-        if (request.user != msg.sender) revert NotRequestOwner();
+        address controller = request.user;
+        if (controller == address(0)) revert RequestNotActive();
+        if (msg.sender != controller && !isOperator[controller][msg.sender])
+            revert NotRequestOwner();
 
         uint256 unsettled = request.hdclAmount - request.hdclSettled;
         if (unsettled > 0) {
             totalQueuedHdcl -= unsettled;
             request.hdclAmount = request.hdclSettled; // shrink to settled portion
-            _transfer(address(this), msg.sender, unsettled);
+            // Refund the unsettled hDCL to the controller. When an operator
+            // cancels, the funds still go to the controller, not the operator.
+            _transfer(address(this), controller, unsettled);
             emit RedemptionCancelled(requestId, unsettled);
         }
 
@@ -520,8 +606,13 @@ contract HDCLVault is
     ///         requested `shares` is exhausted. Burns the escrowed hDCL and
     ///         transfers HOLLAR to `receiver`.
     ///
-    ///         For W2b, msg.sender must equal `controller`. Operator and
-    ///         CLAIM_OPERATOR_ROLE paths land in W2c.
+    ///         Three authorization paths:
+    ///         1. `msg.sender == controller` — self-claim
+    ///         2. `isOperator[controller][msg.sender]` — per-user operator
+    ///            approved via `setOperator` (can redirect to any receiver)
+    ///         3. `CLAIM_OPERATOR_ROLE` holder AND `autoClaimEnabled[controller]`
+    ///            AND `receiver == controller` — role-based auto-claim,
+    ///            restricted to paying the controller's own address
     /// @param shares      Amount of hDCL to claim
     /// @param receiver    Address that receives HOLLAR
     /// @param controller  Address whose claimable inventory is drawn down
@@ -533,7 +624,7 @@ contract HDCLVault is
     ) external nonReentrant whenNotPaused returns (uint256 assets) {
         require(shares > 0, "Zero shares");
         require(receiver != address(0), "Zero receiver");
-        require(msg.sender == controller, "Not authorized");
+        _authorizeClaim(receiver, controller);
 
         assets = _claimByShares(controller, shares);
 
@@ -546,8 +637,7 @@ contract HDCLVault is
     }
 
     /// @notice Claim by HOLLAR amount instead of share count.
-    /// @dev    Same auth model as `redeem`. Computes the shares needed to
-    ///         deliver `assets` HOLLAR at the rate(s) locked at settlement time.
+    /// @dev    Same auth model as `redeem` — see those docs.
     function withdraw(
         uint256 assets,
         address receiver,
@@ -555,7 +645,7 @@ contract HDCLVault is
     ) external nonReentrant whenNotPaused returns (uint256 shares) {
         require(assets > 0, "Zero assets");
         require(receiver != address(0), "Zero receiver");
-        require(msg.sender == controller, "Not authorized");
+        _authorizeClaim(receiver, controller);
 
         (shares, assets) = _claimByAssets(controller, assets);
 
@@ -565,6 +655,22 @@ contract HDCLVault is
         hollar.safeTransfer(receiver, assets);
 
         emit Withdraw(msg.sender, receiver, controller, assets, shares);
+    }
+
+    /// @dev Verify the caller is authorized to claim on the controller's
+    ///      behalf. See `redeem` natspec for the three accepted paths.
+    function _authorizeClaim(address receiver, address controller) internal view {
+        if (msg.sender == controller) return;
+        if (isOperator[controller][msg.sender]) return;
+        // Role path: must be a CLAIM_OPERATOR_ROLE holder, controller must
+        // have opted in, and receiver must be the controller itself (no
+        // redirect — the role grants timing, not destination).
+        require(
+            hasRole(CLAIM_OPERATOR_ROLE, msg.sender)
+                && autoClaimEnabled[controller]
+                && receiver == controller,
+            "Not authorized"
+        );
     }
 
     /// @dev Walk the controller's settled requests in FIFO order, drawing

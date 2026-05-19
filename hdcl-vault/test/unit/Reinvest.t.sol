@@ -228,7 +228,7 @@ contract ReinvestTest is BaseTest {
         _deposit(bob, 1_000e18);
         uint256 bobHdcl = vault.balanceOf(bob);
         vm.prank(bob);
-        vault.requestRedeem(bobHdcl);
+        vault.requestRedeem(bobHdcl, bob, bob);
 
         uint256 posCountBefore = vault.getPositionCount();
 

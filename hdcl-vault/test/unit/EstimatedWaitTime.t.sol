@@ -37,7 +37,7 @@ contract EstimatedWaitTimeTest is BaseTest {
         _deposit(bob, 1_000e18);
         uint256 bobHdcl = vault.balanceOf(bob);
         vm.prank(bob);
-        uint256 reqId = vault.requestRedeem(bobHdcl);
+        uint256 reqId = vault.requestRedeem(bobHdcl, bob, bob);
 
         // View must not revert and should return a non-zero ETA (position 0
         // is still pre-maturity).
@@ -52,7 +52,7 @@ contract EstimatedWaitTimeTest is BaseTest {
         _deposit(bob, 1_000e18);
         uint256 bobHdcl = vault.balanceOf(bob);
         vm.prank(bob);
-        uint256 reqId = vault.requestRedeem(bobHdcl);
+        uint256 reqId = vault.requestRedeem(bobHdcl, bob, bob);
 
         // For a freshly-deposited position, yieldStartTime == depositTime <
         // maturityTime. The ternary picks the original arithmetic branch.

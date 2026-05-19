@@ -262,7 +262,7 @@ contract AdminTest is BaseTest {
         // requestRedeem
         vm.prank(alice);
         vm.expectRevert("Pausable: paused");
-        vault.requestRedeem(aliceHdcl / 4);
+        vault.requestRedeem(aliceHdcl / 4, alice, alice);
 
         // pokeDecentral
         vm.expectRevert("Pausable: paused");
@@ -431,11 +431,11 @@ contract AdminTest is BaseTest {
         // Small redeem should revert
         vm.prank(alice);
         vm.expectRevert(HDCLVault.BelowMinimumRedeem.selector);
-        vault.requestRedeem(4999e18);
+        vault.requestRedeem(4999e18, alice, alice);
 
         // At-min redeem should succeed
         vm.prank(alice);
-        vault.requestRedeem(5000e18);
+        vault.requestRedeem(5000e18, alice, alice);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
