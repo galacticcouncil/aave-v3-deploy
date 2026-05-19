@@ -191,21 +191,34 @@ Change `deposit(uint256)` signature to ERC-4626: `deposit(uint256 assets, addres
 **ERC-165 interface declarations:**
 - `supportsInterface` returns true for `type(IERC7540).interfaceId`, `type(IERC4626).interfaceId`, `type(IERC165).interfaceId`
 
-### The push-vs-pull question
+### Settlement model: pull at the contract layer, delegated claim at the UX layer
 
-The current vault is **push-based**: when `pokeQueue` processes a request, HOLLAR is transferred directly to the user in the same call. The user never claims.
+The current vault is **push-based**: when `pokeQueue` processes a request, HOLLAR is transferred directly to the user in the same call. The user never claims. This is operationally smooth but non-conformant — `claimableRedeemRequest` would always be 0 because requests skip the claimable state.
 
-ERC-7540 expects **pull-based** redemption: requests transition `pending → claimable → claimed`, and the `claimed` step is a user (or operator) call to `redeem` / `withdraw`. The user gets the assets only after they explicitly claim.
+ERC-7540 expects **pull-based** redemption: requests transition `pending → claimable → claimed`, and `claimed` is a user (or operator) call to `redeem` / `withdraw`.
 
-The push model means `claimableRedeemRequest` would always be 0 (requests skip the claimable state and go directly to settled), which isn't strictly conformant.
+**Decision: pull at the contract layer.** `pokeQueue` rate-locks each request and moves HOLLAR from `idleHollar` into `totalReservedHollar`; no transfer, no burn. All HOLLAR egress happens through `redeem` / `withdraw` against the rate-locked state. This makes 7540 conformance real, not partial — the lifecycle, view functions, and auth checks all behave per spec.
 
-**Decision needed during implementation: keep push, switch to pull, or hybrid.**
+**One-tx UX is restored at a layer above** via two opt-in delegation primitives:
 
-- **Push (current):** non-conformant claimable view, but UX is simpler (one transaction). The keeper bot pays users automatically.
-- **Pull (canonical 7540):** queue processor marks requests as claimable with locked rates; user calls `redeem` to receive HOLLAR. Two transactions per redemption. Aave/Morpho integrations expect this shape.
-- **Hybrid:** queue processor pushes by default, but `redeem` / `withdraw` are also available for users who want to claim explicitly. `claimable` reflects requests that have been rate-locked but not yet pushed; usually 0 in practice. Best of both worlds at the cost of more code.
+1. **`CLAIM_OPERATOR_ROLE` + per-controller `autoClaimEnabled` flag** — see the next section. Users who opt in have their claims auto-executed by the keeper bot; HOLLAR can only land at the controller's own address.
+2. **Standard 7540 `setOperator`** — users can approve any address (e.g., an Aave market integration) as their per-user operator. The operator can claim and redirect to arbitrary `receiver` addresses, by the user's choice.
 
-**Recommend: Pull.** It matches the standard cleanly. The "two transactions" friction is mitigated because typical integrators (Aave wrappers, keeper bots) will batch the claim themselves; end users on a UI will see "redemption ready — click to claim" which is familiar from L2 bridges and many existing protocols. Push-based auto-pay was a UX optimization that became a conformance liability.
+Net behavior across the three user populations:
+
+| User chose | User tx count | Effective feel |
+|------------|--------------|----------------|
+| `setAutoClaim(true)` | 1 (`requestRedeem` only) | Push |
+| `setOperator(integrator, true)` | 1 (`requestRedeem` only) | Push, via standard 7540 operator |
+| Neither (default) | 2 (`requestRedeem` + `redeem`) | Pure pull |
+
+So this is technically pull (single-path settlement in the contract) and operationally hybrid (push-feel for users who opt in). The earlier framing of "Pull vs. Hybrid" as competing options was misleading — the design we landed on is **pull-with-delegated-claim**, which dominates both:
+
+- vs. **Push:** conformant lifecycle, no `claimable`-is-always-0 weirdness, no auth-bypass risk from a contract that auto-pays
+- vs. **plain Pull:** auto-claim path for opted-in users restores one-tx UX without contract-side double-pathing
+- vs. **classic Hybrid (push-by-default + optional claim):** no sometimes-push-sometimes-not branching in `pokeQueue`; no accounting fork; auto-claim is a separate primitive that any user can decline
+
+The original push-based design's "UX optimization" survives — just relocated from inside `pokeQueue` into an opt-in role + operator pattern at the auth layer.
 
 ### Rate-lock semantics under pull
 
