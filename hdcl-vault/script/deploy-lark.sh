@@ -88,7 +88,7 @@ forge script script/Deploy.s.sol:Deploy \
   --evm-version london \
   --legacy \
   --slow \
-  --gas-estimate-multiplier 300 \
+  --gas-estimate-multiplier 200 \
   2>&1 | tee /tmp/hdcl-deploy-output.txt
 
 # Extract deployed addresses

@@ -14,6 +14,7 @@ import {IDecentralPool} from "./interfaces/IDecentralPool.sol";
 import {IAggregatorV3Interface} from "./interfaces/IAggregatorV3Interface.sol";
 import {IERC4626} from "./interfaces/IERC4626.sol";
 import {IERC7540Operator, IERC7540Redeem} from "./interfaces/IERC7540.sol";
+import {QueueLib} from "./libraries/QueueLib.sol";
 
 /// @title HDCLVault
 /// @notice Fungible yield-bearing ERC-20 wrapper around Decentral Protocol NFT positions.
@@ -97,12 +98,7 @@ contract HDCLVault is
         uint256 pendingYield;
     }
 
-    struct RedemptionRequest {
-        address user;          // controller (= owner under standard flow)
-        uint256 hdclAmount;    // total hDCL queued (decreases on cancel/claim)
-        uint256 hdclSettled;   // rate-locked, ready to claim
-        uint256 hollarOwed;    // HOLLAR reserved for the settled portion
-    }
+    // RedemptionRequest struct moved to QueueLib.Request — see libraries/QueueLib.sol
 
     // ═══════════════════════════════════════════════════════════════════════
     //                        IMMUTABLE-LIKE CONFIG
@@ -189,7 +185,7 @@ contract HDCLVault is
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice FIFO queue of pending redemptions
-    mapping(uint256 => RedemptionRequest) public redemptionQueue;
+    mapping(uint256 => QueueLib.Request) public redemptionQueue;
     /// @notice Index of the first active (unfulfilled) request
     uint256 public queueHead;
     /// @notice Index of the next request to be created
@@ -263,18 +259,9 @@ contract HDCLVault is
         uint256 hdclAmount
     );
     event RedemptionCancelled(uint256 indexed requestId, uint256 hdclReturned);
-    event RedemptionFulfilled(
-        uint256 indexed requestId,
-        address indexed user,
-        uint256 hollarAmount,
-        uint256 hdclBurned
-    );
-    event RedemptionPartiallyFulfilled(
-        uint256 indexed requestId,
-        address indexed user,
-        uint256 hollarAmount,
-        uint256 hdclBurned
-    );
+    // RedemptionFulfilled / RedemptionPartiallyFulfilled moved to QueueLib.
+    // They're emitted under DELEGATECALL so logs still appear at the vault's
+    // address and tests' expectEmit matches by topic+data regardless.
     event Reinvested(uint256 hollarAmount, uint256 tokenId);
     event PositionProcessed(
         uint256 indexed positionIndex,
@@ -324,7 +311,7 @@ contract HDCLVault is
     error RequestNotActive();
     error InvalidRequestId();
     error BelowMinimumRedeem();
-    error InsufficientClaimable();
+    // InsufficientClaimable moved to QueueLib.
     error DepositTooSmall();
     error VaultEmpty();
     error OracleNotSet();
@@ -527,7 +514,7 @@ contract HDCLVault is
         _transfer(owner, address(this), shares);
 
         requestId = queueTail;
-        redemptionQueue[requestId] = RedemptionRequest({
+        redemptionQueue[requestId] = QueueLib.Request({
             user: controller,
             hdclAmount: shares,
             hdclSettled: 0,
@@ -574,7 +561,7 @@ contract HDCLVault is
     ///         the queue entirely.
     function cancelRedeem(uint256 requestId) external nonReentrant {
         if (requestId >= queueTail) revert InvalidRequestId();
-        RedemptionRequest storage request = redemptionQueue[requestId];
+        QueueLib.Request storage request = redemptionQueue[requestId];
         address controller = request.user;
         if (controller == address(0)) revert RequestNotActive();
         if (msg.sender != controller && !isOperator[controller][msg.sender])
@@ -646,7 +633,7 @@ contract HDCLVault is
         if (receiver == address(0)) revert ZeroAddress();
         _authorizeClaim(receiver, controller);
 
-        assets = _claimByShares(controller, shares);
+        assets = QueueLib.claimByShares(redemptionQueue, queueTail, controller, shares);
 
         _burn(address(this), shares);
         totalQueuedHdcl -= shares;
@@ -667,7 +654,7 @@ contract HDCLVault is
         if (receiver == address(0)) revert ZeroAddress();
         _authorizeClaim(receiver, controller);
 
-        (shares, assets) = _claimByAssets(controller, assets);
+        (shares, assets) = QueueLib.claimByAssets(redemptionQueue, queueTail, controller, assets);
 
         _burn(address(this), shares);
         totalQueuedHdcl -= shares;
@@ -692,73 +679,8 @@ contract HDCLVault is
         ) revert NotAuthorized();
     }
 
-    /// @dev Walk the controller's settled requests in FIFO order, drawing
-    ///      down hdclSettled (and pro-rata hollarOwed) until `shares` is
-    ///      exhausted. Reverts if the controller's total claimable is less.
-    ///      Iterates from 0 because settled entries can live below queueHead
-    ///      (queueHead tracks "first unprocessed", not "first unclaimed").
-    function _claimByShares(address controller, uint256 shares)
-        internal
-        returns (uint256 assets)
-    {
-        uint256 remaining = shares;
-
-        for (uint256 i = 0; i < queueTail && remaining > 0; i++) {
-            RedemptionRequest storage r = redemptionQueue[i];
-            if (r.user != controller || r.hdclSettled == 0) continue;
-
-            uint256 take = r.hdclSettled <= remaining ? r.hdclSettled : remaining;
-            // Pro-rata of this request's locked HOLLAR
-            uint256 hollarTake = (take * r.hollarOwed) / r.hdclSettled;
-
-            r.hdclSettled -= take;
-            r.hollarOwed -= hollarTake;
-            r.hdclAmount -= take;
-
-            remaining -= take;
-            assets += hollarTake;
-
-            // Fully drained: nothing pending, nothing claimable → delete.
-            if (r.hdclAmount == 0) {
-                delete redemptionQueue[i];
-            }
-        }
-
-        if (remaining != 0) revert InsufficientClaimable();
-    }
-
-    /// @dev Walk the controller's settled requests in FIFO order, drawing
-    ///      down hollarOwed (and pro-rata hdclSettled) until `assets` is
-    ///      exhausted. Returns the share count consumed.
-    function _claimByAssets(address controller, uint256 assets)
-        internal
-        returns (uint256 shares, uint256 actualAssets)
-    {
-        uint256 remaining = assets;
-
-        for (uint256 i = 0; i < queueTail && remaining > 0; i++) {
-            RedemptionRequest storage r = redemptionQueue[i];
-            if (r.user != controller || r.hollarOwed == 0) continue;
-
-            uint256 take = r.hollarOwed <= remaining ? r.hollarOwed : remaining;
-            // Pro-rata of this request's settled hDCL
-            uint256 sharesTake = (take * r.hdclSettled) / r.hollarOwed;
-
-            r.hollarOwed -= take;
-            r.hdclSettled -= sharesTake;
-            r.hdclAmount -= sharesTake;
-
-            remaining -= take;
-            shares += sharesTake;
-            actualAssets += take;
-
-            if (r.hdclAmount == 0) {
-                delete redemptionQueue[i];
-            }
-        }
-
-        if (remaining != 0) revert InsufficientClaimable();
-    }
+    // _claimByShares / _claimByAssets inlined as direct QueueLib calls in
+    // redeem() / withdraw() above — see libraries/QueueLib.sol for semantics.
 
     // ═══════════════════════════════════════════════════════════════════════
     //                    PERMISSIONLESS OPERATIONS
@@ -1136,7 +1058,7 @@ contract HDCLVault is
         view
         returns (uint256 shares)
     {
-        RedemptionRequest storage r = redemptionQueue[requestId];
+        QueueLib.Request storage r = redemptionQueue[requestId];
         if (r.user != controller) return 0;
         return r.hdclAmount - r.hdclSettled;
     }
@@ -1148,7 +1070,7 @@ contract HDCLVault is
         view
         returns (uint256 shares)
     {
-        RedemptionRequest storage r = redemptionQueue[requestId];
+        QueueLib.Request storage r = redemptionQueue[requestId];
         if (r.user != controller) return 0;
         return r.hdclSettled;
     }
@@ -1158,7 +1080,7 @@ contract HDCLVault is
     function getEstimatedWaitTime(
         uint256 requestId
     ) external view returns (uint256 estimatedSeconds) {
-        RedemptionRequest storage request = redemptionQueue[requestId];
+        QueueLib.Request storage request = redemptionQueue[requestId];
         if (request.user == address(0)) return 0;
 
         uint256 rate = exchangeRate();
@@ -1166,7 +1088,7 @@ contract HDCLVault is
         // Sum total HOLLAR needed for all queue entries ahead of and including this request
         uint256 hollarNeeded = 0;
         for (uint256 i = queueHead; i <= requestId; i++) {
-            RedemptionRequest storage r = redemptionQueue[i];
+            QueueLib.Request storage r = redemptionQueue[i];
             if (r.user == address(0)) continue;
             uint256 remainingHdcl = r.hdclAmount - r.hdclSettled;
             hollarNeeded += (remainingHdcl * rate) / WAD;
@@ -1217,7 +1139,7 @@ contract HDCLVault is
             bool active
         )
     {
-        RedemptionRequest storage r = redemptionQueue[requestId];
+        QueueLib.Request storage r = redemptionQueue[requestId];
         return (r.user, r.hdclAmount, r.hdclSettled, r.hollarOwed, r.user != address(0));
     }
 
@@ -1534,104 +1456,22 @@ contract HDCLVault is
         uint256 available,
         uint256 rate
     ) internal returns (uint256 hollarUsed, uint256 hdclLocked) {
-        uint256 iterations;
-        uint256 skips;
-        uint256 cursor = queueHead;
-
-        while (
-            cursor < queueTail &&
-            iterations < MAX_QUEUE_ITERATIONS &&
-            skips < MAX_QUEUE_SKIPS
-        ) {
-            RedemptionRequest storage request = redemptionQueue[cursor];
-
-            if (request.user == address(0)) {
-                // Cancelled hole — sweep past. Advance queueHead while
-                // it's still co-located with the cursor.
-                if (cursor == queueHead) {
-                    unchecked { queueHead++; }
-                }
-                unchecked { cursor++; skips++; }
-                continue;
-            }
-
-            if (request.hdclSettled == request.hdclAmount) {
-                // Already fully settled — no more processing needed.
-                // Advance queueHead past it too if co-located; the entry
-                // stays in the mapping for claim walkers to find.
-                if (cursor == queueHead) {
-                    unchecked { queueHead++; }
-                }
-                unchecked { cursor++; skips++; }
-                continue;
-            }
-
-            // Hit a pending entry. Stop if there's nothing left to settle.
-            if (available == 0) break;
-
-            iterations++;
-
-            uint256 pending = request.hdclAmount - request.hdclSettled;
-            uint256 hollarValue = (pending * rate) / WAD;
-
-            // Catastrophic-rate guard: if rate has degraded so far that the
-            // outstanding HDCL is worth zero HOLLAR, settling it would lock
-            // value with no payout. Stop the loop here — admin intervention
-            // is needed before this entry can be safely processed.
-            if (hollarValue == 0) break;
-
-            if (available >= hollarValue) {
-                // Fully settle this request — leave the entry in place for
-                // claim, but advance queueHead/cursor past it.
-                request.hdclSettled = request.hdclAmount;
-                request.hollarOwed += hollarValue;
-                idleHollar -= hollarValue;
-                totalReservedHollar += hollarValue;
-
-                hollarUsed += hollarValue;
-                hdclLocked += pending;
-                available -= hollarValue;
-
-                emit RedemptionFulfilled(
-                    cursor,
-                    request.user,
-                    hollarValue,
-                    pending
-                );
-                if (cursor == queueHead) {
-                    unchecked { queueHead++; }
-                }
-                unchecked { cursor++; }
-            } else {
-                // Partially settle
-                uint256 hdclToSettle = (available * WAD) / rate;
-                if (hdclToSettle == 0) break; // Dust amount, stop
-
-                // Lock only the HOLLAR equivalent of the rate-locked HDCL at
-                // the current rate, not the full `available`. The truncation
-                // residue (sub-wei vs `rate`) stays in idleHollar — it benefits
-                // the vault, not the redeemer.
-                uint256 hollarToReserve = (hdclToSettle * rate) / WAD;
-
-                request.hdclSettled += hdclToSettle;
-                request.hollarOwed += hollarToReserve;
-                idleHollar -= hollarToReserve;
-                totalReservedHollar += hollarToReserve;
-
-                hollarUsed += hollarToReserve;
-                hdclLocked += hdclToSettle;
-                available = 0;
-
-                emit RedemptionPartiallyFulfilled(
-                    cursor,
-                    request.user,
-                    hollarToReserve,
-                    hdclToSettle
-                );
-                // Entry stays at cursor (more pending to settle next call).
-                // Don't increment cursor — break out via available == 0 check.
-            }
-        }
+        uint256 newHead;
+        (newHead, hollarUsed, hdclLocked) = QueueLib.processQueue(
+            redemptionQueue,
+            queueHead,
+            queueTail,
+            available,
+            rate,
+            MAX_QUEUE_ITERATIONS,
+            MAX_QUEUE_SKIPS,
+            WAD
+        );
+        queueHead = newHead;
+        // Library returns net deltas; apply to vault globals here so the
+        // storage-write surface stays explicit at the call boundary.
+        idleHollar -= hollarUsed;
+        totalReservedHollar += hollarUsed;
     }
 
     /// @dev Advance positionHead past redeemed positions

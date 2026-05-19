@@ -3,6 +3,7 @@ pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
 import {HDCLVault} from "../../src/HDCLVault.sol";
+import {QueueLib} from "../../src/libraries/QueueLib.sol";
 
 /// @title Pull-Redemption Mechanics (W2b)
 /// @notice Verifies the rate-lock-then-claim model: pokeQueue locks rates and
@@ -133,7 +134,7 @@ contract PullRedemptionTest is BaseTest {
 
         // Try to claim more than settled
         vm.prank(alice);
-        vm.expectRevert(HDCLVault.InsufficientClaimable.selector);
+        vm.expectRevert(QueueLib.InsufficientClaimable.selector);
         vault.redeem(aliceHdcl, alice, alice);
     }
 
