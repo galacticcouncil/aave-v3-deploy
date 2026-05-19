@@ -199,14 +199,109 @@ contract InvariantVaultTest is Test {
     //         ACCOUNTING INVARIANT 9: totalAssets Solvency
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice totalAssets >= idleHollar + totalInvestedPrincipal
+    /// @notice totalAssets >= idleHollar + totalInvestedPrincipal + totalReservedHollar
     function invariant_totalAssetsSolvency() public view {
-        uint256 floor = vault.totalInvestedPrincipal() + vault.idleHollar();
+        uint256 floor = vault.totalInvestedPrincipal()
+            + vault.idleHollar()
+            + vault.totalReservedHollar();
         assertGe(
             vault.totalAssets(),
             floor,
             "INV-9: totalAssets below component floor"
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //      ACCOUNTING INVARIANT 10: totalReservedHollar accuracy
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice totalReservedHollar == sum of hollarOwed across all non-deleted requests.
+    function invariant_totalReservedHollarAccurate() public view {
+        uint256 tail = vault.getRedemptionQueueLength();
+        uint256 sum = 0;
+        for (uint256 i = 0; i < tail; i++) {
+            (address u, , , uint256 owed, ) = vault.getRedemptionRequest(i);
+            if (u != address(0)) sum += owed;
+        }
+        assertEq(
+            vault.totalReservedHollar(),
+            sum,
+            "INV-10: totalReservedHollar mismatch"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //       ACCOUNTING INVARIANT 11: totalQueuedHdcl accuracy
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice totalQueuedHdcl == sum of hdclAmount across all non-deleted requests.
+    function invariant_totalQueuedHdclAccurate() public view {
+        uint256 tail = vault.getRedemptionQueueLength();
+        uint256 sum = 0;
+        for (uint256 i = 0; i < tail; i++) {
+            (address u, uint256 amt, , , ) = vault.getRedemptionRequest(i);
+            if (u != address(0)) sum += amt;
+        }
+        assertEq(
+            vault.totalQueuedHdcl(),
+            sum,
+            "INV-11: totalQueuedHdcl mismatch"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //          ACCOUNTING INVARIANT 12: HOLLAR backing
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice The vault's HOLLAR balance must cover both idle and reserved
+    ///         claims. A break here means we've spent HOLLAR that was supposed
+    ///         to back unclaimed redemptions, or the accounting drifted away
+    ///         from the real token balance.
+    function invariant_hollarBacking() public view {
+        assertGe(
+            hollar.balanceOf(address(vault)),
+            vault.idleHollar() + vault.totalReservedHollar(),
+            "INV-12: vault HOLLAR balance < idle + reserved"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //         ACCOUNTING INVARIANT 13: Per-request consistency
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice For every live request: hdclSettled <= hdclAmount, and
+    ///         hollarOwed > 0 only if hdclSettled > 0 (no HOLLAR locked for
+    ///         zero shares).
+    function invariant_perRequestConsistency() public view {
+        uint256 tail = vault.getRedemptionQueueLength();
+        for (uint256 i = 0; i < tail; i++) {
+            (address u, uint256 amt, uint256 settled, uint256 owed, ) =
+                vault.getRedemptionRequest(i);
+            if (u == address(0)) continue;
+            assertLe(settled, amt, "INV-13a: hdclSettled > hdclAmount");
+            if (settled == 0) {
+                assertEq(owed, 0, "INV-13b: HOLLAR locked for zero shares");
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //   ACCOUNTING INVARIANT 14: positionPool integrity
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Every non-Redeemed position is anchored to a still-registered
+    ///         pool. retirePool enforces this in the forward direction; this
+    ///         invariant catches any path that could violate it backwards.
+    function invariant_positionPoolIntegrity() public view {
+        uint256 count = vault.getPositionCount();
+        for (uint256 i = 0; i < count; i++) {
+            (, , , , , uint8 state) = vault.getPosition(i);
+            if (state == 4) continue;
+            assertTrue(
+                vault.isPoolRegistered(vault.positionPool(i)),
+                "INV-14: live position references unregistered pool"
+            );
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -217,6 +312,9 @@ contract InvariantVaultTest is Test {
         console.log("--- Call Summary ---");
         console.log("Deposits:         ", userHandler.ghost_depositCount());
         console.log("Redeem requests:  ", userHandler.ghost_redeemRequestCount());
+        console.log("Claims:           ", userHandler.ghost_claimCount());
+        console.log("Auto-claim toggles:", userHandler.ghost_autoClaimToggles());
+        console.log("Operator sets:    ", userHandler.ghost_operatorSets());
         console.log("pokeDecentral:    ", keeperHandler.ghost_pokeDecentralCalls());
         console.log("pokeQueue:        ", keeperHandler.ghost_pokeQueueCalls());
         console.log("Shortfalls set:   ", keeperHandler.ghost_shortfallsConfigured());
@@ -225,6 +323,7 @@ contract InvariantVaultTest is Test {
         console.log("Exchange rate:    ", vault.exchangeRate());
         console.log("Total assets:     ", vault.totalAssets());
         console.log("Idle HOLLAR:      ", vault.idleHollar());
+        console.log("Reserved HOLLAR:  ", vault.totalReservedHollar());
         console.log("Queued HDCL:      ", vault.totalQueuedHdcl());
     }
 }
