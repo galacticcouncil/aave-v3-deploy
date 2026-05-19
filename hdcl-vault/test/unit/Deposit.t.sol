@@ -287,16 +287,8 @@ contract DepositTest is BaseTest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //                    APY BUCKET ACCOUNTING
+    //                    PRINCIPAL ACCOUNTING
     // ═══════════════════════════════════════════════════════════════════════
-
-    /// @notice Spec §4.2 step 8: bucket.totalPrincipal updated on deposit
-    function test_deposit_updatesBucketAccounting() public {
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-
-        uint256 totalPrincipal = vault.apyBuckets(APY_18_PERCENT);
-        assertEq(totalPrincipal, TEN_THOUSAND_HOLLAR, "Bucket totalPrincipal");
-    }
 
     /// @notice Spec §4.2 step 8: totalInvestedPrincipal += hollarAmount
     function test_deposit_updatesTotalInvestedPrincipal() public {
@@ -311,29 +303,6 @@ contract DepositTest is BaseTest {
             TEN_THOUSAND_HOLLAR + HUNDRED_HOLLAR,
             "After second deposit"
         );
-    }
-
-    /// @notice Deposits at different APY rates create separate buckets
-    function test_deposit_createsNewBucket_whenApyChanges() public {
-        // First deposit at 18%
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-
-        assertEq(vault.getActiveAPYCount(), 1);
-        assertEq(vault.getActiveAPY(0), APY_18_PERCENT);
-
-        // Change pool APY to 20%
-        pool.setAPY(APY_20_PERCENT);
-
-        // Second deposit at 20%
-        _deposit(bob, TEN_THOUSAND_HOLLAR);
-
-        assertEq(vault.getActiveAPYCount(), 2, "Two distinct APY buckets");
-        assertEq(vault.getActiveAPY(1), APY_20_PERCENT, "New bucket at 20%");
-
-        uint256 principal18 = vault.apyBuckets(APY_18_PERCENT);
-        uint256 principal20 = vault.apyBuckets(APY_20_PERCENT);
-        assertEq(principal18, TEN_THOUSAND_HOLLAR, "18% bucket principal");
-        assertEq(principal20, TEN_THOUSAND_HOLLAR, "20% bucket principal");
     }
 
     /// @notice Deposits go directly to Decentral — idleHollar stays 0

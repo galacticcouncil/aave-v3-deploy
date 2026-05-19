@@ -66,10 +66,13 @@ contract ExchangeRateTest is BaseTest {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //                    MULTIPLE APY BUCKETS
+    //                  HETEROGENEOUS APY AGGREGATION
     // ═══════════════════════════════════════════════════════════════════════
 
-    function test_exchangeRate_multipleAPYBuckets() public {
+    /// @notice Positions deposited at different prevailing APYs each contribute
+    ///         their own rate to the global yield aggregates. totalAssets()
+    ///         correctly sums the heterogeneous accrual.
+    function test_exchangeRate_heterogeneousAPYs() public {
         // Deposit at 18% APY
         uint256 deposit1 = TEN_THOUSAND_HOLLAR;
         _deposit(alice, deposit1);
@@ -83,15 +86,12 @@ contract ExchangeRateTest is BaseTest {
 
         uint256 totalSupply = vault.totalSupply();
 
-        // Verify two APY buckets exist
-        assertEq(vault.getActiveAPYCount(), 2, "Should have 2 active APY buckets");
-
         // Warp 30 days
         _warpDays(30);
 
         // Manual calculation of totalAssets:
-        // Yield from 18% bucket: deposit1 * 0.18 * 30/365
-        // Yield from 20% bucket: deposit2 * 0.20 * 30/365
+        // Yield from 18% position: deposit1 * 0.18 * 30/365
+        // Yield from 20% position: deposit2 * 0.20 * 30/365
         uint256 yield18 = deposit1 * APY_18_PERCENT * 30 * SECONDS_PER_DAY / (365 days * 1e18);
         uint256 yield20 = deposit2 * APY_20_PERCENT * 30 * SECONDS_PER_DAY / (365 days * 1e18);
         uint256 expectedTotalAssets = deposit1 + deposit2 + yield18 + yield20;
@@ -101,7 +101,7 @@ contract ExchangeRateTest is BaseTest {
             actualTotalAssets,
             expectedTotalAssets,
             0.01e18,
-            "Total assets should include yield from both APY buckets"
+            "Total assets should include yield from both APYs"
         );
 
         // Exchange rate should reflect combined yield

@@ -722,7 +722,6 @@ contract RedeemTest is BaseTest {
             0.01e18,
             "totalInvestedPrincipal increased"
         );
-        assertGe(vault.getActiveAPYCount(), 1, "APY bucket exists");
     }
 
     /// @notice Reinvest preserves exchange rate
@@ -857,30 +856,6 @@ contract RedeemTest is BaseTest {
 
         uint256 wait = vault.getEstimatedWaitTime(0);
         assertEq(wait, 0, "Wait = 0 when maturity + delay already passed");
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //         _removeFromActiveAPYs - MULTI-BUCKET
-    // ═══════════════════════════════════════════════════════════════════════
-
-    /// @notice Processing a position at APY index > 0 exercises the loop increment
-    function test_pokeDecentral_removesNonFirstApyBucket() public {
-        // Position 0 at 18%
-        _deposit(alice, TEN_THOUSAND_HOLLAR);
-
-        // Position 1 at 20%
-        pool.setAPY(APY_20_PERCENT);
-        _deposit(bob, TEN_THOUSAND_HOLLAR);
-
-        assertEq(vault.getActiveAPYCount(), 2);
-
-        // Warp, process position 1 (20%) fully -> its bucket empties
-        _warpDays(61);
-        _processPositionFull(1);
-
-        // 20% bucket removed via swap-and-pop (was at index 1, loop iterates past index 0)
-        assertEq(vault.getActiveAPYCount(), 1, "Only 18% bucket remains");
-        assertEq(vault.getActiveAPY(0), APY_18_PERCENT);
     }
 
     // ═══════════════════════════════════════════════════════════════════════

@@ -64,10 +64,6 @@ contract HDCLVault is
         Redeemed
     }
 
-    struct APYBucket {
-        uint256 totalPrincipal;
-    }
-
     struct NFTPosition {
         uint256 tokenId;
         uint256 principal;
@@ -133,13 +129,7 @@ contract HDCLVault is
     //                          ACCOUNTING STATE
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice APY (WAD) → accounting bucket
-    mapping(uint256 => APYBucket) public apyBuckets;
-    /// @notice List of distinct APY values with non-zero totalPrincipal
-    uint256[] public activeAPYList;
-    /// @notice O(1) existence check for active APYs
-    mapping(uint256 => bool) public isActiveAPY;
-    /// @notice Sum of principal across all buckets
+    /// @notice Sum of principal across all yield-bearing positions
     uint256 public totalInvestedPrincipal;
     /// @notice Aggregate: sum(apyWad * principal) across all yield-bearing positions
     uint256 public yieldRateSum;
@@ -566,7 +556,7 @@ contract HDCLVault is
                     );
                 }
 
-                _adjustBucketOnPrincipalRedemption(pos);
+                _removePrincipalFromBucket(pos.principal);
 
                 idleHollar += principalReceived;
                 pos.state = NFTState.Redeemed;
@@ -843,16 +833,6 @@ contract HDCLVault is
         return decentralPool.fixedAPYWad();
     }
 
-    /// @notice Number of active APY buckets
-    function getActiveAPYCount() external view returns (uint256) {
-        return activeAPYList.length;
-    }
-
-    /// @notice Get active APY at index
-    function getActiveAPY(uint256 index) external view returns (uint256) {
-        return activeAPYList[index];
-    }
-
     /// @notice Total number of redemption requests ever created
     function getRedemptionQueueLength() external view returns (uint256) {
         return queueTail;
@@ -1127,14 +1107,6 @@ contract HDCLVault is
         }
     }
 
-    /// @dev Strip a position's principal contribution after Decentral has returned principal.
-    ///      Yield bookkeeping was already cleared at yield claim — do not touch it here.
-    function _adjustBucketOnPrincipalRedemption(
-        NFTPosition storage pos
-    ) internal {
-        _removePrincipalFromBucket(pos.apyWad, pos.principal);
-    }
-
     /// @dev Attempt a HOLLAR transfer; return false on revert or if the token
     ///      returns false. Used by `_processQueueWithHollar` so a single failing
     ///      recipient (e.g., a future HOLLAR blacklist) cannot brick the entire
@@ -1163,40 +1135,21 @@ contract HDCLVault is
         }
     }
 
-    /// @dev Add a position's principal to bucket + global accounting (no yield change).
-    function _addPrincipalToBucket(
-        uint256 apyWad,
-        uint256 principal
-    ) internal {
-        _addToActiveAPYsIfNew(apyWad);
-        apyBuckets[apyWad].totalPrincipal += principal;
-        totalInvestedPrincipal += principal;
-    }
-
-    /// @dev Remove a position's principal from bucket + global accounting (no yield change).
-    function _removePrincipalFromBucket(
-        uint256 apyWad,
-        uint256 principal
-    ) internal {
-        APYBucket storage bucket = apyBuckets[apyWad];
-        bucket.totalPrincipal -= principal;
-        totalInvestedPrincipal -= principal;
-        if (bucket.totalPrincipal == 0) {
-            _removeFromActiveAPYs(apyWad);
-        }
-    }
-
-    /// @dev Add a position's yield contribution to the global aggregates.
-    function _addYieldToBucket(
+    /// @dev Record a fresh position: bump principal counter and add to the
+    ///      yield aggregates. Used by deposit and reinvest paths.
+    function _addToBucket(
         uint256 apyWad,
         uint256 principal,
         uint256 yieldStartTime
     ) internal {
+        totalInvestedPrincipal += principal;
         yieldRateSum += apyWad * principal;
         yieldOffsetSum += apyWad * principal * yieldStartTime;
     }
 
-    /// @dev Remove a position's yield contribution from the global aggregates.
+    /// @dev Stop a position from accruing yield without touching its principal.
+    ///      Used at Active → YieldWithdrawalRequested when Decentral has locked
+    ///      the payout amount.
     function _removeYieldFromBucket(
         uint256 apyWad,
         uint256 principal,
@@ -1206,38 +1159,10 @@ contract HDCLVault is
         yieldOffsetSum -= apyWad * principal * yieldStartTime;
     }
 
-    /// @dev Add a fresh position fully (principal + yield). Used by deposit / reinvest.
-    function _addToBucket(
-        uint256 apyWad,
-        uint256 principal,
-        uint256 yieldStartTime
-    ) internal {
-        _addPrincipalToBucket(apyWad, principal);
-        _addYieldToBucket(apyWad, principal, yieldStartTime);
-    }
-
-    /// @dev Add an APY to activeAPYList if not already present
-    function _addToActiveAPYsIfNew(uint256 apyWad) internal {
-        if (isActiveAPY[apyWad]) return;
-        isActiveAPY[apyWad] = true;
-        activeAPYList.push(apyWad);
-    }
-
-    /// @dev Remove an APY from activeAPYList (swap-and-pop)
-    function _removeFromActiveAPYs(uint256 apyWad) internal {
-        if (!isActiveAPY[apyWad]) return;
-        isActiveAPY[apyWad] = false;
-        uint256 len = activeAPYList.length;
-        for (uint256 i = 0; i < len; ) {
-            if (activeAPYList[i] == apyWad) {
-                activeAPYList[i] = activeAPYList[len - 1];
-                activeAPYList.pop();
-                return;
-            }
-            unchecked {
-                ++i;
-            }
-        }
+    /// @dev Drop a position's principal contribution after Decentral has paid
+    ///      it back. Yield aggregates were already cleared at yield-claim time.
+    function _removePrincipalFromBucket(uint256 principal) internal {
+        totalInvestedPrincipal -= principal;
     }
 
     /// @dev Returns the minimum investment period from Decentral pool

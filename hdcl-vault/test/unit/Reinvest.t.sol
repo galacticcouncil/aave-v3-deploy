@@ -185,9 +185,6 @@ contract ReinvestTest is BaseTest {
             0.01e18,
             "totalInvestedPrincipal should increase by reinvested amount"
         );
-
-        // APY bucket should be updated (at least 1 active APY)
-        assertGe(vault.getActiveAPYCount(), 1, "Should have at least 1 active APY after reinvest");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
