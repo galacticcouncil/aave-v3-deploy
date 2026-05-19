@@ -393,16 +393,32 @@ export class HDCLKeeper {
 
   // ─── Alerting ────────────────────────────────────────────────────────
 
-  private async sendAlert(message: string): Promise<void> {
+  /// Post a Discord webhook embed. `ALERT_WEBHOOK` is expected to be a
+  /// Discord webhook URL (https://discord.com/api/webhooks/<id>/<token>).
+  /// Levels map to standard embed colors so on-call can triage by sidebar
+  /// stripe in the channel.
+  private async sendAlert(message: string, level: 'warn' | 'error' = 'warn'): Promise<void> {
     if (!CONFIG.ALERT_WEBHOOK) return;
+
+    const color = level === 'error'
+      ? 0xE74C3C  // red
+      : 0xF1C40F; // yellow
 
     try {
       await fetch(CONFIG.ALERT_WEBHOOK, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: `[HDCL Keeper] ${message}`,
-          timestamp: new Date().toISOString(),
+          username: 'HDCL Keeper',
+          embeds: [
+            {
+              title: level === 'error' ? 'HDCL Keeper — error' : 'HDCL Keeper — warning',
+              description: message,
+              color,
+              footer: { text: `Vault ${this.vaultAddress}` },
+              timestamp: new Date().toISOString(),
+            },
+          ],
         }),
       });
     } catch (err) {

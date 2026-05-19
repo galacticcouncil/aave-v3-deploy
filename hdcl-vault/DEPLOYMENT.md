@@ -89,7 +89,7 @@ The keeper requires:
 | `RPC_URL` | Hydration RPC |
 | `VAULT_ADDRESS` | proxy address from Step 1 |
 | `KEEPER_PRIVATE_KEY` | the private key whose address holds `CLAIM_OPERATOR_ROLE` (Step 2) |
-| `ALERT_WEBHOOK` | optional — receives stuck-position alerts |
+| `ALERT_WEBHOOK` | optional — **Discord webhook URL** (`https://discord.com/api/webhooks/<id>/<token>`). Alerts post as richer embeds with yellow (warn) / red (error) sidebar coloring and the vault address in the footer. |
 
 Verify before starting:
 - Keeper address has gas (HDX) on Hydration
