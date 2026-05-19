@@ -6,12 +6,13 @@ Make HDCL a long-running yield-bearing vault that persists across Decentral pool
 
 ## Trust model
 
-Two tiers of on-chain control, with different cadences and enforcement at the EVM layer:
+Three on-chain roles with distinct authorities and cadences:
 
 | Role | Substrate path | Authority | Cadence |
 |------|---------------|-----------|---------|
 | `ADMIN_ROLE` | Hydration governance, **economics-params track** | Everything | Days (propose → vote → execute) |
 | `GUARDIAN_ROLE` | **Technical committee** | Pause/unpause both `pauseDeposits`/`unpauseDeposits` and `pause`/`unpause` | Fast (committee signature) |
+| `CLAIM_OPERATOR_ROLE` | **Keeper bot(s)** | Call `redeem`/`withdraw` on behalf of opted-in controllers; constrained so HOLLAR can only go to the controller's own address (no redirect) | On-demand, per-request |
 
 **Admin ⊇ Guardian principle.** Anything the guardian can do, the admin can also do. Implementation pattern: a single `onlyAdminOrGuardian` modifier guards pause/unpause functions; both roles satisfy it. The admin role does NOT need to also hold the guardian role.
 
@@ -20,6 +21,13 @@ Two tiers of on-chain control, with different cadences and enforcement at the EV
 **Rotation cadence.** Routine pool rotations (register, switch, retire) ride the slow `ADMIN_ROLE` track. Emergency halts and resumptions ride the fast `GUARDIAN_ROLE` track. The fast path closes the window where a deteriorating Decentral pool could keep accepting deposits during the multi-day proposal cycle for rotation.
 
 `ADMIN_ROLE` exclusively retains all other operations: `registerPool`, `setActiveDepositPool`, `retirePool`, `setTvlCap`, `setOracle`, `setMinRedeemAmount`, `setMinReinvestAmount`, plus UUPS upgrade authorization via `UPGRADER_ROLE`.
+
+`CLAIM_OPERATOR_ROLE` is the auto-claim authority. Compared to a per-user 7540 operator approval (which still works alongside), this role is:
+- Granted by admin once, at deploy or via governance (typically to a keeper bot address)
+- Gated on a per-controller `autoClaimEnabled` flag — the controller must opt in before the role-holder can act on their behalf
+- Strictly constrained: the role-holder can call `redeem`/`withdraw` for an opted-in controller, but `receiver` is forced to equal `controller`. The role provides timing, not redirect authority.
+
+Protocol-owned positions (treasury, integration wrappers) opt themselves in by calling `setAutoClaim(true)` from their own contract logic — same path as a regular user. There is no admin override for the opt-in flag.
 
 ## Design — Option A: admin-only routing
 
@@ -209,6 +217,79 @@ Today, `pokeQueue` computes `rate = exchangeRate()` once per call, then settles 
 
 The shift moves HOLLAR-out from `pokeQueue` to `redeem`. The pendingYield/pendingPrincipal flow into `idleHollar` unchanged.
 
+Concrete struct + state changes:
+
+```solidity
+struct RedemptionRequest {
+    address user;
+    uint256 hdclAmount;     // total hDCL queued
+    uint256 hdclSettled;    // rate-locked, ready to claim
+    uint256 hollarOwed;     // HOLLAR reserved for this request, ready to claim
+}
+
+uint256 public totalReservedHollar;  // sum of hollarOwed across all requests
+```
+
+`pokeQueue` decrements `idleHollar` by the reserved amount and increments `totalReservedHollar`. The HOLLAR stays in the vault contract (token-wise) until `redeem` transfers it out. `totalAssets()` formula extends to include `totalReservedHollar` — the reserved HOLLAR still backs hDCL supply until claim:
+
+```
+totalAssets = totalInvestedPrincipal + accruedYield + idleHollar + totalPendingYield + totalReservedHollar
+```
+
+### Auto-claim via CLAIM_OPERATOR_ROLE
+
+To preserve a one-tx UX for users while staying on the pull side of 7540, the vault adds an auto-claim authority anchored on opt-in:
+
+```solidity
+bytes32 public constant CLAIM_OPERATOR_ROLE = keccak256("CLAIM_OPERATOR_ROLE");
+
+/// @notice Per-controller flag: if true, CLAIM_OPERATOR_ROLE holders may
+///         call redeem/withdraw on the controller's behalf, paying out
+///         only to the controller's own address.
+mapping(address => bool) public autoClaimEnabled;
+
+event AutoClaimSet(address indexed controller, bool enabled);
+
+/// @notice Toggle auto-claim for msg.sender. Users opt in for themselves;
+///         protocol contracts call this from their own logic.
+function setAutoClaim(bool enabled) external {
+    autoClaimEnabled[msg.sender] = enabled;
+    emit AutoClaimSet(msg.sender, enabled);
+}
+```
+
+Authorization extension on the redeem/withdraw entry points:
+
+```solidity
+function redeem(uint256 shares, address receiver, address controller)
+    external
+    returns (uint256 assets)
+{
+    if (msg.sender != controller && !isOperator[controller][msg.sender]) {
+        // Role-based auto-claim path
+        require(
+            hasRole(CLAIM_OPERATOR_ROLE, msg.sender)
+                && autoClaimEnabled[controller]
+                && receiver == controller,
+            "Not authorized"
+        );
+    }
+    // ... claim logic
+}
+```
+
+The `receiver == controller` constraint is load-bearing. The auto-claimer can move HOLLAR through to the user's wallet but cannot redirect it elsewhere. Compromise of a CLAIM_OPERATOR_ROLE key yields only a denial-of-control over claim *timing*, never a path to theft.
+
+Standard 7540 paths (`msg.sender == controller`, or per-user `isOperator`) keep working unchanged — the role is supplementary. Strict 7540 conformance tests pass.
+
+**Operational flow:**
+1. Admin grants `CLAIM_OPERATOR_ROLE` to the keeper bot at deploy.
+2. User opts in via `setAutoClaim(true)` (one tx, gas paid by user).
+3. Protocol-owned positions call `setAutoClaim(true)` from their own contract logic.
+4. After every `pokeQueue` run, keeper bot walks newly-settled requests; for each request whose `user` has `autoClaimEnabled == true`, keeper calls `redeem(r.hdclSettled, r.user, r.user)`. HOLLAR lands in the user's wallet.
+5. Users who haven't opted in self-claim by calling `redeem` directly.
+6. Anyone can opt back out by calling `setAutoClaim(false)`.
+
 ### What stays the same
 
 - The position lifecycle, multi-pool routing, yield math, and tvlCap behavior are all orthogonal to 7540.
@@ -240,6 +321,8 @@ The shift moves HOLLAR-out from `pokeQueue` to `redeem`. The pendingYield/pendin
 | 5 | `tvlCap` scope | Global across all pools. |
 | 6 | `retirePool` strictness | Requires zero open positions in the pool. |
 | 7 | Standards conformance | Target ERC-7540 (async vault) + ERC-4626 base. See section below. |
+| 8 | Redemption settlement | Pull. `pokeQueue` rate-locks; users (or `CLAIM_OPERATOR_ROLE` holders for opted-in controllers) claim via `redeem`/`withdraw`. |
+| 9 | Auto-claim role | Add `CLAIM_OPERATOR_ROLE`. Per-controller `autoClaimEnabled` flag, user-toggled only (no admin override). Role-holder bound to `receiver == controller`. |
 
 ## Implementation order (when greenlit)
 
@@ -273,16 +356,18 @@ Three workstreams in dependency order. Land each as a separate commit (or PR) to
 8. Add `asset()`, `convertToShares`, `convertToAssets`, `maxDeposit`, `maxMint`, `maxWithdraw`, `maxRedeem`, `previewMint`.
 9. Change `deposit(uint256)` → `deposit(uint256 assets, address receiver)`; add `mint(uint256 shares, address receiver)`. Emit canonical `Deposit(sender, owner, assets, shares)` event.
 10. Change `requestRedeem(uint256)` → `requestRedeem(uint256 shares, address controller, address owner)`. Implement owner-allowance check.
-11. **Switch redemption from push to pull.** Modify `_processQueueWithHollar` to record `(hdclConsumed, hollarOwed)` on each request instead of pushing HOLLAR. Implement `redeem(shares, receiver, controller)` and `withdraw(assets, receiver, controller)` for users to claim.
+11. **Switch redemption from push to pull.** Modify `_processQueueWithHollar` to record `hdclSettled` / `hollarOwed` on each request and move HOLLAR from `idleHollar` into `totalReservedHollar` instead of pushing. Update `totalAssets()` to include `totalReservedHollar`. Implement `redeem(shares, receiver, controller)` and `withdraw(assets, receiver, controller)` for users to claim.
 12. Add operator pattern: `setOperator(address, bool)`, `isOperator(address, address)`, `OperatorSet` event. Permit operator-initiated `requestRedeem`, `redeem`, `withdraw`.
-13. Add view functions: `pendingRedeemRequest(requestId, controller)`, `claimableRedeemRequest(requestId, controller)`.
-14. Add ERC-165 `supportsInterface` returning true for ERC-7540, ERC-4626, ERC-165 interface IDs.
-15. Tests:
+13. Add `CLAIM_OPERATOR_ROLE` + `autoClaimEnabled` mapping + `setAutoClaim(bool)` function. Extend `redeem`/`withdraw` auth check with the role-based path (constrained to `receiver == controller`).
+14. Add view functions: `pendingRedeemRequest(requestId, controller)`, `claimableRedeemRequest(requestId, controller)`.
+15. Add ERC-165 `supportsInterface` returning true for ERC-7540, ERC-4626, ERC-165 interface IDs.
+16. Tests:
    - ERC-165 detection for both interface IDs
    - ERC-4626 sync deposit path with receiver != sender
    - Operator approval + delegated claim flow
    - Pull-based redemption: request → process → claim
    - `pendingRedeemRequest` and `claimableRedeemRequest` correctness across the lifecycle, including partial fulfillment
+   - `CLAIM_OPERATOR_ROLE`: opted-in controller can be auto-claimed by role-holder; non-opted-in reverts; role-holder cannot redirect (receiver != controller reverts); user can opt out and subsequent attempts revert
    - ERC-4626 spec tests (a16z `erc4626-tests` subset that applies to async vaults)
    - Migration: existing pre-7540 callers (if any) get a clear revert with the new signatures, not silent acceptance
 
