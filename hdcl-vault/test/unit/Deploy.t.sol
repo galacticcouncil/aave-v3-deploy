@@ -149,7 +149,7 @@ contract DeployTest is Test {
         hollar.approve(address(vault), type(uint256).max);
 
         vm.prank(alice);
-        uint256 hdclMinted = vault.deposit(10_000e18);
+        uint256 hdclMinted = vault.deposit(10_000e18, alice);
         assertGt(hdclMinted, 0, "first deposit mints HDCL");
 
         // Oracle still works after a real deposit

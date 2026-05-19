@@ -191,6 +191,14 @@ contract HDCLVault is
         uint256 hdclMinted,
         uint256 tokenId
     );
+    /// @notice ERC-4626 canonical deposit event. Emitted in addition to
+    ///         `Deposited` so 4626-aware integrators have the standard shape.
+    event Deposit(
+        address indexed sender,
+        address indexed owner,
+        uint256 assets,
+        uint256 shares
+    );
     event RedemptionRequested(
         uint256 indexed requestId,
         address indexed user,
@@ -351,18 +359,51 @@ contract HDCLVault is
     //                          USER FUNCTIONS
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice Deposit HOLLAR and receive HDCL at the current rate.
-    /// @param hollarAmount Amount of HOLLAR to deposit
-    /// @return hdclMinted Amount of HDCL minted to caller
+    /// @notice ERC-4626 deposit. Pulls `assets` HOLLAR from msg.sender and
+    ///         mints the corresponding hDCL shares to `receiver`.
+    /// @param assets   Amount of HOLLAR to deposit
+    /// @param receiver Address that receives the minted hDCL
+    /// @return shares  Amount of hDCL minted to `receiver`
     function deposit(
-        uint256 hollarAmount
-    ) external nonReentrant whenNotPaused returns (uint256 hdclMinted) {
-        hdclMinted = _previewMint(hollarAmount);
+        uint256 assets,
+        address receiver
+    ) external nonReentrant whenNotPaused returns (uint256 shares) {
+        require(receiver != address(0), "Zero receiver");
+        shares = _validateAndPreviewShares(assets);
+        _deposit(msg.sender, receiver, assets, shares);
+    }
+
+    /// @notice ERC-4626 mint. Mints exactly `shares` hDCL to `receiver` and
+    ///         pulls the necessary HOLLAR from msg.sender.
+    /// @param shares    Amount of hDCL to mint
+    /// @param receiver  Address that receives the minted hDCL
+    /// @return assets   HOLLAR consumed
+    function mint(
+        uint256 shares,
+        address receiver
+    ) external nonReentrant whenNotPaused returns (uint256 assets) {
+        require(receiver != address(0), "Zero receiver");
+        require(shares > 0, "Zero shares");
+        assets = previewMint(shares);
+        // Reuse the same validation path: paused/zero/cap checks
+        // run again on the computed asset amount.
+        _validateDeposit(assets);
+        _deposit(msg.sender, receiver, assets, shares);
+    }
+
+    /// @dev Shared deposit body: mint hDCL, pull HOLLAR, push into Decentral.
+    function _deposit(
+        address sender,
+        address receiver,
+        uint256 assets,
+        uint256 shares
+    ) internal {
         if (totalSupply() == 0) _mint(DEAD_ADDRESS, DEAD_SHARES);
-        _mint(msg.sender, hdclMinted);
-        hollar.safeTransferFrom(msg.sender, address(this), hollarAmount);
-        uint256 tokenId = _depositIntoDecentral(hollarAmount);
-        emit Deposited(msg.sender, hollarAmount, hdclMinted, tokenId);
+        _mint(receiver, shares);
+        hollar.safeTransferFrom(sender, address(this), assets);
+        uint256 tokenId = _depositIntoDecentral(assets);
+        emit Deposited(receiver, assets, shares, tokenId);
+        emit Deposit(sender, receiver, assets, shares);
     }
 
     /// @dev Forward HOLLAR to Decentral and record the new NFT position.
@@ -634,31 +675,38 @@ contract HDCLVault is
         }
     }
 
-    /// @dev Validate a deposit and compute the HDCL to mint at the current
-    ///      rate. Extracted from `deposit` to keep its stack depth shallow
-    ///      enough for via_ir compilation.
-    function _previewMint(uint256 hollarAmount)
+    /// @dev Validate the size/state preconditions for a deposit. Used by both
+    ///      `deposit` (after computing shares) and `mint` (after computing
+    ///      the assets required for a target share count).
+    function _validateDeposit(uint256 assets) internal view {
+        if (depositsPaused) revert DepositsArePaused();
+        if (assets == 0) revert ZeroAmount();
+        if (totalAssets() + assets > tvlCap) revert ExceedsTvlCap();
+    }
+
+    /// @dev Validate and compute share count for an asset deposit.
+    ///      Extracted to keep `deposit`'s stack depth shallow enough for
+    ///      via_ir compilation.
+    function _validateAndPreviewShares(uint256 assets)
         internal
         view
-        returns (uint256 hdclMinted)
+        returns (uint256 shares)
     {
-        if (depositsPaused) revert DepositsArePaused();
-        if (hollarAmount == 0) revert ZeroAmount();
-        if (totalAssets() + hollarAmount > tvlCap) revert ExceedsTvlCap();
+        _validateDeposit(assets);
 
         uint256 supply = totalSupply();
         if (supply == 0) {
-            require(hollarAmount > DEAD_SHARES, "Deposit too small");
-            hdclMinted = hollarAmount - DEAD_SHARES;
+            require(assets > DEAD_SHARES, "Deposit too small");
+            shares = assets - DEAD_SHARES;
         } else {
-            uint256 assets = totalAssets();
+            uint256 totalA = totalAssets();
             // Catastrophic state: shares exist but no backing. Refuse to
             // deposit at a zero rate — the depositor would receive no HDCL
             // and lose their HOLLAR. Solidity 0.8+ would panic on the
             // division below; this gives a clear revert reason instead.
-            require(assets > 0, "Vault has no assets");
-            hdclMinted = (hollarAmount * supply) / assets;
-            require(hdclMinted > 0, "Deposit too small");
+            require(totalA > 0, "Vault has no assets");
+            shares = (assets * supply) / totalA;
+            require(shares > 0, "Deposit too small");
         }
     }
 
@@ -709,7 +757,74 @@ contract HDCLVault is
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //                          VIEW FUNCTIONS
+    //                       ERC-4626 VIEW SURFACE
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice The underlying asset (HOLLAR).
+    function asset() external view returns (address) {
+        return address(hollar);
+    }
+
+    /// @notice Convert HOLLAR → hDCL at the current rate (no fees, no
+    ///         first-deposit dust). For empty supply, returns 1:1.
+    function convertToShares(uint256 assets) public view returns (uint256) {
+        uint256 supply = totalSupply();
+        if (supply == 0) return assets;
+        uint256 totalA = totalAssets();
+        if (totalA == 0) return 0;
+        return (assets * supply) / totalA;
+    }
+
+    /// @notice Convert hDCL → HOLLAR at the current rate.
+    function convertToAssets(uint256 shares) public view returns (uint256) {
+        uint256 supply = totalSupply();
+        if (supply == 0) return shares;
+        return (shares * totalAssets()) / supply;
+    }
+
+    /// @notice Max HOLLAR `receiver` can deposit right now.
+    /// @dev    Returns 0 if deposits are paused (at either level) or if the
+    ///         TVL cap is already reached. Otherwise the remaining headroom
+    ///         under the cap.
+    function maxDeposit(address /* receiver */) public view returns (uint256) {
+        if (paused() || depositsPaused) return 0;
+        uint256 totalA = totalAssets();
+        if (totalA >= tvlCap) return 0;
+        return tvlCap - totalA;
+    }
+
+    /// @notice Max hDCL `receiver` can mint right now.
+    function maxMint(address receiver) external view returns (uint256) {
+        return convertToShares(maxDeposit(receiver));
+    }
+
+    /// @notice Max HOLLAR `owner` can sync-withdraw. Always 0 — this vault
+    ///         is async-only. Use `requestRedeem` then `withdraw` (claim).
+    function maxWithdraw(address /* owner */) external pure returns (uint256) {
+        return 0;
+    }
+
+    /// @notice Max hDCL `owner` can sync-redeem. Always 0 — async-only.
+    function maxRedeem(address /* owner */) external pure returns (uint256) {
+        return 0;
+    }
+
+    /// @notice Preview how much HOLLAR is needed to mint exactly `shares` hDCL.
+    /// @dev    Rounds up to favor the vault — mint will pull at least this much.
+    function previewMint(uint256 shares) public view returns (uint256 assets) {
+        uint256 supply = totalSupply();
+        if (supply == 0) {
+            // First-deposit dust: caller must overpay DEAD_SHARES wei to
+            // mint `shares` to themselves while DEAD_SHARES go to 0xdead.
+            return shares + DEAD_SHARES;
+        }
+        uint256 totalA = totalAssets();
+        // ceil(shares * totalA / supply)
+        return (shares * totalA + supply - 1) / supply;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //                       VAULT-SPECIFIC VIEWS
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice Preview how much HDCL a HOLLAR deposit would mint.

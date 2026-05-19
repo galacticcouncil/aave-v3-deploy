@@ -47,7 +47,7 @@ contract UserHandler is Test {
         }
 
         vm.prank(actor);
-        uint256 hdcl = vault.deposit(amount);
+        uint256 hdcl = vault.deposit(amount, actor);
 
         ghost_totalDeposited += amount;
         ghost_totalHdclMinted += hdcl;

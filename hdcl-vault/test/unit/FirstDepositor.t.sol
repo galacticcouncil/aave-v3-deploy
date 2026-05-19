@@ -30,7 +30,7 @@ contract FirstDepositorTest is BaseTest {
         //         The vault will mint (amount - DEAD_SHARES) to attacker, DEAD_SHARES to 0xdead
         uint256 attackerDeposit = 10e18;
         vm.prank(attacker);
-        uint256 attackerHdcl = vault.deposit(attackerDeposit);
+        uint256 attackerHdcl = vault.deposit(attackerDeposit, attacker);
 
         // Attacker got (10e18 - 1000) HDCL
         assertEq(attackerHdcl, attackerDeposit - DEAD_SHARES, "attacker should get deposit - dead shares");
@@ -59,7 +59,7 @@ contract FirstDepositorTest is BaseTest {
         // Step 3: Victim deposits 10e18 HOLLAR
         uint256 victimDeposit = 10e18;
         vm.prank(victim);
-        uint256 victimHdcl = vault.deposit(victimDeposit);
+        uint256 victimHdcl = vault.deposit(victimDeposit, victim);
 
         // Victim should receive ~ victimDeposit * supply / totalAssets = 10e18 * 10e18 / 10e18 = 10e18 HDCL
         // (fair amount, NOT rounded down to zero by the inflated rate)
@@ -71,7 +71,7 @@ contract FirstDepositorTest is BaseTest {
         // Alice makes a large first deposit
         uint256 largeDeposit = 50_000e18;
         vm.prank(alice);
-        uint256 aliceHdcl = vault.deposit(largeDeposit);
+        uint256 aliceHdcl = vault.deposit(largeDeposit, alice);
         assertEq(aliceHdcl, largeDeposit - DEAD_SHARES, "first depositor gets amount - dead shares");
 
         // Warp 30 days so some yield accrues (rate > 1)
@@ -83,7 +83,7 @@ contract FirstDepositorTest is BaseTest {
         // Bob makes a smaller deposit
         uint256 smallDeposit = 1_000e18;
         vm.prank(bob);
-        uint256 bobHdcl = vault.deposit(smallDeposit);
+        uint256 bobHdcl = vault.deposit(smallDeposit, bob);
 
         // Bob should receive proportional HDCL at the current rate:
         //   bobHdcl = smallDeposit * totalSupplyBefore / totalAssetsBefore
@@ -105,7 +105,7 @@ contract FirstDepositorTest is BaseTest {
         // First deposit
         uint256 depositAmount = 1_000e18;
         vm.prank(alice);
-        uint256 aliceHdcl = vault.deposit(depositAmount);
+        uint256 aliceHdcl = vault.deposit(depositAmount, alice);
 
         // Dead shares minted to DEAD_ADDRESS
         assertEq(vault.balanceOf(DEAD_ADDRESS), DEAD_SHARES, "dead shares should be minted to 0xdead");
@@ -118,7 +118,7 @@ contract FirstDepositorTest is BaseTest {
 
         // Second deposit should NOT mint additional dead shares
         vm.prank(bob);
-        uint256 bobHdcl = vault.deposit(1_000e18);
+        uint256 bobHdcl = vault.deposit(1_000e18, bob);
         assertGt(bobHdcl, 0, "bob gets HDCL");
         assertEq(vault.balanceOf(DEAD_ADDRESS), DEAD_SHARES, "dead shares should NOT increase on second deposit");
     }

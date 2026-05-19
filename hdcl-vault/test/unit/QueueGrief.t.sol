@@ -25,7 +25,7 @@ contract QueueGriefTest is BaseTest {
 
     function _depositForRedemption(address user, uint256 amount) internal {
         vm.prank(user);
-        vault.deposit(amount);
+        vault.deposit(amount, user);
     }
 
     /// @dev Spam N requestRedeem then cancel each, leaving N zero-address slots
@@ -61,7 +61,7 @@ contract QueueGriefTest is BaseTest {
     /// to Redeemed → idleHollar holds principal + yield.
     function _seedIdleHollar(uint256 depositAmount) internal {
         vm.prank(alice);
-        vault.deposit(depositAmount);
+        vault.deposit(depositAmount, alice);
         _warpDays(61);
         _processPositionFull(0);
         // After this, vault.idleHollar() > 0 with principal + ~30% of a year's yield
@@ -78,7 +78,7 @@ contract QueueGriefTest is BaseTest {
     function test_grief_cancelSpamMidQueueDoesNotStarveRealRequest() public {
         // Seed a real request from alice. Note: id=0 is alice's redemption.
         vm.prank(alice);
-        vault.deposit(50_000e18);
+        vault.deposit(50_000e18, alice);
 
         vm.prank(alice);
         uint256 aliceReqId = vault.requestRedeem(1_000e18);
@@ -87,7 +87,7 @@ contract QueueGriefTest is BaseTest {
         // Bob spams 200 mid-queue cancellations (cancel in reverse so Fix B's
         // head-sweep doesn't reach them — these are pure mid-queue holes).
         vm.prank(bob);
-        vault.deposit(50_000e18); // bob needs HDCL to escrow
+        vault.deposit(50_000e18, bob); // bob needs HDCL to escrow
         _spamCreateAndCancelReverse(bob, 200);
 
         assertEq(vault.queueHead(), 0, "queueHead unchanged (none were at head)");
@@ -114,13 +114,13 @@ contract QueueGriefTest is BaseTest {
     function test_grief_cancelSpam500HolesSingleCall() public {
         // Seed alice's real request at id=0
         vm.prank(alice);
-        vault.deposit(50_000e18);
+        vault.deposit(50_000e18, alice);
         vm.prank(alice);
         vault.requestRedeem(1_000e18);
 
         // Bob makes 500 mid-queue holes
         vm.prank(bob);
-        vault.deposit(50_000e18);
+        vault.deposit(50_000e18, bob);
         _spamCreateAndCancelReverse(bob, 500);
 
         _warpDays(61);
@@ -140,13 +140,13 @@ contract QueueGriefTest is BaseTest {
     ///         while preserving liveness — multiple calls fully clear the queue.
     function test_grief_cancelSpamAboveSkipCapStillProgresses() public {
         vm.prank(alice);
-        vault.deposit(50_000e18);
+        vault.deposit(50_000e18, alice);
         vm.prank(alice);
         vault.requestRedeem(1_000e18); // alice's redemption at id=0
 
         // Bob makes 700 mid-queue holes (above MAX_QUEUE_SKIPS=500)
         vm.prank(bob);
-        vault.deposit(50_000e18);
+        vault.deposit(50_000e18, bob);
         _spamCreateAndCancelReverse(bob, 700); // ids 1..700; queueHead stays 0
 
         assertEq(vault.queueHead(), 0, "queueHead at alice's request");
@@ -170,12 +170,12 @@ contract QueueGriefTest is BaseTest {
     function test_grief_pokeQueueProcessesRealAfterMidQueueHoles() public {
         // Bob makes 100 mid-queue holes
         vm.prank(bob);
-        vault.deposit(50_000e18);
+        vault.deposit(50_000e18, bob);
         _spamCreateAndCancelReverse(bob, 100);
 
         // Now alice creates a real request at id=100
         vm.prank(alice);
-        vault.deposit(50_000e18);
+        vault.deposit(50_000e18, alice);
         vm.prank(alice);
         uint256 aliceId = vault.requestRedeem(1_000e18);
         assertEq(aliceId, 100, "alice's real request at id=100");
@@ -199,7 +199,7 @@ contract QueueGriefTest is BaseTest {
     /// @notice The single-cancel-at-head case advances queueHead by 1.
     function test_cancelRedeem_atHead_advancesQueueHead() public {
         vm.prank(alice);
-        vault.deposit(10_000e18);
+        vault.deposit(10_000e18, alice);
 
         vm.prank(alice);
         uint256 reqId = vault.requestRedeem(1_000e18);
@@ -217,9 +217,9 @@ contract QueueGriefTest is BaseTest {
     ///         as a mid-queue hole; pokeQueue's Fix A handles it).
     function test_cancelRedeem_notAtHead_keepsQueueHead() public {
         vm.prank(alice);
-        vault.deposit(10_000e18);
+        vault.deposit(10_000e18, alice);
         vm.prank(bob);
-        vault.deposit(10_000e18);
+        vault.deposit(10_000e18, bob);
 
         // alice creates id=0, bob creates id=1
         vm.prank(alice);
@@ -242,7 +242,7 @@ contract QueueGriefTest is BaseTest {
     ///         (capped at MAX_QUEUE_ITERATIONS).
     function test_cancelRedeem_sweepsConsecutiveHoles() public {
         vm.prank(alice);
-        vault.deposit(50_000e18);
+        vault.deposit(50_000e18, alice);
 
         // Alice creates 5 requests, all owned by her
         uint256[] memory ids = new uint256[](5);
@@ -272,9 +272,9 @@ contract QueueGriefTest is BaseTest {
     /// @notice Sweep stops at the first non-zero slot, not at queueTail.
     function test_cancelRedeem_sweepStopsAtRealRequest() public {
         vm.prank(alice);
-        vault.deposit(50_000e18);
+        vault.deposit(50_000e18, alice);
         vm.prank(bob);
-        vault.deposit(10_000e18);
+        vault.deposit(10_000e18, bob);
 
         // alice: ids 0, 1, 2 (will all be cancelled). bob: id 3 (real, kept).
         uint256[] memory ids = new uint256[](3);
@@ -307,7 +307,7 @@ contract QueueGriefTest is BaseTest {
     function test_cancelRedeem_sweepCappedAtMaxIterations() public {
         // Alice creates 60 requests
         vm.prank(alice);
-        vault.deposit(100_000e18);
+        vault.deposit(100_000e18, alice);
 
         uint256[] memory ids = new uint256[](60);
         for (uint256 i = 0; i < 60; i++) {
@@ -340,9 +340,9 @@ contract QueueGriefTest is BaseTest {
     /// @notice Single cancel-at-head with no other holes advances queueHead by exactly 1.
     function test_cancelRedeem_atHeadNoConsecutive_singleAdvance() public {
         vm.prank(alice);
-        vault.deposit(20_000e18);
+        vault.deposit(20_000e18, alice);
         vm.prank(bob);
-        vault.deposit(20_000e18);
+        vault.deposit(20_000e18, bob);
 
         // alice id=0, bob id=1
         vm.prank(alice);
@@ -366,7 +366,7 @@ contract QueueGriefTest is BaseTest {
     ///         without any pokeQueue calls.
     function test_combined_sequentialCancelFromHeadAutoCleansQueue() public {
         vm.prank(alice);
-        vault.deposit(100_000e18);
+        vault.deposit(100_000e18, alice);
 
         // Spam 100 create+cancel in IN-ORDER (each cancel-at-head auto-advances)
         _spamCreateAndCancelInOrder(alice, 100);
@@ -383,7 +383,7 @@ contract QueueGriefTest is BaseTest {
     function test_combined_reverseOrderCancelsCleanedByPokeQueue() public {
         // Bob is the only depositor so far — his first request is id=0.
         vm.prank(bob);
-        vault.deposit(50_000e18);
+        vault.deposit(50_000e18, bob);
         _spamCreateAndCancelReverse(bob, 200);
 
         // The last reverse cancel is bob's id=0, which IS at queueHead.
@@ -393,7 +393,7 @@ contract QueueGriefTest is BaseTest {
 
         // Alice creates real request at id=200
         vm.prank(alice);
-        vault.deposit(50_000e18);
+        vault.deposit(50_000e18, alice);
         vm.prank(alice);
         vault.requestRedeem(1_000e18);
 

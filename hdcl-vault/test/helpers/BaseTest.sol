@@ -61,7 +61,7 @@ contract BaseTest is Test, Constants, Events {
 
     function _deposit(address user, uint256 amount) internal returns (uint256 hdclMinted) {
         vm.prank(user);
-        return vault.deposit(amount);
+        return vault.deposit(amount, user);
     }
 
     function _requestRedeem(address user, uint256 amount) internal returns (uint256 requestId) {

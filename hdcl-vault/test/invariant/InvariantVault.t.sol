@@ -61,7 +61,7 @@ contract InvariantVaultTest is Test {
 
         // Seed vault with an initial deposit so we're past the dead-shares edge case
         vm.prank(actors[0]);
-        vault.deposit(10_000e18);
+        vault.deposit(10_000e18, actors[0]);
 
         // Deploy handlers and helpers
         userHandler = new UserHandler(vault, hollar, actors);

@@ -42,7 +42,7 @@ contract PreviewDepositTest is BaseTest {
 
         // Confirm with the real deposit
         vm.prank(alice);
-        uint256 actual = vault.deposit(amount);
+        uint256 actual = vault.deposit(amount, alice);
         assertEq(actual, previewed, "actual mint matches preview");
     }
 
@@ -58,7 +58,7 @@ contract PreviewDepositTest is BaseTest {
         uint256 previewed = vault.previewDeposit(amount);
 
         vm.prank(bob);
-        uint256 actual = vault.deposit(amount);
+        uint256 actual = vault.deposit(amount, bob);
         assertEq(actual, previewed, "preview matches actual mint after seeded vault");
     }
 
