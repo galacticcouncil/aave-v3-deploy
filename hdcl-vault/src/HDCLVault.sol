@@ -633,7 +633,7 @@ contract HDCLVault is
         if (receiver == address(0)) revert ZeroAddress();
         _authorizeClaim(receiver, controller);
 
-        assets = QueueLib.claimByShares(redemptionQueue, queueTail, controller, shares);
+        assets = QueueLib.claimByShares(redemptionQueue, _settledByController, controller, shares);
 
         _burn(address(this), shares);
         totalQueuedHdcl -= shares;
@@ -654,7 +654,7 @@ contract HDCLVault is
         if (receiver == address(0)) revert ZeroAddress();
         _authorizeClaim(receiver, controller);
 
-        (shares, assets) = QueueLib.claimByAssets(redemptionQueue, queueTail, controller, assets);
+        (shares, assets) = QueueLib.claimByAssets(redemptionQueue, _settledByController, controller, assets);
 
         _burn(address(this), shares);
         totalQueuedHdcl -= shares;
@@ -1459,6 +1459,7 @@ contract HDCLVault is
         uint256 newHead;
         (newHead, hollarUsed, hdclLocked) = QueueLib.processQueue(
             redemptionQueue,
+            _settledByController,
             queueHead,
             queueTail,
             available,
@@ -1548,10 +1549,19 @@ contract HDCLVault is
             super.supportsInterface(interfaceId);
     }
 
+    /// @dev Per-controller index of request IDs that have non-zero hdclSettled.
+    ///      Populated by QueueLib.processQueue on the 0 → >0 settle transition,
+    ///      popped by QueueLib.claimByShares / claimByAssets when an entry is
+    ///      fully claimed or stale. Replaces the previous full-queue linear
+    ///      scan in claim paths, making claim gas bounded by the controller's
+    ///      own outstanding settled requests (not by queueTail). Mitigates a
+    ///      cancel-spam DoS that bloated queueTail with deleted slots.
+    mapping(address => uint256[]) internal _settledByController;
+
     // ═══════════════════════════════════════════════════════════════════════
     //                         STORAGE GAP
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @dev Reserved storage slots for future upgrades.
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 }

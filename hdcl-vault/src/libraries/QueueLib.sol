@@ -39,20 +39,15 @@ library QueueLib {
     ///         and marks hdclSettled — but does NOT decrement vault-level
     ///         idleHollar or increment totalReservedHollar; the caller must
     ///         apply `hollarUsed` to those globals.
-    /// @param queue           Storage ref to the redemption queue mapping
-    /// @param queueHead_      Current queue head (will be advanced past
-    ///                        cancelled holes / fully-settled entries)
-    /// @param queueTail_      Current queue tail (loop bound)
-    /// @param available       HOLLAR available to settle this batch
-    /// @param rate            Current exchange rate (WAD-scaled)
-    /// @param maxIterations   Cap on pending-entry settles per call
-    /// @param maxSkips        Cap on cancelled/settled skips per call
-    /// @param wad             1e18 (passed as arg to avoid library constant)
-    /// @return newQueueHead   Updated queueHead
-    /// @return hollarUsed     Total HOLLAR moved from idle into reserved
-    /// @return hdclLocked     Total hDCL rate-locked across requests this call
+    ///
+    ///         Maintains a per-controller index of request IDs with non-zero
+    ///         hdclSettled. Pushes a request's cursor onto its controller's
+    ///         list the first time hdclSettled becomes non-zero — making
+    ///         later claim walks bounded by the controller's own activity
+    ///         instead of the all-time queueTail (cancel-spam DoS fix).
     function processQueue(
         mapping(uint256 => Request) storage queue,
+        mapping(address => uint256[]) storage settledByController,
         uint256 queueHead_,
         uint256 queueTail_,
         uint256 available,
@@ -111,17 +106,24 @@ library QueueLib {
             // needed before this entry can be safely processed.
             if (hollarValue == 0) break;
 
+            // Capture pre-update state so we can detect the first-time-settle
+            // transition without an extra storage read after the writes.
+            bool firstSettle = (request.hdclSettled == 0);
+            address user = request.user;
+
             if (available >= hollarValue) {
                 // Fully settle — leave the entry in place for claim, but
                 // advance queueHead/cursor past it.
                 request.hdclSettled = request.hdclAmount;
                 request.hollarOwed += hollarValue;
 
+                if (firstSettle) settledByController[user].push(cursor);
+
                 hollarUsed += hollarValue;
                 hdclLocked += pending;
                 available -= hollarValue;
 
-                emit RedemptionFulfilled(cursor, request.user, hollarValue, pending);
+                emit RedemptionFulfilled(cursor, user, hollarValue, pending);
 
                 if (cursor == newQueueHead) {
                     unchecked { newQueueHead++; }
@@ -141,13 +143,15 @@ library QueueLib {
                 request.hdclSettled += hdclToSettle;
                 request.hollarOwed += hollarToReserve;
 
+                if (firstSettle) settledByController[user].push(cursor);
+
                 hollarUsed += hollarToReserve;
                 hdclLocked += hdclToSettle;
                 available = 0;
 
                 emit RedemptionPartiallyFulfilled(
                     cursor,
-                    request.user,
+                    user,
                     hollarToReserve,
                     hdclToSettle
                 );
@@ -157,22 +161,32 @@ library QueueLib {
         }
     }
 
-    /// @notice Walk the controller's settled requests in FIFO order, drawing
-    ///         down hdclSettled (and pro-rata hollarOwed) until `shares` is
-    ///         exhausted. Reverts if the controller's total claimable is less.
-    /// @dev    Iterates from 0 because settled entries can live below queueHead
-    ///         (queueHead tracks "first unprocessed", not "first unclaimed").
+    /// @notice Walk the controller's own settled requests, drawing down
+    ///         hdclSettled (and pro-rata hollarOwed) until `shares` is
+    ///         exhausted. Reverts if the controller's total claimable is
+    ///         less. Iteration is bounded by the controller's own activity —
+    ///         immune to cancel-spam DoS that bloats queueTail.
     function claimByShares(
         mapping(uint256 => Request) storage queue,
-        uint256 queueTail_,
+        mapping(address => uint256[]) storage settledByController,
         address controller,
         uint256 shares
     ) public returns (uint256 assets) {
         uint256 remaining = shares;
+        uint256[] storage ids = settledByController[controller];
 
-        for (uint256 i = 0; i < queueTail_ && remaining > 0; i++) {
+        // Walk back-to-front so swap-pop never shifts not-yet-visited entries.
+        uint256 j = ids.length;
+        while (j > 0 && remaining > 0) {
+            unchecked { --j; }
+            uint256 i = ids[j];
             Request storage r = queue[i];
-            if (r.user != controller || r.hdclSettled == 0) continue;
+
+            if (r.user != controller || r.hdclSettled == 0) {
+                // Stale (cancelled hole / already drained) — evict and skip.
+                _swapPop(ids, j);
+                continue;
+            }
 
             uint256 take = r.hdclSettled <= remaining ? r.hdclSettled : remaining;
             // Pro-rata of this request's locked HOLLAR
@@ -185,29 +199,44 @@ library QueueLib {
             remaining -= take;
             assets += hollarTake;
 
-            // Fully drained: nothing pending, nothing claimable → delete.
+            // Fully drained: nothing pending, nothing claimable → delete slot
+            // AND evict from controller's index.
             if (r.hdclAmount == 0) {
                 delete queue[i];
+                _swapPop(ids, j);
+            } else if (r.hdclSettled == 0) {
+                // Nothing claimable left on this entry (only unsettled
+                // remainder); remove from index.
+                _swapPop(ids, j);
             }
         }
 
         if (remaining != 0) revert InsufficientClaimable();
     }
 
-    /// @notice Walk the controller's settled requests in FIFO order, drawing
-    ///         down hollarOwed (and pro-rata hdclSettled) until `assets` is
-    ///         exhausted. Returns the share count consumed.
+    /// @notice Walk the controller's own settled requests, drawing down
+    ///         hollarOwed (and pro-rata hdclSettled) until `assets` is
+    ///         exhausted. Returns the share count consumed. Same DoS-safe
+    ///         per-controller index pattern as claimByShares.
     function claimByAssets(
         mapping(uint256 => Request) storage queue,
-        uint256 queueTail_,
+        mapping(address => uint256[]) storage settledByController,
         address controller,
         uint256 assets
     ) public returns (uint256 shares, uint256 actualAssets) {
         uint256 remaining = assets;
+        uint256[] storage ids = settledByController[controller];
 
-        for (uint256 i = 0; i < queueTail_ && remaining > 0; i++) {
+        uint256 j = ids.length;
+        while (j > 0 && remaining > 0) {
+            unchecked { --j; }
+            uint256 i = ids[j];
             Request storage r = queue[i];
-            if (r.user != controller || r.hollarOwed == 0) continue;
+
+            if (r.user != controller || r.hollarOwed == 0) {
+                _swapPop(ids, j);
+                continue;
+            }
 
             uint256 take = r.hollarOwed <= remaining ? r.hollarOwed : remaining;
             // Pro-rata of this request's settled hDCL
@@ -223,9 +252,21 @@ library QueueLib {
 
             if (r.hdclAmount == 0) {
                 delete queue[i];
+                _swapPop(ids, j);
+            } else if (r.hdclSettled == 0) {
+                _swapPop(ids, j);
             }
         }
 
         if (remaining != 0) revert InsufficientClaimable();
+    }
+
+    /// @dev Remove the entry at `idx` from `arr` in O(1) by swapping with
+    ///      the last element and popping. Order within `arr` is not
+    ///      preserved — fine here because claim walks are commutative.
+    function _swapPop(uint256[] storage arr, uint256 idx) private {
+        uint256 last = arr.length - 1;
+        if (idx != last) arr[idx] = arr[last];
+        arr.pop();
     }
 }
