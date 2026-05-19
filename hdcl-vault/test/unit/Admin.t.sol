@@ -4,6 +4,7 @@ pragma solidity ^0.8.22;
 import {BaseTest} from "../helpers/BaseTest.sol";
 import {HDCLVault} from "../../src/HDCLVault.sol";
 import {WDCLOracle} from "../../src/WDCLOracle.sol";
+import {IDecentralPool} from "../../src/interfaces/IDecentralPool.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
@@ -34,10 +35,12 @@ contract AdminTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_initialize_setsImmutableConfig() public view {
-        assertEq(address(vault.decentralPool()), address(pool));
-        assertEq(address(vault.poolToken()), address(nft));
+        assertEq(address(vault.activeDepositPool()), address(pool));
         assertEq(address(vault.hollar()), address(hollar));
         assertEq(vault.tvlCap(), INITIAL_TVL_CAP);
+        assertTrue(vault.isPoolRegistered(IDecentralPool(address(pool))), "initial pool registered");
+        assertTrue(vault.isRegisteredPoolToken(address(nft)), "initial pool token registered");
+        assertEq(vault.getPoolCount(), 1, "one pool registered at init");
     }
 
     function test_initialize_setsDefaults() public view {

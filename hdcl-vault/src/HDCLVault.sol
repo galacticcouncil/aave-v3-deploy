@@ -11,7 +11,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IDecentralPool} from "./interfaces/IDecentralPool.sol";
-import {IPoolToken} from "./interfaces/IPoolToken.sol";
 import {IAggregatorV3Interface} from "./interfaces/IAggregatorV3Interface.sol";
 
 /// @title HDCLVault
@@ -98,10 +97,22 @@ contract HDCLVault is
     //                        IMMUTABLE-LIKE CONFIG
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice Decentral lending pool contract
-    IDecentralPool public decentralPool;
-    /// @notice Decentral NFT contract
-    IPoolToken public poolToken;
+    /// @notice The pool new deposits and reinvestments route to. Set by
+    ///         `setActiveDepositPool` (admin). Existing positions stay anchored
+    ///         to whatever pool minted them — see `positionPool`.
+    IDecentralPool public activeDepositPool;
+    /// @notice All Decentral pools the vault knows about. Includes the active
+    ///         one and any older pools still winding down positions.
+    IDecentralPool[] public pools;
+    /// @notice O(1) registration check.
+    mapping(IDecentralPool => bool) public isPoolRegistered;
+    /// @notice O(1) check for `onERC721Received` — accepts NFTs from any
+    ///         registered pool's NFT contract.
+    mapping(address => bool) public isRegisteredPoolToken;
+    /// @notice Per-position pool. Kept as a parallel mapping (not a field on
+    ///         `NFTPosition`) so future struct extensions don't break the
+    ///         storage layout of existing position entries on upgrade.
+    mapping(uint256 => IDecentralPool) public positionPool;
     /// @notice HOLLAR stablecoin
     IERC20 public hollar;
 
@@ -241,6 +252,9 @@ contract HDCLVault is
     event MinReinvestAmountUpdated(uint256 newAmount);
     event MinRedeemAmountUpdated(uint256 newAmount);
     event OracleUpdated(address indexed oracle);
+    event PoolRegistered(address indexed pool);
+    event ActiveDepositPoolSet(address indexed pool);
+    event PoolRetired(address indexed pool);
 
     // ═══════════════════════════════════════════════════════════════════════
     //                            ERRORS
@@ -288,9 +302,10 @@ contract HDCLVault is
         __Pausable_init();
         __ReentrancyGuard_init();
 
-        decentralPool = IDecentralPool(_decentralPool);
-        poolToken = IPoolToken(_poolToken);
         hollar = IERC20(_hollar);
+        _registerPool(IDecentralPool(_decentralPool), _poolToken);
+        activeDepositPool = IDecentralPool(_decentralPool);
+        emit ActiveDepositPoolSet(_decentralPool);
         tvlCap = _tvlCap;
         minReinvestAmount = 10e18; // 10 HOLLAR
         minRedeemAmount = 1e18; // 1 HDCL
@@ -354,23 +369,26 @@ contract HDCLVault is
     ///      Extracted from `deposit` and `_reinvest` to keep their stack depths
     ///      shallow enough for via_ir compilation.
     function _depositIntoDecentral(uint256 amount) internal returns (uint256 tokenId) {
-        uint256 apyWad = getAPYWad();
-        hollar.safeApprove(address(decentralPool), 0);
-        hollar.safeApprove(address(decentralPool), amount);
-        tokenId = decentralPool.deposit(amount);
+        IDecentralPool pool = activeDepositPool;
+        uint256 apyWad = pool.fixedAPYWad();
+        hollar.safeApprove(address(pool), 0);
+        hollar.safeApprove(address(pool), amount);
+        tokenId = pool.deposit(amount);
 
+        uint256 idx = positions.length;
         positions.push(
             NFTPosition({
                 tokenId: tokenId,
                 principal: amount,
                 apyWad: apyWad,
                 depositTime: block.timestamp,
-                maturityTime: block.timestamp + _investmentPeriod(),
+                maturityTime: block.timestamp + _investmentPeriod(pool),
                 yieldStartTime: block.timestamp,
                 state: NFTState.Active,
                 pendingYield: 0
             })
         );
+        positionPool[idx] = pool;
 
         _addToBucket(apyWad, amount, block.timestamp);
     }
@@ -453,6 +471,8 @@ contract HDCLVault is
         NFTPosition storage pos = positions[positionIndex];
         if (pos.state == NFTState.Redeemed) revert PositionAlreadyRedeemed();
 
+        IDecentralPool pool = positionPool[positionIndex];
+
         // Active → YieldWithdrawalRequested
         if (
             pos.state == NFTState.Active && block.timestamp >= pos.maturityTime
@@ -461,7 +481,7 @@ contract HDCLVault is
             // this function — without it, a paused/shutdown Decentral pool at
             // a position's maturity would revert the whole call and leave the
             // position permanently stuck.
-            try decentralPool.requestYieldWithdrawal(pos.tokenId) {
+            try pool.requestYieldWithdrawal(pos.tokenId) {
                 // Decentral has now locked the yield amount Decentral will pay
                 // at execute. Stop the bucket from accruing more yield for
                 // this position from this point forward — anything beyond the
@@ -497,7 +517,7 @@ contract HDCLVault is
         // YieldWithdrawalRequested → YieldClaimed
         if (pos.state == NFTState.YieldWithdrawalRequested) {
             uint256 balBefore = hollar.balanceOf(address(this));
-            try decentralPool.executeYieldWithdrawal(pos.tokenId) {
+            try pool.executeYieldWithdrawal(pos.tokenId) {
                 uint256 yieldReceived = hollar.balanceOf(address(this)) -
                     balBefore;
 
@@ -524,7 +544,7 @@ contract HDCLVault is
 
         // YieldClaimed → PrincipalWithdrawalRequested
         if (pos.state == NFTState.YieldClaimed) {
-            try decentralPool.requestPrincipalWithdrawal(pos.tokenId) {
+            try pool.requestPrincipalWithdrawal(pos.tokenId) {
                 pos.state = NFTState.PrincipalWithdrawalRequested;
                 emit PositionProcessed(
                     positionIndex,
@@ -540,7 +560,7 @@ contract HDCLVault is
         // PrincipalWithdrawalRequested → Redeemed
         if (pos.state == NFTState.PrincipalWithdrawalRequested) {
             uint256 balBefore = hollar.balanceOf(address(this));
-            try decentralPool.executePrincipalWithdrawal(pos.tokenId) {
+            try pool.executePrincipalWithdrawal(pos.tokenId) {
                 uint256 principalReceived = hollar.balanceOf(address(this)) -
                     balBefore;
 
@@ -661,23 +681,26 @@ contract HDCLVault is
         }
         if (amount < minReinvestAmount) return;
 
-        uint256 apyWad = getAPYWad();
-        hollar.safeApprove(address(decentralPool), 0);
-        hollar.safeApprove(address(decentralPool), amount);
-        uint256 tokenId = decentralPool.deposit(amount);
+        IDecentralPool pool = activeDepositPool;
+        uint256 apyWad = pool.fixedAPYWad();
+        hollar.safeApprove(address(pool), 0);
+        hollar.safeApprove(address(pool), amount);
+        uint256 tokenId = pool.deposit(amount);
 
+        uint256 idx = positions.length;
         positions.push(
             NFTPosition({
                 tokenId: tokenId,
                 principal: amount,
                 apyWad: apyWad,
                 depositTime: block.timestamp,
-                maturityTime: block.timestamp + _investmentPeriod(),
+                maturityTime: block.timestamp + _investmentPeriod(pool),
                 yieldStartTime: block.timestamp,
                 state: NFTState.Active,
                 pendingYield: 0
             })
         );
+        positionPool[idx] = pool;
 
         _addToBucket(apyWad, amount, block.timestamp);
         idleHollar -= amount;
@@ -759,7 +782,7 @@ contract HDCLVault is
 
             if (accumulated >= hollarNeeded) {
                 uint256 maturityWithDelay = pos.maturityTime +
-                    _decentralWithdrawalDelay();
+                    _decentralWithdrawalDelay(positionPool[i]);
                 if (maturityWithDelay > block.timestamp) {
                     return maturityWithDelay - block.timestamp;
                 }
@@ -836,7 +859,7 @@ contract HDCLVault is
 
     /// @notice Current fixed APY from the Decentral pool
     function getAPYWad() public view returns (uint256) {
-        return decentralPool.fixedAPYWad();
+        return activeDepositPool.fixedAPYWad();
     }
 
     /// @notice Total number of redemption requests ever created
@@ -973,22 +996,106 @@ contract HDCLVault is
     }
 
     // ═══════════════════════════════════════════════════════════════════════
+    //                       POOL REGISTRY (ADMIN)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Register a new Decentral pool the vault can interact with.
+    /// @dev    Validates the pool uses the same HOLLAR stablecoin. Adds the
+    ///         pool's NFT contract to the receiver allow-list. If this is the
+    ///         first pool registered, it also becomes the active deposit pool.
+    function registerPool(IDecentralPool newPool) external onlyRole(ADMIN_ROLE) {
+        _registerPool(newPool, address(0));
+    }
+
+    /// @notice Switch which registered pool receives new deposits and
+    ///         reinvestments. Existing positions stay anchored to whichever
+    ///         pool minted them.
+    function setActiveDepositPool(IDecentralPool pool) external onlyRole(ADMIN_ROLE) {
+        require(isPoolRegistered[pool], "Pool not registered");
+        activeDepositPool = pool;
+        emit ActiveDepositPoolSet(address(pool));
+    }
+
+    /// @notice Remove a pool from the registry.
+    /// @dev    Reverts if `pool` is the active deposit pool (switch first), or
+    ///         if any open (non-Redeemed) position still belongs to it. Forces
+    ///         the operator to drain a pool before forgetting about it; keeps
+    ///         the invariant that every registered pool is reachable.
+    function retirePool(IDecentralPool pool) external onlyRole(ADMIN_ROLE) {
+        require(isPoolRegistered[pool], "Pool not registered");
+        require(pool != activeDepositPool, "Cannot retire active pool");
+
+        // Reject if any non-redeemed position references this pool.
+        uint256 len = positions.length;
+        for (uint256 i = positionHead; i < len; i++) {
+            if (
+                positions[i].state != NFTState.Redeemed &&
+                positionPool[i] == pool
+            ) {
+                revert("Pool has open positions");
+            }
+        }
+
+        isPoolRegistered[pool] = false;
+        isRegisteredPoolToken[address(pool.poolToken())] = false;
+
+        // Swap-and-pop from pools[]
+        uint256 plen = pools.length;
+        for (uint256 i = 0; i < plen; i++) {
+            if (pools[i] == pool) {
+                pools[i] = pools[plen - 1];
+                pools.pop();
+                break;
+            }
+        }
+
+        emit PoolRetired(address(pool));
+    }
+
+    /// @notice Number of registered pools (active + retiring).
+    function getPoolCount() external view returns (uint256) {
+        return pools.length;
+    }
+
+    /// @dev Shared registration logic used by both `initialize` and
+    ///      `registerPool`. The optional `expectedPoolToken` arg lets
+    ///      `initialize` assert ABI-compatibility with its legacy `_poolToken`
+    ///      param (which would otherwise be unused). Pass `address(0)` to
+    ///      skip the assertion.
+    function _registerPool(IDecentralPool newPool, address expectedPoolToken) internal {
+        require(address(newPool) != address(0), "Zero pool");
+        require(!isPoolRegistered[newPool], "Pool already registered");
+        require(address(newPool.stablecoin()) == address(hollar), "Pool: wrong stablecoin");
+        address poolTokenAddr = address(newPool.poolToken());
+        require(poolTokenAddr != address(0), "Pool: no NFT contract");
+        if (expectedPoolToken != address(0)) {
+            require(poolTokenAddr == expectedPoolToken, "Pool: poolToken mismatch");
+        }
+
+        isPoolRegistered[newPool] = true;
+        isRegisteredPoolToken[poolTokenAddr] = true;
+        pools.push(newPool);
+
+        emit PoolRegistered(address(newPool));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     //                         ERC-721 RECEIVER
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice Accept NFTs from Decentral's _safeMint
-    /// @dev    Only the configured `poolToken` contract may push NFTs to the
-    ///         vault. Without this guard, anyone can transfer arbitrary NFTs
-    ///         into the vault — no fund-impact path (position iteration uses
-    ///         the `positions[]` array, not the held-NFT set) but storage and
-    ///         event spam are real and cheap to prevent.
+    /// @notice Accept NFTs from any registered Decentral pool's mint.
+    /// @dev    Only NFT contracts belonging to a registered pool may push NFTs
+    ///         to the vault. Without this guard, anyone can transfer arbitrary
+    ///         NFTs into the vault — no fund-impact path (position iteration
+    ///         uses `positions[]`, not the held-NFT set) but storage and event
+    ///         spam are real and cheap to prevent.
     function onERC721Received(
         address,
         address,
         uint256,
         bytes calldata
     ) external view returns (bytes4) {
-        require(msg.sender == address(poolToken), "Only pool NFTs");
+        require(isRegisteredPoolToken[msg.sender], "Only pool NFTs");
         return IERC721Receiver.onERC721Received.selector;
     }
 
@@ -1183,14 +1290,14 @@ contract HDCLVault is
         totalInvestedPrincipal -= principal;
     }
 
-    /// @dev Returns the minimum investment period from Decentral pool
-    function _investmentPeriod() internal view returns (uint256) {
-        return decentralPool.minimumInvestmentPeriodSeconds();
+    /// @dev Returns the minimum investment period from a specific Decentral pool
+    function _investmentPeriod(IDecentralPool pool) internal view returns (uint256) {
+        return pool.minimumInvestmentPeriodSeconds();
     }
 
-    /// @dev Returns the principal withdrawal delay from Decentral pool
-    function _decentralWithdrawalDelay() internal view returns (uint256) {
-        return decentralPool.principalWithdrawalDelaySeconds();
+    /// @dev Returns the principal withdrawal delay from a specific Decentral pool
+    function _decentralWithdrawalDelay(IDecentralPool pool) internal view returns (uint256) {
+        return pool.principalWithdrawalDelaySeconds();
     }
 
     /// @dev Authorize UUPS upgrade — only UPGRADER_ROLE

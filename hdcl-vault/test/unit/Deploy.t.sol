@@ -70,8 +70,8 @@ contract DeployTest is Test {
         assertEq(address(wdcl.vault()), proxy, "oracle.vault() points back at the proxy");
 
         // Vault is initialized with the right back-ends
-        assertEq(address(vault.decentralPool()), address(pool), "decentralPool wired");
-        assertEq(address(vault.poolToken()), address(nft), "poolToken wired");
+        assertEq(address(vault.activeDepositPool()), address(pool), "active deposit pool wired");
+        assertTrue(vault.isRegisteredPoolToken(address(nft)), "pool token registered");
         assertEq(address(vault.hollar()), address(hollar), "hollar wired");
         assertEq(vault.tvlCap(), TVL_CAP, "tvlCap set");
 

@@ -88,7 +88,7 @@ const VAULT_ABI = parseAbi([
   'function minRedeemAmount() external view returns (uint256)',
   'function depositsPaused() external view returns (bool)',
   'function hollar() external view returns (address)',
-  'function decentralPool() external view returns (address)',
+  'function activeDepositPool() external view returns (address)',
   // admin
   'function pauseDeposits() external',
   'function unpauseDeposits() external',
@@ -322,7 +322,7 @@ async function testVaultMetadata() {
     publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'name' }),
     publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'symbol' }),
     publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'hollar' }),
-    publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'decentralPool' }),
+    publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'activeDepositPool' }),
     publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'tvlCap' }),
     publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'minReinvestAmount' }),
     publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'depositsPaused' }),
