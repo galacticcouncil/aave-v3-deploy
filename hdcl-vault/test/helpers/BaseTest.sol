@@ -69,6 +69,23 @@ contract BaseTest is Test, Constants, Events {
         return vault.requestRedeem(amount);
     }
 
+    /// @dev Claim every settled share the user currently has across the queue.
+    ///      Useful in tests that previously asserted on the push-model post-state
+    ///      (HOLLAR delivered inside pokeQueue) — under pull, the claim is a
+    ///      separate step the user must invoke. Iterates from 0 since settled
+    ///      entries can live below queueHead.
+    function _claimAll(address user) internal returns (uint256 assets) {
+        uint256 totalSettled;
+        uint256 tail = vault.getRedemptionQueueLength();
+        for (uint256 i = 0; i < tail; i++) {
+            (address u,, uint256 hdclSettled,,) = vault.getRedemptionRequest(i);
+            if (u == user) totalSettled += hdclSettled;
+        }
+        if (totalSettled == 0) return 0;
+        vm.prank(user);
+        return vault.redeem(totalSettled, user, user);
+    }
+
     function _processPositionFull(uint256 positionIndex) internal {
         // Step 1: Active -> YieldWithdrawalRequested (must be past maturity)
         vault.pokeDecentral(positionIndex);

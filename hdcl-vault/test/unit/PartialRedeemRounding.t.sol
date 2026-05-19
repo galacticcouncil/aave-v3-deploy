@@ -124,6 +124,7 @@ contract PartialRedeemRoundingTest is BaseTest {
 
         vm.recordLogs();
         vault.pokeQueue();
+        _claimAll(bob);
 
         PartialFill[] memory fills = _collectPartialFills();
         assertGt(fills.length, 0, "expected partial fill");
@@ -133,12 +134,13 @@ contract PartialRedeemRoundingTest is BaseTest {
             assertEq(
                 fills[i].hollarAmount,
                 (fills[i].hdclBurned * rateAtFill) / 1e18,
-                "Event hollarAmount must equal hdclBurned * rate / WAD"
+                "Event hollarAmount must equal hdclSettled * rate / WAD"
             );
             if (fills[i].user == bob) totalFromEvents += fills[i].hollarAmount;
         }
 
-        // The event payload must match Bob's actual balance increase
+        // The event payload (rate-locked amount) must match Bob's eventual
+        // balance increase after claim.
         uint256 bobHollarAfter = hollar.balanceOf(bob);
         assertEq(
             bobHollarAfter - bobHollarBefore,
@@ -162,14 +164,29 @@ contract PartialRedeemRoundingTest is BaseTest {
         _requestRedeem(bob, vault.balanceOf(bob));
         _requestRedeem(charlie, vault.balanceOf(charlie));
 
+        // Under pull, HOLLAR rate-locked for queue claims sits in
+        // `totalReservedHollar` until users claim. The vault's HOLLAR balance
+        // therefore equals idle + reserved.
         _processPositionFull(0);
-        assertEq(hollar.balanceOf(address(vault)), vault.idleHollar(), "after pos 0");
+        assertEq(
+            hollar.balanceOf(address(vault)),
+            vault.idleHollar() + vault.totalReservedHollar(),
+            "after pos 0"
+        );
 
         _processPositionFull(1);
-        assertEq(hollar.balanceOf(address(vault)), vault.idleHollar(), "after pos 1");
+        assertEq(
+            hollar.balanceOf(address(vault)),
+            vault.idleHollar() + vault.totalReservedHollar(),
+            "after pos 1"
+        );
 
         _processPositionFull(2);
-        assertEq(hollar.balanceOf(address(vault)), vault.idleHollar(), "after pos 2");
+        assertEq(
+            hollar.balanceOf(address(vault)),
+            vault.idleHollar() + vault.totalReservedHollar(),
+            "after pos 2"
+        );
     }
 
     // ═══════════════════════════════════════════════════════════════════════

@@ -184,12 +184,14 @@ contract QueueGriefTest is BaseTest {
         _warpDays(61);
         _processPositionFull(0);
 
-        // Single pokeQueue: skip 100 holes (free) + fulfill alice (1 work)
+        // Single pokeQueue: skip 100 holes (free) + rate-lock alice (1 work)
         vault.pokeQueue();
+        _claimAll(alice);
 
-        // After processing alice (full fulfillment), head should be at 101
+        // After rate-locking alice's request, queueHead advances past her too
+        // (full-settle advances head). After claim, hDCL is burned.
         assertEq(vault.queueHead(), 101, "single call processes alice past 100 holes");
-        assertEq(vault.totalQueuedHdcl(), 0, "alice's HDCL burned");
+        assertEq(vault.totalQueuedHdcl(), 0, "alice's HDCL burned after claim");
     }
 
     // ═══════════════════════════════════════════════════════════════════════

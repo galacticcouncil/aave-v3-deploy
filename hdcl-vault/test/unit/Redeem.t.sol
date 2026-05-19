@@ -86,12 +86,12 @@ contract RedeemTest is BaseTest {
 
         uint256 requestId = _requestRedeem(alice, redeemAmt);
 
-        (address user, uint256 amount, uint256 fulfilled, bool active) =
+        (address user, uint256 amount, uint256 settled, , bool active) =
             vault.getRedemptionRequest(requestId);
 
         assertEq(user, alice);
         assertEq(amount, redeemAmt);
-        assertEq(fulfilled, 0);
+        assertEq(settled, 0);
         assertTrue(active);
     }
 
@@ -180,7 +180,7 @@ contract RedeemTest is BaseTest {
         assertEq(vault.balanceOf(alice), aliceBefore + redeemAmt, "HDCL returned");
         assertEq(vault.totalQueuedHdcl(), 0, "totalQueuedHdcl zeroed");
 
-        (, , , bool active) = vault.getRedemptionRequest(requestId);
+        (, , , , bool active) = vault.getRedemptionRequest(requestId);
         assertFalse(active, "Request inactive after cancel");
     }
 
@@ -203,10 +203,10 @@ contract RedeemTest is BaseTest {
         // Process queue: Alice fully fulfilled (FIFO), Bob partially
         vault.pokeQueue();
 
-        (, , uint256 bobFulfilled, bool bobActive) = vault.getRedemptionRequest(bobRequestId);
-        // Bob should be partially fulfilled if any idle remained after Alice
-        if (bobFulfilled > 0 && bobActive) {
-            uint256 remaining = bobHdcl - bobFulfilled;
+        (, , uint256 bobSettled, , bool bobActive) = vault.getRedemptionRequest(bobRequestId);
+        // Bob should be partially settled if any idle remained after Alice
+        if (bobSettled > 0 && bobActive) {
+            uint256 remaining = bobHdcl - bobSettled;
             uint256 bobHdclBefore = vault.balanceOf(bob);
 
             // Cancel Bob's partially fulfilled request
@@ -395,11 +395,12 @@ contract RedeemTest is BaseTest {
 
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
 
-        // Process position fully -> principal arrives -> auto-processes queue
+        // Process position fully -> principal arrives -> auto-rate-locks queue
         _processPositionFull(0);
+        _claimAll(alice);
 
-        // Queue should be cleared (idle from redemption fulfilled it)
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue auto-cleared on position redemption");
+        // Queue should be cleared (idle from redemption fulfilled it, then claim drained)
+        assertEq(vault.totalQueuedHdcl(), 0, "Queue auto-cleared on position redemption + claim");
         assertGt(hollar.balanceOf(alice), aliceHollarBefore, "Alice received HOLLAR");
     }
 
@@ -451,6 +452,7 @@ contract RedeemTest is BaseTest {
         uint256 supplyBefore = vault.totalSupply();
 
         vault.pokeQueue();
+        _claimAll(alice);
 
         assertEq(vault.totalQueuedHdcl(), 0, "Queue fully cleared");
         assertGt(hollar.balanceOf(alice), aliceHollarBefore, "Alice received HOLLAR");
@@ -474,6 +476,8 @@ contract RedeemTest is BaseTest {
         uint256 totalQueuedBefore = vault.totalQueuedHdcl();
 
         vault.pokeQueue();
+        _claimAll(alice);
+        _claimAll(bob);
 
         uint256 totalQueuedAfter = vault.totalQueuedHdcl();
         assertLt(totalQueuedAfter, totalQueuedBefore, "Queue partially drained");
@@ -497,6 +501,8 @@ contract RedeemTest is BaseTest {
         uint256 bobHollarBefore = hollar.balanceOf(bob);
 
         vault.pokeQueue();
+        _claimAll(alice);
+        _claimAll(bob);
 
         assertEq(vault.totalQueuedHdcl(), 0, "Both fulfilled");
         assertGt(hollar.balanceOf(alice), aliceHollarBefore, "Alice (first) received HOLLAR");
@@ -519,6 +525,7 @@ contract RedeemTest is BaseTest {
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
 
         vault.pokeQueue();
+        _claimAll(alice);
 
         // req0 skipped, req1 fulfilled
         assertEq(vault.totalQueuedHdcl(), 0, "Queue cleared (skipped cancelled entry)");
@@ -540,6 +547,7 @@ contract RedeemTest is BaseTest {
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
 
         vault.pokeQueue();
+        _claimAll(alice);
 
         uint256 hollarReceived = hollar.balanceOf(alice) - aliceHollarBefore;
         uint256 expectedHollar = (redeemAmt * rate) / 1e18;
@@ -573,8 +581,9 @@ contract RedeemTest is BaseTest {
 
         vm.prank(keeper);
         vault.pokeQueue();
+        _claimAll(alice);
 
-        assertEq(vault.totalQueuedHdcl(), 0, "Keeper can process queue");
+        assertEq(vault.totalQueuedHdcl(), 0, "Keeper can process queue (alice claims to clear)");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -628,8 +637,9 @@ contract RedeemTest is BaseTest {
         uint256 posBefore = vault.getPositionCount();
 
         vault.pokeQueue();
+        _claimAll(alice);
 
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue fulfilled first");
+        assertEq(vault.totalQueuedHdcl(), 0, "Queue fulfilled first (settled + claimed)");
         // Remaining idle should be reinvested if >= minReinvestAmount
         if (vault.idleHollar() == 0) {
             assertGt(vault.getPositionCount(), posBefore, "Remaining idle reinvested");
@@ -757,8 +767,9 @@ contract RedeemTest is BaseTest {
         // 4. Alice requests full redemption
         _requestRedeem(alice, aliceHdcl);
 
-        // 5. Keeper pokes queue
+        // 5. Keeper pokes queue (rate-locks) and Alice claims
         vault.pokeQueue();
+        _claimAll(alice);
 
         // 6. Alice gets back principal + yield
         uint256 hollarReceived = hollar.balanceOf(alice) - aliceHollarStart;
@@ -790,8 +801,10 @@ contract RedeemTest is BaseTest {
         assertGt(rateAfterYield, rateAtQueue, "Rate appreciated during wait");
 
         _processPositionFull(0);
+        _claimAll(alice);
 
-        // Queue auto-cleared at the CURRENT rate (higher than when queued)
+        // Queue auto-rate-locked at the CURRENT rate (higher than when queued)
+        // then alice claimed.
         uint256 hollarReceived = hollar.balanceOf(alice) - (100_000e18 - TEN_THOUSAND_HOLLAR);
 
         // Alice benefits from yield accrued during the wait

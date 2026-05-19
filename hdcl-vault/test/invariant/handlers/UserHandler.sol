@@ -86,7 +86,7 @@ contract UserHandler is Test {
         address owner = requestOwner[requestId];
 
         // Check if still active
-        (address user, , , bool active) = vault.getRedemptionRequest(requestId);
+        (address user, , , , bool active) = vault.getRedemptionRequest(requestId);
         if (!active || user == address(0)) {
             _removeRequestAt(idx);
             return;

@@ -62,13 +62,12 @@ contract ReinvestTest is BaseTest {
         _requestRedeem(alice, aliceHdcl / 4);
         assertGt(vault.totalQueuedHdcl(), 0, "Queue should have entries");
 
-        // 3. pokeQueue processes queue first, then reinvests remaining idle.
-        //    Since queue has entries and idle can fulfill them, it processes the queue.
-        //    After queue is cleared, remaining idle may be reinvested.
+        // 3. pokeQueue rate-locks the queue. Alice claims to actually receive HOLLAR.
         vault.pokeQueue();
+        _claimAll(alice);
 
-        // Queue should be processed (fulfilled)
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be fulfilled after pokeQueue");
+        // After claim, queue is cleared.
+        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be fulfilled after pokeQueue + claim");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -234,12 +233,13 @@ contract ReinvestTest is BaseTest {
         uint256 posCountBefore = vault.getPositionCount();
 
         vault.pokeQueue();
+        _claimAll(bob);
 
-        // Bob is fulfilled (hollarUsed > 0). Reinvest is suppressed even
-        // though idleHollar is still positive — the contract chooses to
-        // service the queue this call and let any leftover earn yield on
-        // the next pokeQueue (when the queue is empty/wedged).
-        assertEq(vault.totalQueuedHdcl(), 0, "bob's redemption fulfilled");
+        // Bob's request was rate-locked and claimed (hollarUsed > 0 during
+        // pokeQueue, so reinvest is suppressed even though idleHollar is
+        // still positive — the contract chooses to service the queue this
+        // call and let any leftover earn yield on the next pokeQueue.
+        assertEq(vault.totalQueuedHdcl(), 0, "bob's redemption fulfilled + claimed");
         assertEq(
             vault.getPositionCount(),
             posCountBefore,

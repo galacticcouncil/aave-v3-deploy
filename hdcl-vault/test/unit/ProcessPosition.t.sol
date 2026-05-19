@@ -314,9 +314,10 @@ contract ProcessPositionTest is BaseTest {
         // If queue still has entries, processing position 1 should trigger queue fulfillment.
         if (queueBefore > 0) {
             _processPositionFull(1);
+            _claimAll(alice);
 
             uint256 queueAfter = vault.totalQueuedHdcl();
-            assertLt(queueAfter, queueBefore, "Queue should be reduced after position redemption");
+            assertLt(queueAfter, queueBefore, "Queue should be reduced after position redemption + claim");
 
             uint256 aliceHollarAfter = hollar.balanceOf(alice);
             assertGt(aliceHollarAfter, aliceHollarBefore, "Alice should receive HOLLAR from queue");

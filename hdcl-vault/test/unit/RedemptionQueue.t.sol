@@ -45,11 +45,11 @@ contract RedemptionQueueTest is BaseTest {
 
         assertEq(vault.getRedemptionQueueLength(), 1, "Queue should have 1 entry");
 
-        (address user, uint256 hdclAmount, uint256 hdclFulfilled, bool active) =
+        (address user, uint256 hdclAmount, uint256 hdclSettled, , bool active) =
             vault.getRedemptionRequest(0);
         assertEq(user, alice, "Request user should be Alice");
         assertEq(hdclAmount, hdcl / 2, "Request amount should match");
-        assertEq(hdclFulfilled, 0, "Nothing fulfilled yet");
+        assertEq(hdclSettled, 0, "Nothing settled yet");
         assertTrue(active, "Request should be active");
     }
 
@@ -89,7 +89,7 @@ contract RedemptionQueueTest is BaseTest {
         assertEq(vault.totalQueuedHdcl(), 0, "totalQueuedHdcl should be 0 after cancel");
 
         // Request should be inactive
-        (, , , bool active) = vault.getRedemptionRequest(requestId);
+        (, , , , bool active) = vault.getRedemptionRequest(requestId);
         assertFalse(active, "Request should be inactive after cancel");
     }
 
@@ -138,10 +138,13 @@ contract RedemptionQueueTest is BaseTest {
 
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
 
-        // 4. processQueue() -> Alice receives HOLLAR
+        // 4. processQueue() -> Alice's request rate-locked
         vault.pokeQueue();
 
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be fully fulfilled");
+        // 5. Alice claims her HOLLAR
+        _claimAll(alice);
+
+        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be fully fulfilled after claim");
 
         uint256 aliceHollarAfter = hollar.balanceOf(alice);
         assertGt(aliceHollarAfter, aliceHollarBefore, "Alice should receive HOLLAR");
@@ -214,6 +217,8 @@ contract RedemptionQueueTest is BaseTest {
             uint256 hollarBeforeBob = hollar.balanceOf(bob);
 
             vault.pokeQueue();
+            _claimAll(alice);
+            _claimAll(bob);
 
             // At least one of them should have received something
             bool aliceGot = hollar.balanceOf(alice) > hollarBeforeAlice;
@@ -245,9 +250,11 @@ contract RedemptionQueueTest is BaseTest {
         uint256 bobHollarBefore = hollar.balanceOf(bob);
 
         vault.pokeQueue();
+        _claimAll(alice);
+        _claimAll(bob);
 
         // Both should be fulfilled (idle is large enough)
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be empty after processing");
+        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be empty after processing + claim");
 
         // Alice requested first, should have been fulfilled first (FIFO)
         assertGt(hollar.balanceOf(alice), aliceHollarBefore, "Alice should receive HOLLAR");
@@ -273,12 +280,13 @@ contract RedemptionQueueTest is BaseTest {
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
 
         vault.pokeQueue();
+        _claimAll(alice);
 
-        // Request 0 is inactive (cancelled), request 1 should be fulfilled
-        (, , , bool active0) = vault.getRedemptionRequest(request0);
-        (, , , bool active1) = vault.getRedemptionRequest(request1);
+        // Request 0 is inactive (cancelled), request 1 should be settled+claimed (deleted)
+        (, , , , bool active0) = vault.getRedemptionRequest(request0);
+        (, , , , bool active1) = vault.getRedemptionRequest(request1);
         assertFalse(active0, "Request 0 should remain inactive");
-        assertFalse(active1, "Request 1 should be fulfilled (inactive)");
+        assertFalse(active1, "Request 1 should be settled+claimed (deleted)");
 
         assertGt(hollar.balanceOf(alice), aliceHollarBefore, "Alice should receive HOLLAR for request 1");
     }
@@ -301,11 +309,12 @@ contract RedemptionQueueTest is BaseTest {
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
 
         vault.pokeQueue();
+        _claimAll(alice);
 
         uint256 supplyAfter = vault.totalSupply();
         uint256 aliceHollarAfter = hollar.balanceOf(alice);
 
-        // HDCL was burned
+        // HDCL was burned (at claim time under pull)
         uint256 hdclBurned = supplyBefore - supplyAfter;
         assertEq(hdclBurned, redeemAmount, "HDCL burned should equal redeem amount");
 
@@ -368,9 +377,10 @@ contract RedemptionQueueTest is BaseTest {
 
         // 3. Deposits do NOT clear the queue; use pokeQueue instead
         vault.pokeQueue();
+        _claimAll(alice);
 
         // Queue should be cleared
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be cleared after pokeQueue");
+        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be cleared after pokeQueue + claim");
 
         // Alice should have received HOLLAR
         assertGt(
