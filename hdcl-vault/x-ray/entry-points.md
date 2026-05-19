@@ -9,7 +9,18 @@
 
 ### Setup (Admin)
 
-`initialize(pool, nft, hollar, tvlCap, admin)` → `registerPool(pool)` (more, if multi-pool) → `setActiveDepositPool(pool)` → `setOracle(oracle)` → seed initial deposit
+```
+initialize(pool, nft, hollar, tvlCap, admin)
+  └─ registers `pool` and sets it as activeDepositPool in one shot
+     └─ grants DEFAULT_ADMIN_ROLE + ADMIN_ROLE + UPGRADER_ROLE to admin
+```
+
+Post-init (admin, in any order):
+- `grantRole(GUARDIAN_ROLE, techCommittee)` — needed for fast pause/unpause
+- `grantRole(CLAIM_OPERATOR_ROLE, keeperBot)` — needed for auto-claim
+- `setOracle(oracle)` — only if external oracle consumers (Aave) are wired
+- `seed initial deposit` — establishes 1:1 exchange rate
+- For multi-pool deployments: `registerPool(pool2)` + optionally `setActiveDepositPool(pool2)` later
 
 ### User Deposit Flow
 
@@ -120,8 +131,9 @@ All Decentral calls wrapped in try/catch. State stays put on revert; next poke r
 |--------|--------|
 | Visibility | external, initializer |
 | Zero-checks | All addresses |
-| Effects | Registers `_decentralPool` and sets it as `activeDepositPool`; sets `tvlCap`; grants ADMIN + GUARDIAN + DEFAULT_ADMIN + UPGRADER + CLAIM_OPERATOR roles to `_admin`. |
-| Notes | No `withdrawalDelay` parameter (removed). Multi-pool flow uses `registerPool` post-init. |
+| Effects | Registers `_decentralPool` and sets it as `activeDepositPool` (one-shot — no separate `registerPool` / `setActiveDepositPool` calls needed at deploy); sets `tvlCap`; defaults `minReinvestAmount = 10e18`, `minRedeemAmount = 1e18`; grants `DEFAULT_ADMIN_ROLE`, `ADMIN_ROLE`, `UPGRADER_ROLE` to `_admin`. |
+| Not granted at init | `GUARDIAN_ROLE`, `CLAIM_OPERATOR_ROLE` — admin grants these post-init to the appropriate addresses. |
+| Notes | No `withdrawalDelay` parameter (removed). Multi-pool flow uses `registerPool` post-init for *additional* pools. |
 
 ---
 
