@@ -1,7 +1,7 @@
 # Entry Point Map
 
-> HDCL Vault | 17 entry points | 5 permissionless | 0 role-gated | 11 admin-only
-> Spec: `.claude/HDCL-vault-specification.md` v0.1
+> HDCL Vault | `feat/hdcl-vault` @ `9d49425` | ERC-4626 + ERC-7540 (async-redeem)
+> 30+ entry points: 11 permissionless · 2 role-gated (claim) · ~12 admin-only
 
 ---
 
@@ -9,118 +9,126 @@
 
 ### Setup (Admin)
 
-`initialize()` → `setOracle()` → `setTvlCap()` → `setWithdrawalDelay()` → seed initial deposit (per spec §9)
+`initialize(pool, nft, hollar, tvlCap, admin)` → `registerPool(pool)` (more, if multi-pool) → `setActiveDepositPool(pool)` → `setOracle(oracle)` → seed initial deposit
 
 ### User Deposit Flow
 
-`[setup]` → `User.deposit(hollarAmount)` → `DecentralPool.deposit()` → NFT position created → hDCL minted
+`User.deposit(assets, receiver)` → `DecentralPool.deposit()` on **active deposit pool** → NFT minted to vault → hDCL minted to `receiver`
+- Equivalent: `User.mint(shares, receiver)` (rounds-up the HOLLAR pull)
 
-### User Redemption Flow
+### User Redemption Flow — pull-with-claim
 
-`[deposit]` → `User.requestRedeem(hdclAmount)` → hDCL escrowed (per spec: NOT burned)
-                                                  ├─→ `User.cancelRedeem(requestId)` → hDCL returned
-                                                  └─→ `pokeQueue()` → HOLLAR transferred at fulfillment-time rate
+```
+User.requestRedeem(shares, controller, owner)
+  └─ hDCL escrowed to vault (not burned)
+        ├─→ User.cancelRedeem(reqId)          → hDCL refunded (unsettled portion only)
+        └─→ Keeper.pokeQueue() / pokeDecentral
+              └─ rate-locks HOLLAR into totalReservedHollar at fulfillment time
+                    └─→ controller.redeem(shares, receiver, controller)   ◄── pull
+                        OR  withdraw(assets, receiver, controller)
+                        OR  delegated by isOperator / CLAIM_OPERATOR_ROLE
+```
 
 ### Position Lifecycle (Keeper)
 
-`[deposit]` → [60 days] → `pokeDecentral(i)` Active→YWR
-                          → `pokeDecentral(i)` YWR→YC  ◄── Decentral approval (48h SLA per spec)
-                          → `pokeDecentral(i)` YC→PWR  ◄── try/catch (spec fix)
-                          → `pokeDecentral(i)` PWR→Redeemed  ◄── approval + delay
-                          └─→ auto-processes queue
+```
+Keeper.pokeDecentral(positionIndex)   ── position routes through positionPool[i]
+  Active             →[≥60d]→  YieldWithdrawalRequested
+  YieldWithdrawalRequested  →[approve]→  YieldClaimed         (idle += yield)
+  YieldClaimed       →[same call]→     PrincipalWithdrawalRequested
+  PrincipalWithdrawalRequested →[approve+delay]→ Redeemed     (idle += principal)
+                                                  └─ auto-runs queue settle
+```
+
+All Decentral calls wrapped in try/catch. State stays put on revert; next poke retries.
 
 ### Reinvestment
 
-`[queue empty or can't progress]` → `pokeQueue()` → `_reinvest()` → new position
+`pokeQueue()` → if queue can't progress and `idleHollar >= minReinvestAmount` → reinvest into **active deposit pool** (creating a fresh Active position)
 
 ---
 
 ## Permissionless
 
-### `HDCLVault.deposit()`
+### ERC-4626 deposit side
 
-| Aspect | Detail |
-|--------|--------|
-| Visibility | external, nonReentrant, whenNotPaused |
-| Parameters | `hollarAmount` (user-controlled) |
-| Call chain | `→ totalAssets() + hollarAmount > tvlCap check → hollar.safeTransferFrom → _mint → DecentralPool.deposit → _addToBucket` |
-| State modified | `positions[]`, `apyBuckets`, `totalInvestedPrincipal`, `yieldRateSum`, `yieldOffsetSum`, ERC-20 balances |
-| Value flow | user → Vault → DecentralPool |
-| Reentrancy guard | yes |
+| Function | Visibility | Notes |
+|---|---|---|
+| `deposit(assets, receiver)` | external, nonReentrant, whenNotPaused | Returns shares minted. Reverts if deposits paused or TVL exceeded. Routes to `activeDepositPool`. |
+| `mint(shares, receiver)`    | external, nonReentrant, whenNotPaused | Same path; computes `assets = previewMint(shares)` (rounds up). |
 
-### `HDCLVault.requestRedeem()`
+### ERC-7540 async redeem flow
 
-| Aspect | Detail |
-|--------|--------|
-| Visibility | external, nonReentrant, whenNotPaused |
-| Parameters | `hdclAmount` (user-controlled); must be >= `minRedeemAmount` |
-| Call chain | `→ _transfer(user, vault) → redemptionQueue[queueTail] → queueTail++ → totalQueuedHdcl +=` |
-| State modified | `redemptionQueue[]`, `queueTail`, `totalQueuedHdcl`, ERC-20 balances |
-| Value flow | user → Vault (hDCL escrow) |
-| Reentrancy guard | yes |
+| Function | Visibility | Notes |
+|---|---|---|
+| `requestRedeem(shares, controller, owner)` | external, nonReentrant, whenNotPaused | `msg.sender == owner` OR `isOperator[owner][msg.sender]`. Escrows hDCL; appends to `redemptionQueue`. |
+| `cancelRedeem(requestId)` | external, nonReentrant (**no** whenNotPaused) | Only refunds the **unsettled** portion; settled hDCL stays claimable. |
+| `redeem(shares, receiver, controller)` | external, nonReentrant, whenNotPaused | Pull. Auth: `msg.sender == controller` OR operator OR `CLAIM_OPERATOR_ROLE` (with `receiver == controller` + opt-in). Burns escrowed hDCL, transfers HOLLAR from `totalReservedHollar`. |
+| `withdraw(assets, receiver, controller)` | external, nonReentrant, whenNotPaused | Same as `redeem` but specified in HOLLAR. |
 
-### `HDCLVault.cancelRedeem()`
+### Operator + auto-claim opt-in (user)
 
-| Aspect | Detail |
-|--------|--------|
-| Visibility | external, nonReentrant (**no** whenNotPaused — intentional per design) |
-| Parameters | `requestId` (user-controlled); must be own request |
-| Call chain | `→ totalQueuedHdcl -= → _transfer(vault, user) → delete redemptionQueue[requestId]` |
-| State modified | `redemptionQueue[]`, `totalQueuedHdcl`, ERC-20 balances |
-| Value flow | Vault → user (hDCL returned) |
-| Reentrancy guard | yes |
+| Function | Notes |
+|---|---|
+| `setOperator(operator, approved)` | Per-spec ERC-7540 operator approval. |
+| `setAutoClaim(enabled)` | Opts the caller in/out of `CLAIM_OPERATOR_ROLE` auto-claim. |
 
-### `HDCLVault.pokeDecentral()`
+### Keeper hooks
 
-| Aspect | Detail |
-|--------|--------|
-| Visibility | external, nonReentrant, whenNotPaused |
-| Parameters | `positionIndex` (user-controlled) |
-| Call chain | State machine: `requestYieldWithdrawal → try executeYieldWithdrawal → try requestPrincipalWithdrawal → try executePrincipalWithdrawal → _processQueueWithHollar` |
-| State modified | `positions[i].state/stateChangedAt`, `apyBuckets`, `yieldRateSum`, `yieldOffsetSum`, `totalInvestedPrincipal`, `idleHollar`, `totalStaleValue`, `positionHead`, `redemptionQueue[]`, `queueHead`, `totalQueuedHdcl` |
-| Value flow | DecentralPool → Vault → possibly queue users |
-| Reentrancy guard | yes |
-
-### `HDCLVault.pokeQueue()`
-
-| Aspect | Detail |
-|--------|--------|
-| Visibility | external, nonReentrant, whenNotPaused |
-| Parameters | none |
-| Call chain | `→ _processQueueWithHollar(idleHollar, rate) → [if can't progress] _reinvest() → DecentralPool.deposit()` |
-| State modified | `redemptionQueue[]`, `queueHead`, `totalQueuedHdcl`, `idleHollar`, `positions[]`, `apyBuckets`, `totalInvestedPrincipal`, `yieldRateSum`, `yieldOffsetSum` |
-| Value flow | Vault → queue users (fulfillment) or Vault → DecentralPool (reinvestment) |
-| Reentrancy guard | yes |
+| Function | Notes |
+|---|---|
+| `pokeDecentral(positionIndex)` | Drives the position state machine via `positionPool[i]`. Try/catch around every Decentral call; the rest of the cycle isolates from a paused/broken pool. |
+| `pokeQueue()` | Settles queue at current `exchangeRate()`. If unable to progress and idle ≥ minReinvest, calls `_reinvest` into the active deposit pool. |
 
 ---
 
-## Admin-Only
+## Role-Gated (claim path only)
 
-All gated by `onlyRole(ADMIN_ROLE)`.
+| Role | What it can do |
+|---|---|
+| `CLAIM_OPERATOR_ROLE` | Call `redeem`/`withdraw` on behalf of a controller **only if** that controller has `autoClaimEnabled == true` **and** `receiver == controller`. Role grants *timing* of the claim, not the *destination*. |
 
-| Contract | Function | Parameters | State Modified |
-|----------|----------|------------|----------------|
-| HDCLVault | `pauseDeposits()` | none | `depositsPaused = true` |
-| HDCLVault | `unpauseDeposits()` | none | `depositsPaused = false` |
-| HDCLVault | `pause()` | none | PausableUpgradeable paused state |
-| HDCLVault | `unpause()` | none | PausableUpgradeable unpaused |
-| HDCLVault | `setTvlCap(uint256)` | `newCap`; requires `>= totalAssets()` | `tvlCap` |
-| HDCLVault | `setMinReinvestAmount(uint256)` | `amount` | `minReinvestAmount` |
-| HDCLVault | `setMinRedeemAmount(uint256)` | `amount` | `minRedeemAmount` |
-| HDCLVault | `setOracle(address)` | `_oracle`; zero-check | `oracle` |
-| HDCLVault | `markPositionStale(uint256)` | `positionIndex`; guards: YWR/YC/PWR state + withdrawalDelay | `totalStaleValue`, bucket removal, `stalePrincipal`, `staleYield` (0 for PWR/YC) |
-| HDCLVault | `unmarkPositionStale(uint256, bool)` | `positionIndex`, `backtrackYield` | reverse stale accounting; if backtrack: back-calculate yieldStartTime |
-| HDCLVault | `setWithdrawalDelay(uint256)` | `_withdrawalDelay` | `withdrawalDelay` |
+---
+
+## Admin / Guardian
+
+| Function | Role | Notes |
+|---|---|---|
+| `pauseDeposits()` / `unpauseDeposits()` | ADMIN or GUARDIAN | Toggles deposit-only pause (queue/claim still works). |
+| `pause()` / `unpause()`                 | ADMIN or GUARDIAN | Full `whenNotPaused` halt. |
+| `setTvlCap(newCap)`        | ADMIN | Global cap across all pools; requires `newCap >= totalAssets()`. |
+| `setMinReinvestAmount(x)`  | ADMIN | |
+| `setMinRedeemAmount(x)`    | ADMIN | |
+| `setOracle(addr)`          | ADMIN | Zero-check. Used by WDCLOracle consumers. |
+| `registerPool(pool)`       | ADMIN | Adds a Decentral pool to the registry. |
+| `setActiveDepositPool(pool)` | ADMIN | Routes **new** deposits + reinvest to `pool`. Must be registered. Existing positions anchor to `positionPool[i]`. |
+| `retirePool(pool)`         | ADMIN | Removes a pool from the registry. Requires zero open positions in that pool. |
+
+`DEFAULT_ADMIN_ROLE` grants/revokes all roles. `UPGRADER_ROLE` authorizes UUPS upgrades.
+
+**Trust model (per `PLAN-multi-pool.md`):**
+- ADMIN ≈ Hydration governance *economics-parameters* track
+- GUARDIAN ≈ Hydration *technical committee* (anything ADMIN can do on pause, GUARDIAN can do too)
 
 ---
 
 ## Initialization
 
-### `HDCLVault.initialize()`
+### `initialize(_decentralPool, _poolToken, _hollar, _tvlCap, _admin)`
 
 | Aspect | Detail |
 |--------|--------|
 | Visibility | external, initializer |
-| Parameters | `_decentralPool`, `_poolToken`, `_hollar` (zero-checked), `_tvlCap`, `_withdrawalDelay`, `_admin` (zero-checked) |
-| State modified | All initializable state; roles granted to `_admin` |
-| Spec ref | §9 — deploy impl → proxy → initialize → seed deposit |
+| Zero-checks | All addresses |
+| Effects | Registers `_decentralPool` and sets it as `activeDepositPool`; sets `tvlCap`; grants ADMIN + GUARDIAN + DEFAULT_ADMIN + UPGRADER + CLAIM_OPERATOR roles to `_admin`. |
+| Notes | No `withdrawalDelay` parameter (removed). Multi-pool flow uses `registerPool` post-init. |
+
+---
+
+## ERC-7540 conformance views
+
+| Function | Purpose |
+|---|---|
+| `pendingRedeemRequest(reqId, controller)` | Unsettled shares for this request, owned by `controller`. |
+| `claimableRedeemRequest(reqId, controller)` | Settled-but-unclaimed shares for this request. |
+| `supportsInterface(bytes4)` | Declares ERC-165, ERC-4626, ERC-7540 Operator, ERC-7540 Redeem. |

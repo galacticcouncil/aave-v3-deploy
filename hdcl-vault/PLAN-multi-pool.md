@@ -339,13 +339,15 @@ Standard 7540 paths (`msg.sender == controller`, or per-user `isOperator`) keep 
 
 ## Implementation order (when greenlit)
 
+> **Status (2026-05-19, `9d49425`):** Workstreams 0, 1, 2 are all **landed and merged on `feat/hdcl-vault`**. 344 / 344 tests passing, 99.20% line coverage on `HDCLVault.sol`. Heterogeneous-APY tests cover 18% / 22% / 16% (incl. rate-cut scenario). 15 invariants × 12,800 fuzz calls each. See `x-ray/x-ray.md` for the current state.
+
 Three workstreams in dependency order. Land each as a separate commit (or PR) to keep the diff reviewable.
 
-### Workstream 0 — Prerequisite cleanup
+### Workstream 0 — Prerequisite cleanup &nbsp; [DONE]
 
 0a. **Tier 2 bucket-abstraction removal.** Drop `APYBucket`, `apyBuckets`, `activeAPYList`, `isActiveAPY`, `_addToActiveAPYsIfNew`, `_removeFromActiveAPYs`, `getActiveAPYCount`, `getActiveAPY`. Collapse `_addPrincipalToBucket` / `_removePrincipalFromBucket` to direct `totalInvestedPrincipal` updates. Math stays identical; the global aggregates `yieldRateSum` and `yieldOffsetSum` already do the work.
 
-### Workstream 1 — Guardian role + multi-pool
+### Workstream 1 — Guardian role + multi-pool &nbsp; [DONE]
 
 1. Define `GUARDIAN_ROLE` constant and `onlyAdminOrGuardian` modifier. Move `pauseDeposits`, `unpauseDeposits`, `pause`, `unpause` to `onlyAdminOrGuardian`. Grant `GUARDIAN_ROLE` to the technical committee address at deploy time.
 2. Add registry state (`pools[]`, `isPoolRegistered`, `isRegisteredPoolToken`, `activeDepositPool`) + `registerPool` / `setActiveDepositPool` / `retirePool` admin functions.
@@ -364,7 +366,7 @@ Three workstreams in dependency order. Land each as a separate commit (or PR) to
    - Reinvest skipped while `depositsPaused == true`
    - Heterogeneous-APY accrual: positions across two pools at different APYs produce correct `totalAssets()` and `exchangeRate()`
 
-### Workstream 2 — ERC-7540 + ERC-4626 conformance
+### Workstream 2 — ERC-7540 + ERC-4626 conformance &nbsp; [DONE — split into W2a..W2d]
 
 8. Add `asset()`, `convertToShares`, `convertToAssets`, `maxDeposit`, `maxMint`, `maxWithdraw`, `maxRedeem`, `previewMint`.
 9. Change `deposit(uint256)` → `deposit(uint256 assets, address receiver)`; add `mint(uint256 shares, address receiver)`. Emit canonical `Deposit(sender, owner, assets, shares)` event.
