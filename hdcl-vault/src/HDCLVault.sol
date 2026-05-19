@@ -12,6 +12,8 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IDecentralPool} from "./interfaces/IDecentralPool.sol";
 import {IAggregatorV3Interface} from "./interfaces/IAggregatorV3Interface.sol";
+import {IERC4626} from "./interfaces/IERC4626.sol";
+import {IERC7540Operator, IERC7540Redeem} from "./interfaces/IERC7540.sol";
 
 /// @title HDCLVault
 /// @notice Fungible yield-bearing ERC-20 wrapper around Decentral Protocol NFT positions.
@@ -1101,6 +1103,39 @@ contract HDCLVault is
         return (hdclAmount * totalAssets()) / supply;
     }
 
+    /// @notice ERC-4626 sync withdraw preview — async-only vault returns 0.
+    function previewWithdraw(uint256 /* assets */) external pure returns (uint256) {
+        return 0;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //                       ERC-7540 PER-REQUEST VIEWS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Shares of `requestId` that are still waiting to be processed
+    ///         (i.e., queued but not yet rate-locked).
+    function pendingRedeemRequest(uint256 requestId, address controller)
+        external
+        view
+        returns (uint256 shares)
+    {
+        RedemptionRequest storage r = redemptionQueue[requestId];
+        if (r.user != controller) return 0;
+        return r.hdclAmount - r.hdclSettled;
+    }
+
+    /// @notice Shares of `requestId` that have been rate-locked and are
+    ///         ready to claim via `redeem` / `withdraw`.
+    function claimableRedeemRequest(uint256 requestId, address controller)
+        external
+        view
+        returns (uint256 shares)
+    {
+        RedemptionRequest storage r = redemptionQueue[requestId];
+        if (r.user != controller) return 0;
+        return r.hdclSettled;
+    }
+
     /// @notice Get estimated wait time for a redemption request
     /// @return estimatedSeconds Seconds until expected full fulfillment
     function getEstimatedWaitTime(
@@ -1637,6 +1672,25 @@ contract HDCLVault is
     function _authorizeUpgrade(
         address newImplementation
     ) internal override onlyRole(UPGRADER_ROLE) {}
+
+    /// @notice ERC-165 interface detection.
+    /// @dev    Declares conformance to ERC-4626 (sync deposit + the spec
+    ///         surface that doesn't depend on sync withdraw) and the two
+    ///         relevant ERC-7540 sub-interfaces (Operator + Redeem). The
+    ///         async-deposit half of ERC-7540 is intentionally not declared.
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(AccessControlUpgradeable)
+        returns (bool)
+    {
+        return
+            interfaceId == type(IERC4626).interfaceId ||
+            interfaceId == type(IERC7540Operator).interfaceId ||
+            interfaceId == type(IERC7540Redeem).interfaceId ||
+            super.supportsInterface(interfaceId);
+    }
 
     // ═══════════════════════════════════════════════════════════════════════
     //                         STORAGE GAP
