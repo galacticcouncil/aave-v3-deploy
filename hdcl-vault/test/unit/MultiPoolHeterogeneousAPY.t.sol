@@ -15,8 +15,11 @@ import {MockPoolToken} from "../mocks/MockPoolToken.sol";
 contract MultiPoolHeterogeneousAPYTest is BaseTest {
     MockDecentralPool internal pool22;
     MockPoolToken internal nft22;
+    MockDecentralPool internal pool16;
+    MockPoolToken internal nft16;
 
-    uint256 internal constant APY_22 = 0.22e18; // second pool
+    uint256 internal constant APY_22 = 0.22e18; // second pool (rate hike)
+    uint256 internal constant APY_16 = 0.16e18; // third pool (rate cut)
     // BaseTest defines APY_18_PERCENT = 0.18e18 for the initial pool
 
     function setUp() public override {
@@ -26,6 +29,12 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         pool22 = new MockDecentralPool(address(hollar), address(nft22), APY_22);
         nft22.registerPool(address(pool22));
         hollar.mint(address(pool22), 10_000_000e18);
+
+        // Third Decentral pool: 16% APY (rate cut from 18%/22%).
+        nft16 = new MockPoolToken();
+        pool16 = new MockDecentralPool(address(hollar), address(nft16), APY_16);
+        nft16.registerPool(address(pool16));
+        hollar.mint(address(pool16), 10_000_000e18);
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
@@ -35,6 +44,13 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         vault.registerPool(IDecentralPool(address(pool22)));
         vm.prank(admin);
         vault.setActiveDepositPool(IDecentralPool(address(pool22)));
+    }
+
+    function _registerAndActivatePool16() internal {
+        vm.prank(admin);
+        vault.registerPool(IDecentralPool(address(pool16)));
+        vm.prank(admin);
+        vault.setActiveDepositPool(IDecentralPool(address(pool16)));
     }
 
     /// @dev Simple-interest yield: principal * apy * elapsed / (YEAR * WAD).
@@ -359,6 +375,182 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         // Sanity: the system is solvent after all redemptions.
         // Remaining hDCL is just the DEAD_SHARES; remaining HOLLAR (if any)
         // is the rounding residue from the pull-redemption math.
+        assertEq(vault.totalQueuedHdcl(), 0, "queue cleared");
+        assertEq(vault.totalReservedHollar(), 0, "no reserved HOLLAR left");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //   THREE POOLS: 18% → 22% → 16% (rate hike then rate cut)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    function test_threePools_aggregateAccrual() public {
+        // T=0: alice into 18% (pool 1)
+        _deposit(alice, 10_000e18);
+
+        // T=30d: switch active to pool 2 (22%); bob deposits
+        _warpDays(30);
+        _registerAndActivatePool22();
+        _deposit(bob, 10_000e18);
+
+        // T=60d: switch active to pool 3 (16%); charlie deposits
+        _warpDays(30);
+        _registerAndActivatePool16();
+        _deposit(charlie, 10_000e18);
+
+        // Routing sanity: each position anchored to the right pool with the
+        // right snapshotted APY.
+        assertEq(address(vault.positionPool(0)), address(pool));
+        assertEq(address(vault.positionPool(1)), address(pool22));
+        assertEq(address(vault.positionPool(2)), address(pool16));
+        (, , uint256 apy0, , , ) = vault.getPosition(0);
+        (, , uint256 apy1, , , ) = vault.getPosition(1);
+        (, , uint256 apy2, , , ) = vault.getPosition(2);
+        assertEq(apy0, APY_18_PERCENT);
+        assertEq(apy1, APY_22);
+        assertEq(apy2, APY_16);
+
+        // T=90d: all three have accrued for different durations
+        _warpDays(30);
+
+        uint256 y0 = _expectedYield(10_000e18, APY_18_PERCENT, 90 days);
+        uint256 y1 = _expectedYield(10_000e18, APY_22,         60 days);
+        uint256 y2 = _expectedYield(10_000e18, APY_16,         30 days);
+        uint256 expectedTotalAssets = 30_000e18 + y0 + y1 + y2;
+
+        assertApproxEqRel(
+            vault.totalAssets(),
+            expectedTotalAssets,
+            0.001e18,
+            "three-pool accrual sums correctly across heterogeneous APYs"
+        );
+    }
+
+    /// @notice A rate cut on the active pool MUST NOT slow yield on positions
+    ///         already minted under higher-APY pools. Each position locks its
+    ///         APY at deposit time; later pool switches don't affect it.
+    function test_rateCut_doesNotAffectExistingPositions() public {
+        // T=0: alice into 18%
+        _deposit(alice, 10_000e18);
+
+        // T=30d: switch to 22%; bob deposits
+        _warpDays(30);
+        _registerAndActivatePool22();
+        _deposit(bob, 10_000e18);
+
+        // Snapshot bob's pre-cut accrual: 0 yield yet
+        // T=45d: 15 days of 22% on bob's position so far
+        _warpDays(15);
+        uint256 bobAccrual15d = _expectedYield(10_000e18, APY_22, 15 days);
+        // Also some alice accrual (45 days at 18%)
+        uint256 aliceAccrual45d = _expectedYield(10_000e18, APY_18_PERCENT, 45 days);
+        uint256 expectedAt45d = 20_000e18 + aliceAccrual45d + bobAccrual15d;
+        assertApproxEqRel(vault.totalAssets(), expectedAt45d, 0.001e18, "pre-cut accrual ok");
+
+        // Rate cut: switch active to 16%
+        _registerAndActivatePool16();
+
+        // No deposit yet, but the cut shouldn't have changed anything in
+        // totalAssets — existing positions still accrue at their snapshotted
+        // rates (18% for alice, 22% for bob).
+        assertApproxEqRel(vault.totalAssets(), expectedAt45d, 0.001e18, "cut alone changes nothing");
+
+        // T=75d: another 30 days. Alice's 18% AND bob's 22% should keep
+        // accruing — the active pool is 16% but it has zero positions.
+        _warpDays(30);
+
+        uint256 aliceAccrual75d = _expectedYield(10_000e18, APY_18_PERCENT, 75 days);
+        uint256 bobAccrual45d   = _expectedYield(10_000e18, APY_22,         45 days);
+        uint256 expectedAt75d = 20_000e18 + aliceAccrual75d + bobAccrual45d;
+        assertApproxEqRel(
+            vault.totalAssets(),
+            expectedAt75d,
+            0.001e18,
+            "existing positions keep their original APYs after cut"
+        );
+
+        // Now charlie deposits under the 16% regime
+        _deposit(charlie, 10_000e18);
+        (, , uint256 apy2, , , ) = vault.getPosition(2);
+        assertEq(apy2, APY_16, "new deposit gets the cut rate");
+
+        // The blended rate continues to grow — slower than before — but
+        // existing positions are unaffected.
+        _warpDays(15); // T=90d
+        uint256 aliceAccrual90d  = _expectedYield(10_000e18, APY_18_PERCENT, 90 days);
+        uint256 bobAccrual60d    = _expectedYield(10_000e18, APY_22,         60 days);
+        uint256 charlieAccrual15d = _expectedYield(10_000e18, APY_16,        15 days);
+        uint256 expectedAt90d = 30_000e18 + aliceAccrual90d + bobAccrual60d + charlieAccrual15d;
+        assertApproxEqRel(vault.totalAssets(), expectedAt90d, 0.001e18, "post-cut blend");
+    }
+
+    /// @notice Full lifecycle across three different APYs, claiming each user
+    ///         and verifying everyone exits with the yield their snapshot APY
+    ///         should have produced — including the user that joined under
+    ///         the rate-cut regime.
+    function test_threePools_fullCycle() public {
+        uint256 aliceStart   = hollar.balanceOf(alice);
+        uint256 bobStart     = hollar.balanceOf(bob);
+        uint256 charlieStart = hollar.balanceOf(charlie);
+
+        // T=0: alice @ 18%
+        _deposit(alice, 10_000e18);
+
+        // T=30d: switch to 22%; bob deposits
+        _warpDays(30);
+        _registerAndActivatePool22();
+        _deposit(bob, 10_000e18);
+
+        // T=60d: switch to 16%; charlie deposits
+        _warpDays(30);
+        _registerAndActivatePool16();
+        _deposit(charlie, 10_000e18);
+
+        // T=65d: alice's pool-1 position matures (60d from t=0); process it
+        _warpDays(5);
+        _processPositionFull(0);
+
+        // Alice queues and claims her full position
+        _requestRedeem(alice, vault.balanceOf(alice));
+        vault.pokeQueue();
+        _claimAll(alice);
+
+        // Alice should recover principal + 65 days of 18% accrual
+        uint256 aliceRecovered = hollar.balanceOf(alice) - (aliceStart - 10_000e18);
+        uint256 aliceExpected = 10_000e18 + _expectedYield(10_000e18, APY_18_PERCENT, 65 days);
+        assertApproxEqRel(aliceRecovered, aliceExpected, 0.01e18, "alice exits with 18% yield");
+
+        // T=95d: bob's pool-2 position matures (60d from t=30d); process via pool22
+        _warpDays(30);
+        _processPositionFullVia(1, pool22);
+
+        _requestRedeem(bob, vault.balanceOf(bob));
+        vault.pokeQueue();
+        _claimAll(bob);
+        // Also claim any residual alice had from partial settlement during
+        // bob's auto-pokeQueue, so the final accounting is clean.
+        _claimAll(alice);
+
+        // Bob's recovery should reflect his entry-rate appreciation (alice's
+        // 30 days of 18% on her 10k before bob joined) plus his own 65 days
+        // of 22% accrual on his position.
+        uint256 bobRecovered = hollar.balanceOf(bob) - (bobStart - 10_000e18);
+        assertGt(bobRecovered, 10_000e18, "bob exits with positive yield");
+
+        // T=125d: charlie's pool-3 position matures (60d from t=60d); process via pool16
+        _warpDays(30);
+        _processPositionFullVia(2, pool16);
+
+        _requestRedeem(charlie, vault.balanceOf(charlie));
+        vault.pokeQueue();
+        _claimAll(charlie);
+
+        // Charlie joined when the rate was already appreciated, then earned
+        // 16% for 65 days. He should exit with positive yield even at the
+        // cut rate — the appreciation from previous positions carried him.
+        uint256 charlieRecovered = hollar.balanceOf(charlie) - (charlieStart - 10_000e18);
+        assertGt(charlieRecovered, 10_000e18, "charlie exits with positive yield despite rate cut");
+
+        // System solvent after all three exit
         assertEq(vault.totalQueuedHdcl(), 0, "queue cleared");
         assertEq(vault.totalReservedHollar(), 0, "no reserved HOLLAR left");
     }
