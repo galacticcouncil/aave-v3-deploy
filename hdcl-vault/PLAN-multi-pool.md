@@ -1,0 +1,291 @@
+# PLAN — Multi-Pool Support (Option A: admin-only routing)
+
+## Goal
+
+Make HDCL a long-running yield-bearing vault that persists across Decentral pool rotations. Users hold one fungible hDCL token; new deposits route to whichever DecentralPool the admin has set as active. Old positions wind down in their original pool via the existing keeper lifecycle.
+
+## Trust model
+
+Two tiers of on-chain control, with different cadences and enforcement at the EVM layer:
+
+| Role | Substrate path | Authority | Cadence |
+|------|---------------|-----------|---------|
+| `ADMIN_ROLE` | Hydration governance, **economics-params track** | Everything | Days (propose → vote → execute) |
+| `GUARDIAN_ROLE` | **Technical committee** | Pause/unpause both `pauseDeposits`/`unpauseDeposits` and `pause`/`unpause` | Fast (committee signature) |
+
+**Admin ⊇ Guardian principle.** Anything the guardian can do, the admin can also do. Implementation pattern: a single `onlyAdminOrGuardian` modifier guards pause/unpause functions; both roles satisfy it. The admin role does NOT need to also hold the guardian role.
+
+**Symmetric pause/unpause for the guardian.** The technical committee can both halt and resume — for both `pauseDeposits` and full `pause`. Rationale: if the committee can react fast enough to stop a problem, they should also be able to release the brake once they've verified things are safe again, without waiting for the multi-day governance cycle. Forcing every unpause through slow governance would create a denial-of-service incentive (a single bad-faith pause locks the vault for days).
+
+**Rotation cadence.** Routine pool rotations (register, switch, retire) ride the slow `ADMIN_ROLE` track. Emergency halts and resumptions ride the fast `GUARDIAN_ROLE` track. The fast path closes the window where a deteriorating Decentral pool could keep accepting deposits during the multi-day proposal cycle for rotation.
+
+`ADMIN_ROLE` exclusively retains all other operations: `registerPool`, `setActiveDepositPool`, `retirePool`, `setTvlCap`, `setOracle`, `setMinRedeemAmount`, `setMinReinvestAmount`, plus UUPS upgrade authorization via `UPGRADER_ROLE`.
+
+## Design — Option A: admin-only routing
+
+`activeDepositPool` is a single admin-set field. New deposits and reinvestments route there. Registered-but-not-active pools continue processing their existing positions via `pokeDecentral`. No automatic fallback, no deposit queue.
+
+## State changes
+
+Replace:
+```solidity
+IDecentralPool public decentralPool;
+IPoolToken    public poolToken;
+```
+
+With:
+```solidity
+IDecentralPool[]                       public pools;              // registry, ordered by registration
+mapping(IDecentralPool => bool)        public isPoolRegistered;
+mapping(address => bool)               public isRegisteredPoolToken; // for onERC721Received
+IDecentralPool                         public activeDepositPool;  // where new deposits land
+```
+
+Add to `NFTPosition`:
+```solidity
+IDecentralPool pool; // which pool minted this position
+```
+
+The position's `apyWad` is still snapshotted at deposit (one SLOAD vs. an external call later). `pool` is the new field that tells `pokeDecentral` which contract to drive.
+
+## New admin functions
+
+```solidity
+function registerPool(IDecentralPool newPool) external onlyRole(ADMIN_ROLE);
+// - Reverts if already registered
+// - Verifies newPool.stablecoin() == hollar
+// - Reads pool.poolToken() and adds it to isRegisteredPoolToken
+// - If pools.length == 0, sets activeDepositPool = newPool
+
+function setActiveDepositPool(IDecentralPool pool) external onlyRole(ADMIN_ROLE);
+// - Reverts if pool not registered
+// - Sets activeDepositPool = pool
+
+function retirePool(IDecentralPool pool) external onlyRole(ADMIN_ROLE);
+// - Reverts if pool == activeDepositPool (must switch first)
+// - Reverts if any open position still references this pool
+//   (iterate positions[positionHead..length) and check pos.pool != pool || pos.state == Redeemed)
+// - Removes from registry and isRegisteredPoolToken
+```
+
+`retirePool` requires zero open positions. No retire-while-open path — keeps the invariant that every registered pool is reachable by the keeper lifecycle, and avoids orphan-pool state.
+
+### Role updates on existing functions
+
+All four pause/unpause functions move from `onlyRole(ADMIN_ROLE)` to `onlyAdminOrGuardian`:
+
+```solidity
+modifier onlyAdminOrGuardian() {
+    require(
+        hasRole(ADMIN_ROLE, msg.sender) || hasRole(GUARDIAN_ROLE, msg.sender),
+        "Not admin or guardian"
+    );
+    _;
+}
+```
+
+Affected: `pauseDeposits`, `unpauseDeposits`, `pause`, `unpause`. The `Admin ⊇ Guardian` principle means admin still has full authority — no functions are guardian-only.
+
+## Lifecycle plumbing
+
+- `_depositIntoDecentral(amount)`: read `activeDepositPool`, snapshot its APY into `pos.apyWad` and its address into `pos.pool`. Approval flow targets the active pool.
+- `pokeDecentral(positionIndex)`: every `decentralPool.*` call becomes `pos.pool.*`. The state machine is unchanged.
+- `onERC721Received`: check `isRegisteredPoolToken[msg.sender]` instead of `msg.sender == address(poolToken)`.
+- `getAPYWad()`: returns `activeDepositPool.fixedAPYWad()` — the APY a new deposit would receive. The vault's blended APY across all pools is observable only via `exchangeRate()` movement; we won't expose a synthetic-blended view.
+- `_investmentPeriod()`, `_decentralWithdrawalDelay()`: take a pool argument or read from `pos.pool` at call sites.
+
+## Pool rotation procedure
+
+### Normal rotation (slow path only)
+
+A pre-planned rotation when Decentral deploys Pool B to replace Pool A:
+
+```
+T0: Decentral announces + deploys Pool B
+T1: Governance proposal (economics-params): registerPool(B) + pauseDeposits() (batched)
+T2: Vote + execute → B registered, deposits paused
+    [in-flight: old A positions continue to wind down via pokeDecentral; new deposits revert cleanly]
+T3: Governance proposal: setActiveDepositPool(B) + unpauseDeposits()
+T4: Vote + execute → new deposits flow to B
+T5 (months later, once A drains): retirePool(A)
+```
+
+### Emergency rotation (guardian-driven, governance follows)
+
+When Decentral signals an unscheduled deprecation or starts misbehaving:
+
+```
+T0: Decentral issue detected
+T1: Tech committee: pauseDeposits()     ← fast, minutes
+    [deposits halt; pokeDecentral continues to wind down existing A-positions]
+T2: Governance proposal: registerPool(B) + setActiveDepositPool(B)
+T3: Vote + execute → B registered, B active
+T4: Tech committee: unpauseDeposits()   ← fast, minutes — guardian can resume too
+T5 (months later, once A drains): retirePool(A)
+```
+
+The guardian can resume deposits on the fast path once the new pool is in place. No need to wait for a separate governance cycle just to unpause.
+
+### Full emergency halt (worst case)
+
+If Decentral is misbehaving badly enough that redemptions and keeper progression must also stop (e.g., suspected exploit affecting yield/principal payouts):
+
+```
+T0: Severe incident detected
+T1: Tech committee: pause()    ← full halt: blocks deposit, requestRedeem, pokeDecentral, pokeQueue
+    [vault is frozen except for cancelRedeem, which intentionally stays callable]
+T2: Investigation and remediation. Governance may upgrade impl if needed.
+T3: Tech committee (or admin): unpause() once safe
+T4: Vault resumes
+```
+
+The guardian's ability to unpause is what makes this useful. If only admin could unpause, every fast halt would translate to a multi-day vault freeze even after the incident was cleared — turning a safety mechanism into a denial-of-service vector.
+
+## Failure modes under Option A
+
+| Scenario | Behavior |
+|----------|----------|
+| `activeDepositPool` refuses a deposit (paused, max-TVL, shutdown) | `vault.deposit()` reverts. User keeps HOLLAR. They retry after governance updates the active pool. |
+| `activeDepositPool` refuses inside `_reinvest()` | `pokeQueue` reverts. Mitigation: governance pre-emptively sets `depositsPaused = true` so `pokeQueue` skips the reinvest leg. Idle HOLLAR sits unused until the new pool is active. |
+| Old pool stops paying yield/principal mid-lifecycle | Handled today — `pokeDecentral` try/catches every Decentral call. Position sits in its current state until pool recovers. |
+| Old pool fully dies | UUPS upgrade path to add a write-down function. Same as current single-pool failure mode. |
+
+## ERC-7540 + ERC-4626 conformance
+
+HDCL is a yield-bearing vault with async redemption. The natural standards are **ERC-4626** (base tokenized vault interface) and **ERC-7540** (async tokenized vault extension). Conformance unlocks integration with vault-aware tooling (Aave 3 collateral wrappers, Morpho strategies, Yearn aggregators, indexer support, audited router contracts) and is now in scope.
+
+### Surface to add
+
+**ERC-4626 base (synchronous deposit side):**
+- `asset()` → returns HOLLAR address
+- `convertToShares(uint256 assets)` / `convertToAssets(uint256 shares)`
+- `maxDeposit(address)` / `maxMint(address)` — gate on `tvlCap` minus current `totalAssets()`
+- `maxWithdraw` / `maxRedeem` → return 0 (sync withdraw not supported; async only)
+- `previewDeposit` ✓ (already exists)
+- `previewMint(uint256 shares)`
+- `previewWithdraw` / `previewRedeem` ✓ (already exists with one)
+- Standard `Deposit` event with the canonical 4-param signature
+
+Change `deposit(uint256)` signature to ERC-4626: `deposit(uint256 assets, address receiver)`. Existing tests call the 1-arg form — needs migration. Add `mint(uint256 shares, address receiver)` as well.
+
+**ERC-7540 async redemption:**
+- `requestRedeem(uint256 shares, address controller, address owner)` → returns `uint256 requestId`
+  - Current `requestRedeem(uint256 hdclAmount)` needs the extra params.
+  - `owner` must approve `msg.sender` to spend shares (or be `msg.sender`).
+  - `controller` is who can manage and claim the request (often == owner).
+- `pendingRedeemRequest(uint256 requestId, address controller)` view — shares still in queue
+- `claimableRedeemRequest(uint256 requestId, address controller)` view — shares processed and ready to claim
+- `withdraw(uint256 assets, address receiver, address controller)` → claim assets
+- `redeem(uint256 shares, address receiver, address controller)` → claim by share amount
+- Operator pattern: `setOperator(address operator, bool approved)`, `isOperator(address controller, address operator)`
+- Canonical events: `RedeemRequest(controller, owner, requestId, sender, shares)`, `Deposit(sender, owner, assets, shares)`, `OperatorSet(controller, operator, approved)`
+
+**ERC-165 interface declarations:**
+- `supportsInterface` returns true for `type(IERC7540).interfaceId`, `type(IERC4626).interfaceId`, `type(IERC165).interfaceId`
+
+### The push-vs-pull question
+
+The current vault is **push-based**: when `pokeQueue` processes a request, HOLLAR is transferred directly to the user in the same call. The user never claims.
+
+ERC-7540 expects **pull-based** redemption: requests transition `pending → claimable → claimed`, and the `claimed` step is a user (or operator) call to `redeem` / `withdraw`. The user gets the assets only after they explicitly claim.
+
+The push model means `claimableRedeemRequest` would always be 0 (requests skip the claimable state and go directly to settled), which isn't strictly conformant.
+
+**Decision needed during implementation: keep push, switch to pull, or hybrid.**
+
+- **Push (current):** non-conformant claimable view, but UX is simpler (one transaction). The keeper bot pays users automatically.
+- **Pull (canonical 7540):** queue processor marks requests as claimable with locked rates; user calls `redeem` to receive HOLLAR. Two transactions per redemption. Aave/Morpho integrations expect this shape.
+- **Hybrid:** queue processor pushes by default, but `redeem` / `withdraw` are also available for users who want to claim explicitly. `claimable` reflects requests that have been rate-locked but not yet pushed; usually 0 in practice. Best of both worlds at the cost of more code.
+
+**Recommend: Pull.** It matches the standard cleanly. The "two transactions" friction is mitigated because typical integrators (Aave wrappers, keeper bots) will batch the claim themselves; end users on a UI will see "redemption ready — click to claim" which is familiar from L2 bridges and many existing protocols. Push-based auto-pay was a UX optimization that became a conformance liability.
+
+### Rate-lock semantics under pull
+
+Today, `pokeQueue` computes `rate = exchangeRate()` once per call, then settles each entry at that rate. Under pull:
+- When processing a request, lock the rate by recording `(hdclConsumed, hollarOwed)` on the request struct.
+- `claimableRedeemRequest` returns `hdclConsumed` (or equivalent assets via the locked rate).
+- `redeem(shares, receiver, controller)` pays `hollarOwed` for the locked shares; burns the hDCL from escrow.
+- Partial fulfillment naturally extends: a request can have multiple `(hdcl, hollar)` lock entries.
+
+The shift moves HOLLAR-out from `pokeQueue` to `redeem`. The pendingYield/pendingPrincipal flow into `idleHollar` unchanged.
+
+### What stays the same
+
+- The position lifecycle, multi-pool routing, yield math, and tvlCap behavior are all orthogonal to 7540.
+- Cancellation (`cancelRedeem`) stays; ERC-7540 doesn't mandate cancel, but it's compatible.
+- The slippage features are gone and stay gone.
+
+### Test surface added
+
+- ERC-165 detection for both interface IDs
+- Operator approve + delegated claim
+- Pull-based claim flow (request → wait → claim)
+- `pendingRedeemRequest` and `claimableRedeemRequest` view correctness across the lifecycle
+- ERC-4626 spec tests (a16z's `erc4626-tests` suite — pick the bits that apply to a partially-conformant async vault)
+
+## Out of scope for this plan (deferred)
+
+- **Auto-failover across registered pools** (Option B in the prior discussion). Adds a try/catch loop in `_depositIntoDecentral` to skip pools that revert. Worth revisiting after we have data on governance response time.
+- **Deposit queueing** (Option C). Overkill for the failure mode.
+- **Per-pool TVL cap**. Currently `tvlCap` is global across all pools. Could be split per pool later if Decentral pools have different size limits.
+
+## Decisions locked in
+
+| # | Decision | Choice |
+|---|----------|--------|
+| 1 | On-chain role split | Add `GUARDIAN_ROLE`. Distinct from `ADMIN_ROLE`. |
+| 2 | Guardian authority | Symmetric pause/unpause on both `pauseDeposits/unpauseDeposits` and `pause/unpause`. |
+| 3 | Admin/guardian relationship | Admin ⊇ Guardian. Anything guardian can do, admin can do. |
+| 4 | Routing policy | Admin picks `activeDepositPool`. No user-pick at deposit time. |
+| 5 | `tvlCap` scope | Global across all pools. |
+| 6 | `retirePool` strictness | Requires zero open positions in the pool. |
+| 7 | Standards conformance | Target ERC-7540 (async vault) + ERC-4626 base. See section below. |
+
+## Implementation order (when greenlit)
+
+Three workstreams in dependency order. Land each as a separate commit (or PR) to keep the diff reviewable.
+
+### Workstream 0 — Prerequisite cleanup
+
+0a. **Tier 2 bucket-abstraction removal.** Drop `APYBucket`, `apyBuckets`, `activeAPYList`, `isActiveAPY`, `_addToActiveAPYsIfNew`, `_removeFromActiveAPYs`, `getActiveAPYCount`, `getActiveAPY`. Collapse `_addPrincipalToBucket` / `_removePrincipalFromBucket` to direct `totalInvestedPrincipal` updates. Math stays identical; the global aggregates `yieldRateSum` and `yieldOffsetSum` already do the work.
+
+### Workstream 1 — Guardian role + multi-pool
+
+1. Define `GUARDIAN_ROLE` constant and `onlyAdminOrGuardian` modifier. Move `pauseDeposits`, `unpauseDeposits`, `pause`, `unpause` to `onlyAdminOrGuardian`. Grant `GUARDIAN_ROLE` to the technical committee address at deploy time.
+2. Add registry state (`pools[]`, `isPoolRegistered`, `isRegisteredPoolToken`, `activeDepositPool`) + `registerPool` / `setActiveDepositPool` / `retirePool` admin functions.
+3. Add `pool` field to `NFTPosition`; thread `pos.pool` through `pokeDecentral`, `_depositIntoDecentral`, `_reinvest`.
+4. Update `onERC721Received` to check `isRegisteredPoolToken[msg.sender]`.
+5. Update `getAPYWad()` to return `activeDepositPool.fixedAPYWad()`; update `_investmentPeriod()` and `_decentralWithdrawalDelay()` to take a pool argument or read from `pos.pool` at call sites.
+6. Migration path for existing single-pool deployments: `initialize` signature stays (one pool registered at init), `registerPool` can add more later. Existing deployments don't break.
+7. Tests:
+   - Pool rotation full sequence
+   - Emergency rotation via guardian (`GUARDIAN_ROLE.pauseDeposits` and `unpauseDeposits` on the fast path)
+   - `GUARDIAN_ROLE.pause()` + `GUARDIAN_ROLE.unpause()` round-trip
+   - Both ADMIN and GUARDIAN can call all four pause/unpause functions; non-role addresses revert
+   - `retirePool(activeDepositPool)` reverts
+   - `retirePool(poolWithOpenPositions)` reverts
+   - Deposits during pauseDeposits revert cleanly
+   - Reinvest skipped while `depositsPaused == true`
+   - Heterogeneous-APY accrual: positions across two pools at different APYs produce correct `totalAssets()` and `exchangeRate()`
+
+### Workstream 2 — ERC-7540 + ERC-4626 conformance
+
+8. Add `asset()`, `convertToShares`, `convertToAssets`, `maxDeposit`, `maxMint`, `maxWithdraw`, `maxRedeem`, `previewMint`.
+9. Change `deposit(uint256)` → `deposit(uint256 assets, address receiver)`; add `mint(uint256 shares, address receiver)`. Emit canonical `Deposit(sender, owner, assets, shares)` event.
+10. Change `requestRedeem(uint256)` → `requestRedeem(uint256 shares, address controller, address owner)`. Implement owner-allowance check.
+11. **Switch redemption from push to pull.** Modify `_processQueueWithHollar` to record `(hdclConsumed, hollarOwed)` on each request instead of pushing HOLLAR. Implement `redeem(shares, receiver, controller)` and `withdraw(assets, receiver, controller)` for users to claim.
+12. Add operator pattern: `setOperator(address, bool)`, `isOperator(address, address)`, `OperatorSet` event. Permit operator-initiated `requestRedeem`, `redeem`, `withdraw`.
+13. Add view functions: `pendingRedeemRequest(requestId, controller)`, `claimableRedeemRequest(requestId, controller)`.
+14. Add ERC-165 `supportsInterface` returning true for ERC-7540, ERC-4626, ERC-165 interface IDs.
+15. Tests:
+   - ERC-165 detection for both interface IDs
+   - ERC-4626 sync deposit path with receiver != sender
+   - Operator approval + delegated claim flow
+   - Pull-based redemption: request → process → claim
+   - `pendingRedeemRequest` and `claimableRedeemRequest` correctness across the lifecycle, including partial fulfillment
+   - ERC-4626 spec tests (a16z `erc4626-tests` subset that applies to async vaults)
+   - Migration: existing pre-7540 callers (if any) get a clear revert with the new signatures, not silent acceptance
+
+## Related cleanup that should land first
+
+Already absorbed into Workstream 0 above. Listed separately here as a reminder: the bucket-abstraction removal is independent of both multi-pool and 7540, and should be the first commit so subsequent diffs are clean.
