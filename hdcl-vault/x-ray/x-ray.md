@@ -87,15 +87,16 @@
 | Metric | Value |
 |--------|-------|
 | Test files | 25 unit + 1 invariant |
-| Test functions | 326 unit + invariant + handler |
-| Total tests passing | 344 / 344 |
-| Line coverage (HDCLVault) | **99.20%** (497/501) |
-| Statement coverage | 97.14% |
-| Branch coverage | 81.53% |
-| Function coverage | **100%** (71/71) |
-| WDCLOracle | **100%** lines / statements / branches / functions |
+| Test functions | 350 unit + invariant + handler |
+| Total tests passing | 350 / 350 |
+| Line coverage (HDCLVault) | **97.12%** (438/451) |
+| Statement coverage | 92.55% |
+| Branch coverage | 70.59% |
+| Function coverage | **100%** (69/69) |
+| QueueLib | 93.88% lines / 100% functions |
+| WDCLOracle | **100%** lines / functions |
 
-The 4 uncovered lines are foundry attribution artifacts on `external pure { return 0; }` view functions (`maxWithdraw`, `maxRedeem`, `previewWithdraw`) plus the `getEstimatedWaitTime` overflow fallback (`type(uint256).max`).
+Remaining uncovered lines are catch-arm internals and view-side error paths (`getEstimatedWaitTime` overflow fallback, `previewWithdraw` 0-sentinel). Branch coverage drop reflects the new error paths in `previewDeposit` and the bounded head-sweep — both have happy-path coverage; the explicit revert paths are exercised in the spec-fix tests but lcov's branch attribution is coarse on `--ir-minimum`.
 
 ### Test depth by category
 
@@ -159,8 +160,11 @@ These are *intentional* and supersede the original `.claude/HDCL-vault-specifica
 | 5 | `CLAIM_OPERATOR_ROLE` with user opt-in (`autoClaimEnabled`) | Restore push-like UX without breaking 7540 contract guarantees |
 | 6 | Stale-position machinery (markPositionStale / withdrawalDelay) **removed** | Try/catch + UUPS upgrade path covers the "Decentral is broken" scenarios without the in-contract recognition state machine |
 | 7 | Slippage parameter **removed** from deposit | Rate-lock model + accounting-based `totalAssets()` makes deposit MEV-irrelevant |
-| 8 | Storage gap (`uint256[50] private __gap`) | UUPS upgrade safety |
+| 8 | Storage gap (`uint256[49] private __gap` + `_settledByController` mapping) | UUPS upgrade safety; index added for DoS-safe claim walks |
 | 9 | `cancelRedeem` refunds **unsettled portion only** | Settled hDCL belongs to the rate-locked HOLLAR reservation; can't unwind |
+| 10 | `_advancePositionHead` bounded at 50 slots/call, also invoked from `pokeQueue` | Multi-pool out-of-order redemption can stack consecutive Redeemed positions; bounded sweep prevents block-gas DoS |
+| 11 | `previewDeposit` reverts (not returns 0) on math edges | ERC-4626 §previewDeposit conformance — preview must match the actual call's revert behavior |
+| 12 | `maxRedeem` / `maxWithdraw` return real settled balance via `_settledByController` walk | ERC-7540 conformance — must equal value of settled-but-unclaimed requests for the operator |
 
 ---
 
@@ -170,18 +174,20 @@ These are *intentional* and supersede the original `.claude/HDCL-vault-specifica
 - **Single-active-pool routing** — only one `activeDepositPool` at a time. Admin picks. (Locked decision per `PLAN-multi-pool.md`.)
 - **`retirePool` requires zero open positions** in that pool — operational migration is admin-orchestrated (drain via maturity), not automatic.
 - **Oracle staleness not enforced** in `getOraclePrice` — only positive-answer check.
+- **EIP-170 buffer is tight** — 36 bytes at `optimizer_runs=30`. Future ABI additions should budget for a parallel size-reduction (Phase 3 ViewLib extraction is staged in `PLAN-library-split.md`).
 
 ---
 
 ## X-Ray Verdict
 
-**MATURE** — 344 tests passing with 99.2% line coverage, 100% function coverage, and 15 stateful invariants over 12,800 fuzz calls each. ERC-4626 + ERC-7540 conformance verified at interface level. Multi-pool heterogeneous APY (incl. rate cuts) covered end-to-end. Try/catch isolation around every Decentral interaction, with both catch arms of `pokeDecentral` now exercised.
+**MATURE** — 350 tests passing, 100% function coverage, 97% line coverage; 15 stateful invariants over 12,800 fuzz calls each. ERC-4626 + ERC-7540 conformance verified at interface level and via per-spec tests. Multi-pool heterogeneous APY (incl. rate cuts) covered end-to-end. Try/catch isolation around every Decentral interaction. Cancel-spam claim DoS mitigated via per-controller index; multi-pool head-sweep bounded.
 
 **Structural facts:**
 
-1. ~1807 lines of in-scope source (HDCLVault 1701 + WDCLOracle 106)
-2. 344 tests across 25 unit files + 1 invariant file, all green at `9d49425`
-3. UUPS upgradeable with `__gap[50]`, no on-chain timelock
+1. ~1900 lines of in-scope source (HDCLVault + QueueLib + WDCLOracle)
+2. 350 tests across 25 unit files + 1 invariant file, all green at `41037fc`
+3. UUPS upgradeable with `__gap[49]` (one slot consumed by `_settledByController`); no on-chain timelock
 4. Pull-redemption + rate-lock (7540-conformant), with role-gated auto-claim as a UX layer on top
 5. Multi-pool registry with admin-only deposit routing; per-position pool anchoring keeps existing positions independent of routing changes
 6. Two-tier governance: ADMIN (econ-params, instant) + GUARDIAN (pause-only, instant, parallel)
+7. QueueLib extracted as a separately-deployed library — vault is ~24.5 KB (under EIP-170), library is ~2 KB

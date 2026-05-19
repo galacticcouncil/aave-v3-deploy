@@ -1,6 +1,8 @@
 # Spec-Conformance Fixes (#4, #17, #13)
 
-> Branch: `feat/hdcl-vault` @ `0a3618c`
+> Status: **[DONE]** — landed in `41037fc` on `feat/hdcl-vault`. 350/350 tests pass; vault bytecode 24,540 B (36 B buffer under EIP-170 at `optimizer_runs=30`).
+>
+> Branch: `feat/hdcl-vault`
 > Target: three findings from the audit pass — two ERC-4626/7540 conformance, one mid-severity DoS amplifier on multi-pool deployments.
 
 All three are storage-layout safe (no slot changes) so they ship as a single UUPS upgrade. Order doesn't matter; they're independent. Suggest doing them in **#13 → #4 → #17** order (cheapest mechanical change first, biggest test churn last).

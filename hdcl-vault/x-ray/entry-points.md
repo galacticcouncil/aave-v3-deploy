@@ -1,6 +1,6 @@
 # Entry Point Map
 
-> HDCL Vault | `feat/hdcl-vault` @ `9d49425` | ERC-4626 + ERC-7540 (async-redeem)
+> HDCL Vault | `feat/hdcl-vault` @ `41037fc` | ERC-4626 + ERC-7540 (async-redeem)
 > 30+ entry points: 11 permissionless · 2 role-gated (claim) · ~12 admin-only
 
 ---
@@ -143,4 +143,10 @@ All Decentral calls wrapped in try/catch. State stays put on revert; next poke r
 |---|---|
 | `pendingRedeemRequest(reqId, controller)` | Unsettled shares for this request, owned by `controller`. |
 | `claimableRedeemRequest(reqId, controller)` | Settled-but-unclaimed shares for this request. |
+| `maxRedeem(controller)` | Total hDCL currently claimable across all settled requests. Bounded walk of `_settledByController`. |
+| `maxWithdraw(controller)` | Total HOLLAR currently claimable across all settled requests. Bounded walk of `_settledByController`. |
+| `previewRedeem(shares)` | Spot-price preview at current rate. |
+| `previewWithdraw(assets)` | Always 0 — sync-not-supported sentinel. Use `maxWithdraw` for the actual claimable value. |
+| `previewDeposit(assets)` | Spot-price preview. **Reverts** with `ZeroAmount` / `DepositTooSmall` / `VaultEmpty` on inputs where the actual `deposit` would revert (ERC-4626 §previewDeposit). Does NOT honor `depositsPaused` or `tvlCap` (spec exclusion). |
+| `previewMint(shares)` | Reverse-math: assets needed for exactly `shares`. |
 | `supportsInterface(bytes4)` | Declares ERC-165, ERC-4626, ERC-7540 Operator, ERC-7540 Redeem. |
