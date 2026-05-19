@@ -112,6 +112,45 @@ const VAULT_ABI = [
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
   },
+  // ─── ERC-7540 redemption queue ───────────────────────────────────────
+  {
+    name: 'getRedemptionQueueLength',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'getRedemptionRequest',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'requestId', type: 'uint256' }],
+    outputs: [
+      { name: 'user', type: 'address' },
+      { name: 'hdclAmount', type: 'uint256' },
+      { name: 'hdclSettled', type: 'uint256' },
+      { name: 'hollarOwed', type: 'uint256' },
+      { name: 'active', type: 'bool' },
+    ],
+  },
+  {
+    name: 'autoClaimEnabled',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'controller', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    name: 'redeem',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'shares', type: 'uint256' },
+      { name: 'receiver', type: 'address' },
+      { name: 'controller', type: 'address' },
+    ],
+    outputs: [{ name: 'assets', type: 'uint256' }],
+  },
 ] as const;
 
 // ─── Keeper class ────────────────────────────────────────────────────────────
@@ -191,7 +230,58 @@ export class HDCLKeeper {
       }
     }
 
+    // 5. Auto-claim on behalf of opted-in controllers. Requires this keeper
+    //    address to hold CLAIM_OPERATOR_ROLE on the vault. With pull-redemption,
+    //    settled shares sit in totalReservedHollar until someone calls redeem();
+    //    this step closes the loop for users who toggled setAutoClaim(true).
+    await this.autoClaimSettled();
+
     console.log('  Cycle complete.');
+  }
+
+  // ─── Auto-claim for opted-in controllers ─────────────────────────────
+
+  /// Walk the redemption queue, sum claimable shares per controller, and call
+  /// `redeem(shares, controller, controller)` for those with autoClaim on.
+  /// Receiver is forced to the controller — `CLAIM_OPERATOR_ROLE` only
+  /// authorizes timing, not redirection.
+  private async autoClaimSettled(): Promise<void> {
+    const queueLen = (await this.readContract('getRedemptionQueueLength')) as bigint;
+    if (queueLen === 0n) return;
+
+    // Sum settled shares per controller across all live requests.
+    const claimable = new Map<Address, bigint>();
+    for (let i = 0n; i < queueLen; i++) {
+      const req = (await this.readContract('getRedemptionRequest', [i])) as [
+        Address, bigint, bigint, bigint, boolean,
+      ];
+      const [user, , hdclSettled, , active] = req;
+      if (!active || hdclSettled === 0n) continue;
+      claimable.set(user, (claimable.get(user) ?? 0n) + hdclSettled);
+    }
+    if (claimable.size === 0) return;
+
+    // For each controller with claimable shares, check opt-in and call redeem.
+    for (const [controller, shares] of claimable) {
+      let optedIn = false;
+      try {
+        optedIn = (await this.readContract('autoClaimEnabled', [controller])) as boolean;
+      } catch (err) {
+        console.error(`  autoClaimEnabled(${controller}) failed:`, err);
+        continue;
+      }
+      if (!optedIn) continue;
+
+      try {
+        console.log(`  Auto-claim: redeem(${formatEther(shares)} hDCL) for ${controller}`);
+        await this.writeContract('redeem', [shares, controller, controller]);
+      } catch (err) {
+        // Could revert if the keeper isn't a CLAIM_OPERATOR_ROLE holder,
+        // or if the controller flipped autoClaim off mid-cycle. Either way,
+        // log and continue — don't block the rest of the batch.
+        console.error(`  redeem for ${controller} failed:`, err);
+      }
+    }
   }
 
   // ─── Position processing ─────────────────────────────────────────────
@@ -218,16 +308,17 @@ export class HDCLKeeper {
       console.log(`  Position ${index} (token ${tokenId}): Active & matured, calling processPosition()...`);
       await this.tryProcessPosition(index);
 
-      // Check for stale: > 96 hours past maturity
-      const staleCutoff = maturity + CONFIG.STALE_THRESHOLD_SECONDS;
-      if (nowSeconds > staleCutoff) {
-        console.warn(
-          `  WARNING: Position ${index} is ${Math.floor((nowSeconds - maturity) / 3600)}h past maturity!`
-        );
+      // Off-chain monitoring: alert if a position has been past maturity
+      // for too long. There is no on-chain stale recognition path anymore —
+      // try/catch + UUPS upgrade handles a broken Decentral pool. This alert
+      // exists so an operator can investigate if a position is stuck.
+      const cutoff = maturity + CONFIG.STALE_THRESHOLD_SECONDS;
+      if (nowSeconds > cutoff) {
+        const hours = Math.floor((nowSeconds - maturity) / 3600);
+        console.warn(`  WARNING: Position ${index} is ${hours}h past maturity!`);
         await this.sendAlert(
-          `Stale position detected: index=${index}, tokenId=${tokenId}, ` +
-            `principal=${formatEther(principal)}, ` +
-            `hours past maturity: ${Math.floor((nowSeconds - maturity) / 3600)}`
+          `Stuck position (Active past maturity): index=${index}, tokenId=${tokenId}, ` +
+            `principal=${formatEther(principal)}, hours past maturity: ${hours}`
         );
       }
       return;
@@ -245,17 +336,16 @@ export class HDCLKeeper {
       );
       await this.tryProcessPosition(index);
 
-      // Check for stale: > 96 hours past maturity without fully progressing
-      const staleCutoff = maturity + CONFIG.STALE_THRESHOLD_SECONDS;
-      if (nowSeconds > staleCutoff) {
+      // Off-chain monitoring (see comment above on the Active branch).
+      const cutoff = maturity + CONFIG.STALE_THRESHOLD_SECONDS;
+      if (nowSeconds > cutoff) {
+        const hours = Math.floor((nowSeconds - maturity) / 3600);
         console.warn(
-          `  WARNING: Position ${index} stuck in state ${stateNames[state]} for ` +
-            `${Math.floor((nowSeconds - maturity) / 3600)}h past maturity`
+          `  WARNING: Position ${index} stuck in state ${stateNames[state]} for ${hours}h past maturity`
         );
         await this.sendAlert(
           `Stuck position: index=${index}, tokenId=${tokenId}, state=${stateNames[state]}, ` +
-            `principal=${formatEther(principal)}, ` +
-            `hours past maturity: ${Math.floor((nowSeconds - maturity) / 3600)}`
+            `principal=${formatEther(principal)}, hours past maturity: ${hours}`
         );
       }
       return;
@@ -278,7 +368,7 @@ export class HDCLKeeper {
     return this.publicClient.readContract({
       address: this.vaultAddress,
       abi: VAULT_ABI,
-      functionName,
+      functionName: functionName as any,
       args: args as any,
     });
   }
@@ -288,7 +378,7 @@ export class HDCLKeeper {
       account: this.account,
       address: this.vaultAddress,
       abi: VAULT_ABI,
-      functionName,
+      functionName: functionName as any,
       args: args as any,
     });
     // Hydration requires legacy (type 0) transactions
