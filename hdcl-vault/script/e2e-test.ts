@@ -6,14 +6,17 @@
  *
  * Flow:
  *   1. Setup: fund WETH, mint HOLLAR via governance
- *   2. deposit() → check HDCL balance, exchangeRate, totalAssets
- *   3. requestRedeem() → check queue state
- *   4. cancelRedeem() → check HDCL returned
- *   5. requestRedeem() again
- *   6. pokeQueue() → check fulfillment
- *   7. deposit() again (with queue active)
- *   8. pokeDecentral() on position 0
- *   9. Admin: pauseDeposits / unpauseDeposits / setTvlCap / setMinReinvestAmount
+ *   2. deposit(assets, receiver)     — ERC-4626 — check HDCL balance, exchangeRate, totalAssets
+ *   3. requestRedeem(shares, controller, owner)  — ERC-7540 async — check queue state + 5-tuple shape
+ *   4. cancelRedeem(requestId)       — unsettled-only refund (fresh request, refunds in full)
+ *   5. pokeDecentral(0)              — try to advance position state
+ *   6. pokeQueue()                   — settle anything that's claimable
+ *   7. deposit() again
+ *   8. Admin: pauseDeposits / unpauseDeposits / setTvlCap / setMinReinvestAmount
+ *
+ * NOTE: the pull-redemption claim (redeem/withdraw) is NOT exercised here —
+ * it requires a settled queue entry, which in turn needs a matured position
+ * (60-day Decentral lock). Validated in unit tests via vm.warp instead.
  *
  * Usage:
  *   VAULT_ADDRESS=0x... npx tsx script/e2e-test.ts [--rpc https://2.lark.hydration.cloud]
@@ -61,10 +64,13 @@ const REDEEM_FRACTION = 4n; // redeem 1/4 of HDCL
 // ─── ABIs ───────────────────────────────────────────────────────────────────
 
 const VAULT_ABI = parseAbi([
-  // user
-  'function deposit(uint256 hollarAmount) external returns (uint256 hdclMinted)',
-  'function requestRedeem(uint256 hdclAmount) external returns (uint256 requestId)',
+  // user — ERC-4626 deposit side + ERC-7540 async redeem side
+  'function deposit(uint256 assets, address receiver) external returns (uint256 shares)',
+  'function requestRedeem(uint256 shares, address controller, address owner) external returns (uint256 requestId)',
   'function cancelRedeem(uint256 requestId) external',
+  'function redeem(uint256 shares, address receiver, address controller) external returns (uint256 assets)',
+  'function setOperator(address operator, bool approved) external',
+  'function setAutoClaim(bool enabled) external',
   // permissionless
   'function pokeDecentral(uint256 positionIndex) external',
   'function pokeQueue() external',
@@ -73,12 +79,16 @@ const VAULT_ABI = parseAbi([
   'function exchangeRate() external view returns (uint256)',
   'function previewDeposit(uint256 hollarAmount) external view returns (uint256)',
   'function previewRedeem(uint256 hdclAmount) external view returns (uint256)',
+  'function pendingRedeemRequest(uint256 requestId, address controller) external view returns (uint256)',
+  'function claimableRedeemRequest(uint256 requestId, address controller) external view returns (uint256)',
   'function getPositionCount() external view returns (uint256)',
   'function getPositionHead() external view returns (uint256)',
   'function getPosition(uint256 positionIndex) external view returns (uint256 tokenId, uint256 principal, uint256 apyWad, uint256 depositTime, uint256 maturityTime, uint8 state)',
-  'function getRedemptionRequest(uint256 requestId) external view returns (address user, uint256 hdclAmount, uint256 hdclFulfilled, bool active)',
+  'function getRedemptionRequest(uint256 requestId) external view returns (address user, uint256 hdclAmount, uint256 hdclSettled, uint256 hollarOwed, bool active)',
+  'function getRedemptionQueueLength() external view returns (uint256)',
   'function getTotalQueuedHdcl() external view returns (uint256)',
   'function getIdleHollar() external view returns (uint256)',
+  'function autoClaimEnabled(address) external view returns (bool)',
   'function balanceOf(address) external view returns (uint256)',
   'function totalSupply() external view returns (uint256)',
   'function name() external view returns (string)',
@@ -351,7 +361,7 @@ async function testDeposit(): Promise<bigint> {
   }) as bigint;
 
   const hash = await writeContract({
-    address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'deposit', args: [DEPOSIT_AMOUNT],
+    address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'deposit', args: [DEPOSIT_AMOUNT, ALICE_ADDR],
   });
   await send(hash);
 
@@ -405,29 +415,31 @@ async function testRequestRedeem(hdclBal: bigint): Promise<bigint> {
   console.log(`  Requesting redeem of ${formatEther(redeemAmount)} HDCL...`);
 
   const hash = await writeContract({
-    address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'requestRedeem', args: [redeemAmount],
+    address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'requestRedeem',
+    args: [redeemAmount, ALICE_ADDR, ALICE_ADDR],
   });
   const receipt = await send(hash);
 
   // Parse requestId from logs (RedemptionRequested event)
   const requestId = 0n; // first request
 
-  const [user, hdclAmount, hdclFulfilled, active] = await publicClient.readContract({
+  const [user, hdclAmount, hdclSettled, hollarOwed, active] = await publicClient.readContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getRedemptionRequest', args: [requestId],
-  }) as [string, bigint, bigint, boolean];
+  }) as [string, bigint, bigint, bigint, boolean];
 
   const [totalQueued, hdclAfter] = await Promise.all([
     publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getTotalQueuedHdcl' }) as Promise<bigint>,
     publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'balanceOf', args: [ALICE_ADDR] }) as Promise<bigint>,
   ]);
 
-  console.log(`  Request #${requestId}: user=${user} amount=${formatEther(hdclAmount)} fulfilled=${formatEther(hdclFulfilled)} active=${active}`);
+  console.log(`  Request #${requestId}: user=${user} amount=${formatEther(hdclAmount)} settled=${formatEther(hdclSettled)} owed=${formatEther(hollarOwed)} active=${active}`);
   console.log(`  Total queued HDCL: ${formatEther(totalQueued)}`);
   console.log(`  HDCL balance after: ${formatEther(hdclAfter)}`);
 
   assert(active === true, 'redemption request is active');
   assert(user.toLowerCase() === ALICE_ADDR.toLowerCase(), 'request user is Alice');
   assert(hdclAmount === redeemAmount, 'request amount matches');
+  assert(hdclSettled === 0n, 'fresh request has zero settled');
   assert(totalQueued > 0n, 'total queued > 0');
   assert(hdclAfter < hdclBal, 'HDCL balance decreased after requestRedeem');
 
@@ -442,9 +454,9 @@ async function testCancelRedeem(requestId: bigint, hdclBefore: bigint) {
   });
   await send(hash);
 
-  const [, , , active] = await publicClient.readContract({
+  const [, , , , active] = await publicClient.readContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getRedemptionRequest', args: [requestId],
-  }) as [string, bigint, bigint, boolean];
+  }) as [string, bigint, bigint, bigint, boolean];
 
   const [hdclAfter, totalQueued] = await Promise.all([
     publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'balanceOf', args: [ALICE_ADDR] }) as Promise<bigint>,
@@ -515,7 +527,7 @@ async function testSecondDeposit() {
 
   const secondAmount = parseEther('500');
   const hash = await writeContract({
-    address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'deposit', args: [secondAmount],
+    address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'deposit', args: [secondAmount, ALICE_ADDR],
   });
   await send(hash);
 
@@ -555,7 +567,7 @@ async function testAdminFunctions() {
   try {
     await publicClient.simulateContract({
       account: account, address: VAULT_ADDRESS, abi: VAULT_ABI,
-      functionName: 'deposit', args: [parseEther('100')],
+      functionName: 'deposit', args: [parseEther('100'), ALICE_ADDR],
     });
   } catch {
     depositReverted = true;
