@@ -4,26 +4,23 @@
 #   docker stack deploy -c docker-stack.yml hdcl-keeper
 #
 # Env vars expected at deploy time (export or use a .env loader):
-#   IMAGE                 — fully-qualified registry image (e.g. registry.example.com/hdcl-keeper:0.1.0)
 #   VAULT_ADDRESS         — proxy address from DEPLOYMENT.md step 1
 #   KEEPER_PRIVATE_KEY    — keeper's signing key (must hold CLAIM_OPERATOR_ROLE)
 #   RPC_URL               — Hydration RPC (defaults to nice.hydration.cloud below)
 #   POLL_INTERVAL_MS      — cycle interval, default 6s
 #   ALERT_WEBHOOK         — Discord webhook URL (optional)
+#   IMAGE                 — override image (defaults to galacticcouncil/hdcl-keeper:latest)
 #
 # IMPORTANT: replicas MUST stay at 1. Two keepers running in parallel will
 # fight over the signing key's tx nonce on every cycle. update_config uses
 # stop-first so a rolling update tears the old one down before starting the
 # new one — same reason.
-#
-# For production, promote KEEPER_PRIVATE_KEY and ALERT_WEBHOOK to Docker
-# secrets (see the commented `secrets:` block at the bottom).
 
 version: "3.8"
 
 services:
   keeper:
-    image: ${IMAGE:?IMAGE env var required}
+    image: ${IMAGE:-galacticcouncil/hdcl-keeper:latest}
     environment:
       RPC_URL: ${RPC_URL:-https://rpc.nice.hydration.cloud}
       VAULT_ADDRESS: ${VAULT_ADDRESS:?VAULT_ADDRESS required}
@@ -61,34 +58,3 @@ services:
         max-size: "10m"
         max-file: "5"
 
-# ── Promote to Docker secrets (recommended for production) ────────────────────
-#
-# To use swarm secrets instead of inline env vars:
-#
-#   1. Create the secrets:
-#        printf "%s" "0x..." | docker secret create hdcl_keeper_pk -
-#        printf "%s" "https://discord.com/api/webhooks/..." | docker secret create hdcl_alert_webhook -
-#
-#   2. Replace the `KEEPER_PRIVATE_KEY` / `ALERT_WEBHOOK` env entries above
-#      with `_FILE` variants and mount the secrets:
-#
-#        environment:
-#          KEEPER_PRIVATE_KEY_FILE: /run/secrets/keeper_pk
-#          ALERT_WEBHOOK_FILE:      /run/secrets/alert_webhook
-#        secrets:
-#          - source: hdcl_keeper_pk
-#            target: keeper_pk
-#          - source: hdcl_alert_webhook
-#            target: alert_webhook
-#
-#   3. Top-level secrets block:
-#
-#        secrets:
-#          hdcl_keeper_pk:
-#            external: true
-#          hdcl_alert_webhook:
-#            external: true
-#
-# NOTE: the keeper's config.ts currently reads env vars directly. To consume
-# `_FILE` secrets, update config.ts to fallback to `fs.readFileSync(path)`
-# when the `_FILE` variant is set. Out of scope for this stack file.

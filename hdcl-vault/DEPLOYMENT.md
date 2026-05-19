@@ -95,7 +95,18 @@ Verify before starting:
 - Keeper address has gas (HDX) on Hydration
 - `vault.hasRole(vault.CLAIM_OPERATOR_ROLE(), keeperAddress)` is `true`
 
-Start with `npm start` from `hdcl-vault/keeper/`. First cycle logs should show `Positions: 1 (head: 0)` (the seed position) and no `pokeQueue` call yet.
+**Production (Docker Swarm)** — image is published at `galacticcouncil/hdcl-keeper:latest`:
+
+```sh
+export VAULT_ADDRESS=0x...
+export KEEPER_PRIVATE_KEY=0x...
+export ALERT_WEBHOOK=https://discord.com/api/webhooks/...   # optional
+docker stack deploy -c hdcl-vault/keeper/docker-stack.yml hdcl-keeper
+```
+
+The stack pins `replicas: 1` with `stop-first` ordering on rolling updates — never run two keepers on the same key, they'll fight for the tx nonce.
+
+**Local / dev**: `npm start` from `hdcl-vault/keeper/`. First cycle logs should show `Positions: 1 (head: 0)` (the seed position) and no `pokeQueue` call yet.
 
 ---
 
