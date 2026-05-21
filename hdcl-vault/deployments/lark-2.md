@@ -52,19 +52,24 @@ All roles currently granted to Alice (`0x222222B60cA97a4998B7D07b99034Fa4d933953
 
 ## Keeper
 
-Container running locally on `mrq/lark-dev`:
+Running on the lark Docker Swarm cluster as stack `hdcl-keeper`, service `hdcl-keeper_keeper`. Manageable via swarmpit at https://swarmpit.lark.hydration.cloud.
 
-```
-docker run -d --restart always \
-  --name hdcl-keeper \
-  -e RPC_URL=https://2.lark.hydration.cloud \
-  -e VAULT_ADDRESS=0xbDAFEB92440d8696d6C143bc7e6B086d461e3502 \
-  -e KEEPER_PRIVATE_KEY=<alice's pk> \
-  -e POLL_INTERVAL_MS=12000 \
-  galacticcouncil/hdcl-keeper:555abc7
-```
+| | |
+|---|---|
+| Image | `galacticcouncil/hdcl-keeper:555abc7` (Docker Hub) |
+| Replicas | 1 (single-replica enforced — shared key, no nonce race) |
+| Poll interval | 12 s |
+| Restart policy | `condition: any`, unbounded attempts |
 
 Cycles every 12 s. Calls `pokeDecentral` on matured positions, `pokeQueue` after, and auto-claims for users who opted into `setAutoClaim(true)`.
+
+**Stack file** (committed at `keeper/docker-stack.yml`):
+```sh
+# To redeploy with updated env or image:
+docker stack deploy -c hdcl-vault/keeper/docker-stack.yml hdcl-keeper
+```
+
+**During UI dev workflows that send admin txs from the same key** (e.g. running `script/e2e-test.ts`): scale the keeper to 0 to avoid nonce races, then restore. See "Useful one-liners" below.
 
 ---
 
@@ -182,15 +187,17 @@ function getEstimatedWaitTime(uint256 reqId) view returns (uint256 estimatedSeco
 # Status snapshot
 cast call 0xbDAFEB92440d8696d6C143bc7e6B086d461e3502 'exchangeRate()(uint256)' --rpc-url https://2.lark.hydration.cloud
 
-# Keeper logs
-docker logs -f hdcl-keeper
+# Keeper management (via swarmpit at https://swarmpit.lark.hydration.cloud)
+#   Service ID: hdcl-keeper_keeper   |   Stack: hdcl-keeper
+#   View logs / scale / restart in the UI, OR via the swarmpit-lark MCP tools.
 
 # Toggle auto-claim for a user (Alice's key)
 cast send --rpc-url https://2.lark.hydration.cloud --private-key <PK> --legacy --gas-price 1500000 \
   0xbDAFEB92440d8696d6C143bc7e6B086d461e3502 'setAutoClaim(bool)' true
 
-# Stop keeper for maintenance
-docker stop hdcl-keeper
+# Manually trigger a keeper cycle (in case the bot is paused)
+cast send --rpc-url https://2.lark.hydration.cloud --private-key <PK> --legacy --gas-price 1500000 \
+  0xbDAFEB92440d8696d6C143bc7e6B086d461e3502 'pokeQueue()'
 ```
 
 ---
