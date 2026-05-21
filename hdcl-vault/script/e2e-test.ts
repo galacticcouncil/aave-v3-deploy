@@ -414,14 +414,19 @@ async function testRequestRedeem(hdclBal: bigint): Promise<bigint> {
   const redeemAmount = hdclBal / REDEEM_FRACTION;
   console.log(`  Requesting redeem of ${formatEther(redeemAmount)} HDCL...`);
 
+  // The new request's id is the current queueTail (which getRedemptionQueueLength
+  // returns). Cache it BEFORE the tx so we don't depend on the test running
+  // against a pristine vault — re-runs against the same deployed contract
+  // will keep working as queueTail grows.
+  const requestId = (await publicClient.readContract({
+    address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getRedemptionQueueLength',
+  })) as bigint;
+
   const hash = await writeContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'requestRedeem',
     args: [redeemAmount, ALICE_ADDR, ALICE_ADDR],
   });
-  const receipt = await send(hash);
-
-  // Parse requestId from logs (RedemptionRequested event)
-  const requestId = 0n; // first request
+  await send(hash);
 
   const [user, hdclAmount, hdclSettled, hollarOwed, active] = await publicClient.readContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getRedemptionRequest', args: [requestId],
@@ -449,6 +454,17 @@ async function testRequestRedeem(hdclBal: bigint): Promise<bigint> {
 async function testCancelRedeem(requestId: bigint, hdclBefore: bigint) {
   console.log('\n── Cancel Redeem ──');
 
+  // Snapshot totalQueued BEFORE cancel so we can assert on the delta rather
+  // than absolute zero — vault may already have unrelated queue entries from
+  // prior test runs against the same deployment.
+  const totalQueuedBefore = (await publicClient.readContract({
+    address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getTotalQueuedHdcl',
+  })) as bigint;
+  const [, hdclAmountBefore, hdclSettledBefore, , ] = await publicClient.readContract({
+    address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getRedemptionRequest', args: [requestId],
+  }) as [string, bigint, bigint, bigint, boolean];
+  const expectedUnsettled = hdclAmountBefore - hdclSettledBefore;
+
   const hash = await writeContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'cancelRedeem', args: [requestId],
   });
@@ -458,17 +474,20 @@ async function testCancelRedeem(requestId: bigint, hdclBefore: bigint) {
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getRedemptionRequest', args: [requestId],
   }) as [string, bigint, bigint, bigint, boolean];
 
-  const [hdclAfter, totalQueued] = await Promise.all([
+  const [hdclAfter, totalQueuedAfter] = await Promise.all([
     publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'balanceOf', args: [ALICE_ADDR] }) as Promise<bigint>,
     publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getTotalQueuedHdcl' }) as Promise<bigint>,
   ]);
 
   console.log(`  Request #${requestId} active: ${active}`);
   console.log(`  HDCL balance restored: ${formatEther(hdclAfter)}`);
-  console.log(`  Total queued: ${formatEther(totalQueued)}`);
+  console.log(`  Total queued before/after: ${formatEther(totalQueuedBefore)} → ${formatEther(totalQueuedAfter)}`);
 
-  assert(active === false, 'request no longer active');
-  assert(totalQueued === 0n, 'queue is empty after cancel');
+  assert(active === false, 'request no longer active (fully unsettled at cancel time)');
+  assert(
+    totalQueuedBefore - totalQueuedAfter === expectedUnsettled,
+    'totalQueued decreased by exactly the cancelled unsettled portion',
+  );
 }
 
 async function testPokeDecentral() {
