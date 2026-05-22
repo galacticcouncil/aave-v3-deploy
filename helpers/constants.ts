@@ -105,6 +105,7 @@ export const chainlinkAggregatorProxy: Record<string, string> = {
   [eEthereumNetwork.sepolia]: "0x6c60d915c7a646860dba836ffcb7f112b6cfdc76",
   [eHydrationNetwork.hydration]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
   [eHydrationNetwork.nice]: "0xBd763043861CAF4E7e4E7Ffe951A03dF2Ea7E5AC",
+  [eHydrationNetwork.lark2]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
 };
 
 export const chainlinkEthUsdAggregatorProxy: Record<string, string> = {
@@ -130,6 +131,7 @@ export const chainlinkEthUsdAggregatorProxy: Record<string, string> = {
   [eEthereumNetwork.sepolia]: "0x6c60d915c7a646860dba836ffcb7f112b6cfdc76",
   [eHydrationNetwork.hydration]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
   [eHydrationNetwork.nice]: "0xBd763043861CAF4E7e4E7Ffe951A03dF2Ea7E5AC",
+  [eHydrationNetwork.lark2]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
 };
 
 export const ETHEREUM_SHORT_EXECUTOR =
@@ -156,6 +158,7 @@ export const POOL_ADMIN: Record<string, string> = {
   [eHydrationNetwork.hydration]: "0xaa7e0000000000000000000000000000000aa7e0",
   [eHydrationNetwork.nice]: HYDRATION_TEST_ADMIN,
   [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
+  [eHydrationNetwork.lark2]: "0xaa7e0000000000000000000000000000000aa7e0",
 };
 
 export const EMERGENCY_ADMIN: Record<string, string> = {
@@ -169,6 +172,7 @@ export const EMERGENCY_ADMIN: Record<string, string> = {
   [eHydrationNetwork.hydration]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b", // 7J4KqjeRmGZPVEAogDgtxVenmsJcsvPBCySdDGxaKQ6Yyknj
   [eHydrationNetwork.nice]: "0xb847e0fd2a5e62d621a0382419bddb0a351a6d9c",
   [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
+  [eHydrationNetwork.lark2]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b",
 };
 
 export const DEFAULT_NAMED_ACCOUNTS = {
@@ -218,4 +222,5 @@ export const MULTISIG_ADDRESS: { [key: string]: string } = {
   [eHydrationNetwork.hydration]: "0xaa7e1000000000000000000000000000000aa7e10",
   [eHydrationNetwork.nice]: HYDRATION_TEST_ADMIN,
   [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
+  [eHydrationNetwork.lark2]: "0xaa7e1000000000000000000000000000000aa7e10",
 };
