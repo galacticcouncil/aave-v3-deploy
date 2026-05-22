@@ -5,6 +5,28 @@ import {IClampedOracle} from "./interfaces/IClampedOracle.sol";
 import {AggregatorInterface} from "./dependencies/chainlink/AggregatorInterface.sol";
 import {IHydraChainlinkOracle} from "./dependencies/hydra-chainlink/IHydraChainlinkOracle.sol";
 
+/// @notice Threat model:
+/// - Primary is an external push-based feed (DIA / Chainlink-style). It is the
+///   more manipulation-prone side: a bad round or a successful attack on the
+///   updater can move it sharply in a single update.
+/// - Secondary is Hydration's on-chain 10-min stableswap/Omnipool TWAP
+///   precompile. The TWAP smoothing already makes it costly to move; we treat
+///   it as the manipulation-resistant anchor.
+///
+/// The contract returns primary, clamped to within ±maxDiffBps of secondary.
+/// This caps the influence of a manipulated primary at maxDiffBps from
+/// secondary, while still letting liquidations proceed (at a lagged price)
+/// during real volatility instead of DoS'ing the AaveOracle.
+///
+/// Trade-off accepted: a sustained TWAP manipulation on the secondary can
+/// drag the reported price by its drift ± maxDiffBps. This is deemed cheaper
+/// to defend against here than the bad-debt risk of halting liquidations
+/// during a real crash.
+///
+/// Fallbacks:
+/// - Primary unavailable -> revert. Secondary alone is not trusted.
+/// - Secondary unavailable -> return primary unclamped (lose the bound,
+///   preserve liveness).
 contract ClampedOracle is IClampedOracle {
     uint256 public constant MAX_BPS = 10_000;
 
@@ -37,38 +59,22 @@ contract ClampedOracle is IClampedOracle {
         return address(secondaryAgg);
     }
 
-    function decimals() external pure returns (uint8) {
+    function decimals() external pure override returns (uint8) {
         return 8;
     }
 
-    function latestAnswer() public view override returns (int256) {
+    function latestAnswer() external view override returns (int256) {
         (bool pOk, int256 pAns) = _tryLatestAnswerPrimary();
+        if (!pOk) revert NoValidPrice();
+
         (bool sOk, int256 sAns) = _tryLatestAnswerSecondary();
-
-        if (!pOk && !sOk) revert NoValidPrice();
         if (!sOk) return pAns;
-        if (!pOk) return sAns;
 
-        if (pAns <= 0 || sAns <= 0) revert NoValidPrice();
-
-        uint256 P = uint256(pAns);
-        uint256 S = uint256(sAns);
-
-        uint256 lower = (S * (MAX_BPS - maxDiffBps)) / MAX_BPS;
-        uint256 upper = (S * (MAX_BPS + maxDiffBps)) / MAX_BPS;
-
-        uint256 out = P;
-        if (out < lower) out = lower;
-        if (out > upper) out = upper;
-
-        return int256(out);
+        return int256(_clampToBand(uint256(pAns), uint256(sAns)));
     }
 
-    function latestTimestamp() public view override returns (uint256) {
-        (bool pOk, uint256 pTs) = _tryLatestTimestampPrimary();
-
-        if (pOk) return pTs;
-        revert NoValidPrice();
+    function latestTimestamp() external view override returns (uint256) {
+        return primaryAgg.latestTimestamp();
     }
 
     function latestRound() external view override returns (uint256) {
@@ -79,34 +85,31 @@ contract ClampedOracle is IClampedOracle {
         uint256 roundId
     ) external view override returns (int256) {
         (bool pOk, int256 pAns) = _tryGetAnswerPrimary(roundId);
+        if (!pOk) revert NoValidPrice();
+
         (bool sOk, int256 sAns) = _tryGetAnswerSecondary(roundId);
-
-        if (!pOk && !sOk) revert NoValidPrice();
         if (!sOk) return pAns;
-        if (!pOk) return sAns;
 
-        if (pAns <= 0 || sAns <= 0) revert NoValidPrice();
-
-        uint256 P = uint256(pAns);
-        uint256 S = uint256(sAns);
-
-        uint256 lower = (S * (MAX_BPS - maxDiffBps)) / MAX_BPS;
-        uint256 upper = (S * (MAX_BPS + maxDiffBps)) / MAX_BPS;
-
-        uint256 out = P;
-        if (out < lower) out = lower;
-        if (out > upper) out = upper;
-
-        return int256(out);
+        return int256(_clampToBand(uint256(pAns), uint256(sAns)));
     }
 
     function getTimestamp(
         uint256 roundId
     ) external view override returns (uint256) {
-        (bool pOk, uint256 pTs) = _tryGetTimestampPrimary(roundId);
+        return primaryAgg.getTimestamp(roundId);
+    }
 
-        if (pOk) return pTs;
-        revert NoValidPrice();
+    /// @dev Clamps `p` into [s*(1-N/MAX_BPS), s*(1+N/MAX_BPS)]. Boundary
+    /// values are returned unmodified.
+    function _clampToBand(
+        uint256 p,
+        uint256 s
+    ) internal view returns (uint256) {
+        uint256 lower = (s * (MAX_BPS - maxDiffBps)) / MAX_BPS;
+        uint256 upper = (s * (MAX_BPS + maxDiffBps)) / MAX_BPS;
+        if (p < lower) return lower;
+        if (p > upper) return upper;
+        return p;
     }
 
     function _tryLatestAnswerPrimary()
@@ -135,19 +138,6 @@ contract ClampedOracle is IClampedOracle {
         }
     }
 
-    function _tryLatestTimestampPrimary()
-        internal
-        view
-        returns (bool ok, uint256 ts)
-    {
-        try primaryAgg.latestTimestamp() returns (uint256 t) {
-            if (t == 0) return (false, 0);
-            return (true, t);
-        } catch {
-            return (false, 0);
-        }
-    }
-
     function _tryGetAnswerPrimary(
         uint256 roundId
     ) internal view returns (bool ok, int256 ans) {
@@ -165,17 +155,6 @@ contract ClampedOracle is IClampedOracle {
         try secondaryAgg.getAnswer(roundId) returns (int256 a) {
             if (a <= 0) return (false, 0);
             return (true, a);
-        } catch {
-            return (false, 0);
-        }
-    }
-
-    function _tryGetTimestampPrimary(
-        uint256 roundId
-    ) internal view returns (bool ok, uint256 ts) {
-        try primaryAgg.getTimestamp(roundId) returns (uint256 t) {
-            if (t == 0) return (false, 0);
-            return (true, t);
         } catch {
             return (false, 0);
         }
