@@ -13,15 +13,10 @@ import {IHydraChainlinkOracle} from "./dependencies/hydra-chainlink/IHydraChainl
 ///   precompile. The TWAP smoothing already makes it costly to move; we treat
 ///   it as the manipulation-resistant anchor.
 ///
-/// Resolution order for latestAnswer:
-///  1. If primary's latest round is inside the secondary band, return it.
-///  2. Otherwise try primary's immediately preceding round. If that round is
-///     inside the band, return it. A single-round primary attack is rejected
-///     entirely -- the reported price does not move.
-///  3. Otherwise (previous round also out of band or unavailable) clamp the
-///     latest primary value to the secondary band edge. Preserves liveness
-///     during real volatility at the cost of allowing the original ±maxDiffBps
-///     influence per the clamp design.
+/// The contract returns primary, clamped to within ±maxDiffBps of secondary.
+/// This caps the influence of a manipulated primary at maxDiffBps from
+/// secondary, while still letting liquidations proceed (at a lagged price)
+/// during real volatility instead of DoS'ing the AaveOracle.
 ///
 /// Trade-off accepted: a sustained TWAP manipulation on the secondary can
 /// drag the reported price by its drift ± maxDiffBps. This is deemed cheaper
@@ -75,23 +70,7 @@ contract ClampedOracle is IClampedOracle {
         (bool sOk, int256 sAns) = _tryLatestAnswerSecondary();
         if (!sOk) return pAns;
 
-        uint256 P = uint256(pAns);
-        uint256 S = uint256(sAns);
-        (uint256 lower, uint256 upper) = _bandOf(S);
-
-        if (P >= lower && P <= upper) return pAns;
-
-        // Latest primary outside band -- try the previous round before
-        // clamping. A single-round manipulation falls off here.
-        (bool prevOk, int256 prevAns) = _tryPrimaryPreviousRound();
-        if (prevOk) {
-            uint256 PPrev = uint256(prevAns);
-            if (PPrev >= lower && PPrev <= upper) return prevAns;
-        }
-
-        // Previous round also out of band (or unavailable): clamp latest.
-        if (P < lower) return int256(lower);
-        return int256(upper);
+        return int256(_clampToBand(uint256(pAns), uint256(sAns)));
     }
 
     function latestTimestamp() external view override returns (uint256) {
@@ -120,38 +99,17 @@ contract ClampedOracle is IClampedOracle {
         return primaryAgg.getTimestamp(roundId);
     }
 
-    function _bandOf(
-        uint256 s
-    ) internal view returns (uint256 lower, uint256 upper) {
-        lower = (s * (MAX_BPS - maxDiffBps)) / MAX_BPS;
-        upper = (s * (MAX_BPS + maxDiffBps)) / MAX_BPS;
-    }
-
+    /// @dev Clamps `p` into [s*(1-N/MAX_BPS), s*(1+N/MAX_BPS)]. Boundary
+    /// values are returned unmodified.
     function _clampToBand(
         uint256 p,
         uint256 s
     ) internal view returns (uint256) {
-        (uint256 lower, uint256 upper) = _bandOf(s);
+        uint256 lower = (s * (MAX_BPS - maxDiffBps)) / MAX_BPS;
+        uint256 upper = (s * (MAX_BPS + maxDiffBps)) / MAX_BPS;
         if (p < lower) return lower;
         if (p > upper) return upper;
         return p;
-    }
-
-    /// @dev Returns primary's answer at `latestRound() - 1`, treating any
-    /// revert, missing round, or non-positive answer as unavailable.
-    function _tryPrimaryPreviousRound()
-        internal
-        view
-        returns (bool ok, int256 ans)
-    {
-        uint256 lr;
-        try primaryAgg.latestRound() returns (uint256 r) {
-            lr = r;
-        } catch {
-            return (false, 0);
-        }
-        if (lr == 0) return (false, 0);
-        return _tryGetAnswerPrimary(lr - 1);
     }
 
     function _tryLatestAnswerPrimary()
