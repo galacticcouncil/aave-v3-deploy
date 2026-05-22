@@ -27,7 +27,7 @@ export const strategyUSDC: IReserveParams = {
   supplyCap,
   borrowCap,
   debtCeiling,
-  borrowableIsolation: true,
+  borrowableIsolation: false,
 };
 
 export const strategyUSDT = strategyUSDC;
