@@ -26,6 +26,7 @@ import {
   strategyPAXG,
   strategyPRIME,
   strategyApyUSD,
+  strategySIGIL,
   strategySOL,
   strategyGSOL,
   strategyEURC,
@@ -77,6 +78,7 @@ export const HydrationConfig: IAaveConfiguration = {
     PAXG: strategyPAXG,
     PRIME: strategyPRIME,
     APYUSD: strategyApyUSD,
+    SIGIL: strategySIGIL,
     SOL: strategySOL,
     "2-POOL-GSOL": strategyGSOL,
     EURC: strategyEURC,
@@ -102,6 +104,7 @@ export const HydrationConfig: IAaveConfiguration = {
       PAXG: tokenAddress(39),
       PRIME: tokenAddress(43),
       APYUSD: tokenAddress(46),
+      SIGIL: tokenAddress(816),
       SOL: tokenAddress(1000752),
       "2-POOL-GSOL": tokenAddress(90001),
       EURC: tokenAddress(44),
@@ -203,6 +206,7 @@ export const HydrationConfig: IAaveConfiguration = {
       PAXG: "0x8fB61B8E81C2f17695F14A136C98b0C4013bc105",
       PRIME: "0xDEe587cC569bf1FcBdcD6d1472031d225f34C307",
       APYUSD: ZERO_ADDRESS, // TODO: fill in after running `hardhat deploy-apyUSDoracle --network hydration`
+      SIGIL: "0xe50AA7afa36A5E04C0b0D0892D0b173c924b662F",
       // GIGASOL oracles
       SOL: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
       "2-POOL-GSOL": "0xCD3648A48378cBDa915f6be0A30073b76593Ed9A",
