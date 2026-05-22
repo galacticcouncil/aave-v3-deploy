@@ -10,7 +10,9 @@ import {
   generateProposalV2,
   dispatchAs,
   aaveManagerCall,
+  rootEvmCall,
 } from "../../helpers/hydration-proposal.js";
+import { getPool } from "../../helpers/contract-getters";
 import { MARKET_NAME } from "../../helpers/env";
 import { task } from "hardhat/config";
 import {
@@ -33,7 +35,7 @@ task(`apyusd`, ``).setAction(async function (_, hre) {
   const hydrationTx = (await getApi()).tx;
 
   await hre.run("init-reserve", {
-    symbol: "apyUSD",
+    symbol: "APYUSD",
     batch: true,
   });
 
@@ -47,7 +49,7 @@ task(`apyusd`, ``).setAction(async function (_, hre) {
     batch: true,
   });
 
-  const oracle = await getOracleByAsset(cfg, "apyUSD");
+  const oracle = await getOracleByAsset(cfg, "APYUSD");
   const price = 1.3672318;
 
   await hre.run("set-oracle-price", {
@@ -72,9 +74,25 @@ task(`apyusd`, ``).setAction(async function (_, hre) {
   const aAPYUSD = 1046;
   const poolAPYUSD = 146;
   const treasury = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
+  const treasuryEvm = "0x6d6f646c70792f74727372790000000000000000";
+  const HOLLAR_EVM = "0x531a654d1696ed52e7275a8cede955e82620f99a";
 
-  // 363,156 apyUSD (held on 16RJh4z1…j4RE multisig, pending transfer to treasury) + 500,000 HOLLAR borrowed by treasury
+  // 363,156 apyUSD (held on 16RJh4z1…j4RE multisig, pending transfer to treasury) + 500,000 HOLLAR borrowed by treasury from AAVE
   const apyUSDSeed = "363156000000000000000000";
+  const hollarSeed = "500000000000000000000000";
+
+  // Treasury borrows 500,000 HOLLAR (variable rate) from AAVE against existing collateral
+  const pool = await getPool();
+  const borrowTx = await pool.populateTransaction.borrow(
+    HOLLAR_EVM,
+    hollarSeed,
+    2, // interestRateMode: variable
+    0, // referralCode
+    treasuryEvm,
+    { gasLimit: 1_000_000 }
+  );
+  borrowTx.from = treasuryEvm;
+  const treasuryBorrow = await rootEvmCall(borrowTx);
 
   const rootTxs = [
     hydrationTx.assetRegistry.register(
@@ -125,13 +143,14 @@ task(`apyusd`, ``).setAction(async function (_, hre) {
         maxPegUpdate: 120,
       })
     ),
+    treasuryBorrow,
     await dispatchAs(
       treasury,
       hydrationTx.stableswap.addAssetsLiquidity(
         ...Object.values({
           poolId: poolAPYUSD,
           assets: [
-            { assetId: HOLLAR, amount: "500000000000000000000000" },
+            { assetId: HOLLAR, amount: hollarSeed },
             { assetId: APYUSD, amount: apyUSDSeed },
           ],
           minShares: 0,
@@ -140,15 +159,12 @@ task(`apyusd`, ``).setAction(async function (_, hre) {
     ),
   ];
 
-  const { whitelistedCall, proposal } = await generateProposalV2(
-    [...txs, ...rootTxs],
-    true
-  );
+  const proposal = await generateProposalV2([...txs, ...rootTxs], false);
   const decoder = new ProposalDecoder(hre);
   await decoder.init();
-  console.log("whitelisted call hash:");
-  console.log(whitelistedCall.hash.toString());
   console.log("proposal preimage:");
   console.log(proposal.toHex());
-  decoder.printTree(decoder.transformCall(whitelistedCall.toHuman()));
+  decoder.printTree(decoder.transformCall(proposal.toHuman()));
+  console.log("hash:");
+  console.log(proposal.hash.toHex());
 });
