@@ -330,4 +330,137 @@ contract ClampedOracleTest is Test {
         assertEq(oracle.secondary(), address(secondary));
         assertEq(oracle.maxDiffBps(), 1000);
     }
+
+    // ---------------------------------------------------------------------
+    // Fuzz: invariants over the full input space.
+    // Inputs are bounded to uint128 to keep arithmetic in safe ranges
+    // without artificially restricting realistic price magnitudes
+    // (uint128.max ≈ 3.4e38, well above any plausible 8-decimal price).
+    // ---------------------------------------------------------------------
+
+    /// @notice For any positive (p, s) and any bps in [0, MAX_BPS], the
+    /// returned value lies in [s*(1-bps/MAX_BPS), s*(1+bps/MAX_BPS)] and
+    /// equals p, lower, or upper according to where p falls relative to
+    /// the band.
+    function testFuzz_LatestAnswerClampInvariant(
+        uint128 pRaw,
+        uint128 sRaw,
+        uint256 bpsRaw
+    ) public {
+        uint256 p = bound(uint256(pRaw), 1, type(uint128).max);
+        uint256 s = bound(uint256(sRaw), 1, type(uint128).max);
+        uint256 bps = bound(bpsRaw, 0, 10_000);
+
+        primary.pushAnswer(int256(p), 100);
+        secondary.pushAnswer(int256(s));
+        ClampedOracle oracle = _deploy(bps);
+
+        uint256 r = uint256(oracle.latestAnswer());
+        uint256 lower = (s * (10_000 - bps)) / 10_000;
+        uint256 upper = (s * (10_000 + bps)) / 10_000;
+
+        assertGe(r, lower, "result below lower bound");
+        assertLe(r, upper, "result above upper bound");
+
+        if (p >= lower && p <= upper) {
+            assertEq(r, p, "in-band: should return primary");
+        } else if (p < lower) {
+            assertEq(r, lower, "below-band: should clamp to lower");
+        } else {
+            assertEq(r, upper, "above-band: should clamp to upper");
+        }
+    }
+
+    /// @notice The clamp invariant holds equally for the historical
+    /// getAnswer(roundId) path.
+    function testFuzz_GetAnswerClampInvariant(
+        uint128 pRaw,
+        uint128 sRaw,
+        uint256 bpsRaw,
+        uint256 roundId
+    ) public {
+        uint256 p = bound(uint256(pRaw), 1, type(uint128).max);
+        uint256 s = bound(uint256(sRaw), 1, type(uint128).max);
+        uint256 bps = bound(bpsRaw, 0, 10_000);
+        roundId = bound(roundId, 2, type(uint64).max);
+
+        primary.setRoundData(roundId, int256(p), 100);
+        secondary.setRoundData(roundId, int256(s));
+        ClampedOracle oracle = _deploy(bps);
+
+        uint256 r = uint256(oracle.getAnswer(roundId));
+        uint256 lower = (s * (10_000 - bps)) / 10_000;
+        uint256 upper = (s * (10_000 + bps)) / 10_000;
+
+        assertGe(r, lower);
+        assertLe(r, upper);
+    }
+
+    /// @notice With secondary unavailable, primary is returned verbatim
+    /// regardless of how far it sits from any hypothetical band.
+    function testFuzz_SecondaryDownReturnsPrimary(
+        uint128 pRaw,
+        uint256 bpsRaw
+    ) public {
+        uint256 p = bound(uint256(pRaw), 1, type(uint128).max);
+        uint256 bps = bound(bpsRaw, 0, 10_000);
+
+        RevertingHydraChainlinkOracle revertingSecondary = new RevertingHydraChainlinkOracle();
+        primary.pushAnswer(int256(p), 100);
+
+        ClampedOracle oracle = new ClampedOracle(
+            address(primary),
+            address(revertingSecondary),
+            bps
+        );
+
+        assertEq(uint256(oracle.latestAnswer()), p);
+    }
+
+    /// @notice Primary down -> revert NoValidPrice regardless of secondary.
+    function testFuzz_PrimaryDownReverts(
+        uint128 sRaw,
+        uint256 bpsRaw
+    ) public {
+        uint256 s = bound(uint256(sRaw), 1, type(uint128).max);
+        uint256 bps = bound(bpsRaw, 0, 10_000);
+
+        RevertingAggregator revertingPrimary = new RevertingAggregator();
+        secondary.pushAnswer(int256(s));
+
+        ClampedOracle oracle = new ClampedOracle(
+            address(revertingPrimary),
+            address(secondary),
+            bps
+        );
+
+        vm.expectRevert(IClampedOracle.NoValidPrice.selector);
+        oracle.latestAnswer();
+    }
+
+    /// @notice Primary returning a non-positive answer is treated as
+    /// unavailable, regardless of secondary state.
+    function testFuzz_PrimaryZeroOrNegativeReverts(
+        int128 pRaw,
+        uint128 sRaw,
+        uint256 bpsRaw
+    ) public {
+        vm.assume(pRaw <= 0);
+        uint256 s = bound(uint256(sRaw), 1, type(uint128).max);
+        uint256 bps = bound(bpsRaw, 0, 10_000);
+
+        primary.pushAnswer(int256(pRaw), 100);
+        secondary.pushAnswer(int256(s));
+        ClampedOracle oracle = _deploy(bps);
+
+        vm.expectRevert(IClampedOracle.NoValidPrice.selector);
+        oracle.latestAnswer();
+    }
+
+    /// @notice Constructor rejects any bps strictly greater than MAX_BPS.
+    function testFuzz_ConstructorRejectsBpsAboveMax(uint256 bps) public {
+        bps = bound(bps, 10_001, type(uint256).max);
+        vm.expectRevert(IClampedOracle.InvalidBps.selector);
+        new ClampedOracle(address(primary), address(secondary), bps);
+    }
 }

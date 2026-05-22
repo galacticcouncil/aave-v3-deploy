@@ -2,8 +2,6 @@
 src = "contracts"
 test = "tests/foundry"
 
-script = "deploy/foundry"
-
 out = "out"
 cache_path = "cache/forge"
 
@@ -20,3 +18,9 @@ remappings = [
 ]
 
 fs_permissions = [{ access = "read", path = "./" }]
+
+[profile.default.fuzz]
+runs = 1000
+
+[profile.ci.fuzz]
+runs = 10000
