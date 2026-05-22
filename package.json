@@ -58,8 +58,7 @@
     "test": "npm run compile && npm run test:fork",
     "test:fork": "MARKET_NAME=Aave FORK=main npx hardhat test ./tests/__setup.spec.ts ./tests/fork/check-list.spec.ts",
     "deploy:market:aave:fork": "FORK=main MARKET_NAME=Aave npm run deploy",
-    "deploy:market:eth:empty:fork": "FORK=main MARKET_NAME=Ethereum npm run deploy",
-    "deploy:clamped-oracles": "ts-node deploy/03-all-clamped-oracles.ts"
+    "deploy:market:eth:empty:fork": "FORK=main MARKET_NAME=Ethereum npm run deploy"
   },
   "peerDependencies": {
     "@aave/core-v3": "x || >=1.0.0-beta || >=3.0.0-beta",
