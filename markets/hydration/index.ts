@@ -205,7 +205,7 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDE": "0x00000102737461626c657377000000de00000071", // HOLLAR(222) / 2-POOL-HUSDe(113) 10 min. stablesw
       PAXG: "0x8fB61B8E81C2f17695F14A136C98b0C4013bc105",
       PRIME: "0xDEe587cC569bf1FcBdcD6d1472031d225f34C307",
-      APYUSD: ZERO_ADDRESS, // TODO: fill in after running `hardhat deploy-apyUSDoracle --network hydration`
+      APYUSD: "0x286BAaA3F5738ac01EF922B1E913Fcc09916AF96",
       SIGIL: "0xe50AA7afa36A5E04C0b0D0892D0b173c924b662F",
       // GIGASOL oracles
       SOL: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
