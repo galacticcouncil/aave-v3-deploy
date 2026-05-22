@@ -2,7 +2,7 @@ import { rateStrategyVolatileOne } from "./../aave/rateStrategies";
 import { eContractid, IReserveParams } from "../../helpers/types";
 import {
   rateStrategyDOT,
-  rateStrategyDOT10,
+  rateStrategyDOT5,
   rateStrategyStables,
   rateStrategyStables80,
 } from "./rateStrategies";
@@ -54,13 +54,13 @@ export const strategyWBTC = {
   ...strategyWETH,
   baseLTVAsCollateral: "6000",
   liquidationThreshold: "7000",
-  supplyCap: "33",
+  supplyCap: "1",
   borrowCap: "10",
   reserveDecimals: "8",
 };
 
 export const strategyDOT: IReserveParams = {
-  strategy: rateStrategyDOT10,
+  strategy: rateStrategyDOT5,
   baseLTVAsCollateral: "8000",
   liquidationThreshold: "8500",
   liquidationBonus: "10700",
@@ -223,8 +223,87 @@ export const strategyPAXG: IReserveParams = {
   reserveDecimals: "18",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "100",
-  borrowCap: "70",
+  supplyCap: "250",
+  borrowCap: "175",
   debtCeiling,
   borrowableIsolation: false,
+};
+
+export const strategyPRIME: IReserveParams = {
+  strategy: rateStrategyVolatileOne,
+  baseLTVAsCollateral: "8500",
+  liquidationThreshold: "8800",
+  liquidationBonus: "10700",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: true,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "6",
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "15000000",
+  borrowCap: "3000000",
+  debtCeiling: "1200000000",
+  borrowableIsolation: false,
+};
+
+// GIGASOL reserve configurations
+export const strategySOL: IReserveParams = {
+  strategy: rateStrategyDOT,
+  baseLTVAsCollateral: "7000",
+  liquidationThreshold: "7500",
+  liquidationBonus: "10700",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: true,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "9", // SOL has 9 decimals
+  aTokenImpl: eContractid.AToken,
+  reserveFactor, // 20%
+  supplyCap: "50,000".replace(/,/g, ""),
+  borrowCap: "25,000".replace(/,/g, ""),
+  debtCeiling,
+  borrowableIsolation: false,
+};
+
+export const strategyGSOL: IReserveParams = {
+  strategy: rateStrategyDOT,
+  baseLTVAsCollateral: "6000",
+  liquidationThreshold: "7000",
+  liquidationBonus: "10700",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: false, // Stablepool LP tokens cannot be borrowed
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "18", // LP tokens use 18 decimals
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "100,000".replace(/,/g, ""),
+  borrowCap: "0",
+  debtCeiling,
+  borrowableIsolation: false,
+};
+
+// HEURC reserve configurations
+export const strategyEURC: IReserveParams = {
+  strategy: rateStrategyStables80,
+  baseLTVAsCollateral: "7500",
+  liquidationThreshold: "8000",
+  liquidationBonus: "10300",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: true,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "6", // EURC has 6 decimals
+  aTokenImpl: eContractid.AToken,
+  reserveFactor: "1000",
+  supplyCap: "4,000,000".replace(/,/g, ""),
+  borrowCap: "3,500,000".replace(/,/g, ""),
+  debtCeiling,
+  borrowableIsolation: false,
+};
+
+export const strategyHEURC: IReserveParams = {
+  ...strategyHtoken,
+  supplyCap: "8,000,000".replace(/,/g, ""),
 };
