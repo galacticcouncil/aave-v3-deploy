@@ -92,11 +92,78 @@ contract ClampedOracleTest is Test {
     }
 
     function testPrimaryManipulationCappedAtMaxDiffBps() public {
-        // Primary "manipulated" to 10x. Result is clamped to upper band,
-        // capping the manipulator's damage at maxDiffBps from secondary.
+        // Primary "manipulated" to 10x with no prior good round. Result is
+        // clamped to upper band, capping the manipulator's damage at
+        // maxDiffBps from secondary.
         primary.pushAnswer(p(10, 0), 100);
         secondary.pushAnswer(p(1, 0));
         ClampedOracle oracle = _deploy(500); // 5%
+        assertEq(oracle.latestAnswer(), p(1, 5));
+    }
+
+    // ---------------------------------------------------------------------
+    // Previous-round fallback: single bad round is ignored, oracle holds
+    // at the last in-band primary value.
+    // ---------------------------------------------------------------------
+
+    function testSingleBadRoundIgnoredViaPreviousRound() public {
+        // Round N-1: primary is healthy. Round N: primary "manipulated" to 10x.
+        // Secondary still matches the healthy price. Oracle returns the
+        // previous (healthy) round -- attacker's bad round has zero influence.
+        primary.pushAnswer(p(1, 0), 100);
+        primary.pushAnswer(p(10, 0), 200);
+        secondary.pushAnswer(p(1, 0));
+        ClampedOracle oracle = _deploy(1000);
+        assertEq(oracle.latestAnswer(), p(1, 0));
+    }
+
+    function testSingleBadRoundBelowBandIgnoredViaPreviousRound() public {
+        // Same idea, manipulation downward.
+        primary.pushAnswer(p(1, 0), 100);
+        primary.pushAnswer(p(0, 10), 200);
+        secondary.pushAnswer(p(1, 0));
+        ClampedOracle oracle = _deploy(1000);
+        assertEq(oracle.latestAnswer(), p(1, 0));
+    }
+
+    function testTwoConsecutiveBadRoundsFallBackToClamp() public {
+        // Both N-1 and N are out of band -- treat as a sustained move
+        // and fall back to clamping the latest into the band.
+        primary.pushAnswer(p(10, 0), 100);
+        primary.pushAnswer(p(10, 0), 200);
+        secondary.pushAnswer(p(1, 0));
+        ClampedOracle oracle = _deploy(1000);
+        // band = [0.9, 1.1]; latest 10.0 clamped to 1.1.
+        assertEq(oracle.latestAnswer(), p(1, 10));
+    }
+
+    function testBadRoundWithUnavailablePreviousFallsBackToClamp() public {
+        // Only one pushAnswer -- previous round is the MockAggregator's
+        // synthetic round 1 (answer = 0), treated as unavailable. The
+        // fallback clamps the latest, matching the original clamp design.
+        primary.pushAnswer(p(1, 50), 200);
+        secondary.pushAnswer(p(1, 0));
+        ClampedOracle oracle = _deploy(1000);
+        assertEq(oracle.latestAnswer(), p(1, 10));
+    }
+
+    function testPreviousRoundAlsoSlightlyOutOfBandFallsBackToClamp() public {
+        // Previous round is also outside the band (but only barely);
+        // we still clamp because the band check is binary.
+        primary.pushAnswer(p(1, 20), 100); // outside band (band = [0.9, 1.1])
+        primary.pushAnswer(p(1, 50), 200);
+        secondary.pushAnswer(p(1, 0));
+        ClampedOracle oracle = _deploy(1000);
+        assertEq(oracle.latestAnswer(), p(1, 10));
+    }
+
+    function testNewRoundStillInBandReturnsLatestNotPrevious() public {
+        // Sanity check: if the latest round is in band, we never look at
+        // the previous round even if it would also have been in band.
+        primary.pushAnswer(p(1, 0), 100);
+        primary.pushAnswer(p(1, 5), 200);
+        secondary.pushAnswer(p(1, 0));
+        ClampedOracle oracle = _deploy(1000);
         assertEq(oracle.latestAnswer(), p(1, 5));
     }
 
