@@ -13,6 +13,7 @@ import {
   rootEvmCall,
 } from "../../helpers/hydration-proposal.js";
 import { getPool } from "../../helpers/contract-getters";
+import { buildHollarPairedAssetRoutes } from "../../helpers/router-routes";
 import { MARKET_NAME } from "../../helpers/env";
 import { task } from "hardhat/config";
 import {
@@ -89,7 +90,7 @@ task(`apyusd`, ``).setAction(async function (_, hre) {
     2, // interestRateMode: variable
     0, // referralCode
     treasuryEvm,
-    { gasLimit: 1_000_000 }
+    { gasLimit: 3_000_000 } // 1M reverts out-of-gas on lark2; 3M leaves headroom
   );
   borrowTx.from = treasuryEvm;
   const treasuryBorrow = await rootEvmCall(borrowTx);
@@ -157,6 +158,11 @@ task(`apyusd`, ``).setAction(async function (_, hre) {
         })
       )
     ),
+    ...buildHollarPairedAssetRoutes(hydrationTx, {
+      assetId: APYUSD,
+      aTokenId: aAPYUSD,
+      sharePoolId: poolAPYUSD,
+    }),
   ];
 
   const proposal = await generateProposalV2([...txs, ...rootTxs], false);
