@@ -36,6 +36,22 @@ export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 export const ONE_ADDRESS = "0x0000000000000000000000000000000000000001";
 export const AAVE_REFERRAL = "0";
 
+// Reuse an existing PoolAddressesProviderRegistry instead of deploying a fresh
+// one per market. Aave expects a single global registry that lists every
+// market's provider (the UI / subgraph enumerate markets through it). The
+// main Hydration money market already owns the canonical registry, and on the
+// mainnet-state forks (lark / lark2 / chopsticks) it exists at the same
+// address. A second market (HDCL) registers its own provider into THIS
+// registry — done via governance, since the registry is owned by the
+// aave-manager precompile. When set, deploy/00_core/00_markets_registry.ts
+// adopts this address instead of deploying a new registry.
+export const EXISTING_PROVIDER_REGISTRY: { [network: string]: string } = {
+  [eHydrationNetwork.hydration]: "0xEdEcE54767182abc1b04FE699A96CF7e97a3CcF2",
+  [eHydrationNetwork.lark]: "0xEdEcE54767182abc1b04FE699A96CF7e97a3CcF2",
+  [eHydrationNetwork.lark2]: "0xEdEcE54767182abc1b04FE699A96CF7e97a3CcF2",
+  [eHydrationNetwork.chopsticks]: "0xEdEcE54767182abc1b04FE699A96CF7e97a3CcF2",
+};
+
 export const WRAPPED_NATIVE_TOKEN_PER_NETWORK: { [network: string]: string } = {
   [eEthereumNetwork.kovan]: ZERO_ADDRESS,
   [eEthereumNetwork.main]: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
