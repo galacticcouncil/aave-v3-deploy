@@ -1,0 +1,305 @@
+{
+  "address": "0x90a6B6357bA5925e730657813173C4B1a9af8346",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_vault",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "int256",
+          "name": "current",
+          "type": "int256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "AnswerUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "startedBy",
+          "type": "address"
+        }
+      ],
+      "name": "NewRound",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "decimals",
+      "outputs": [
+        {
+          "internalType": "uint8",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "description",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "getAnswer",
+      "outputs": [
+        {
+          "internalType": "int256",
+          "name": "",
+          "type": "int256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint80",
+          "name": "_roundId",
+          "type": "uint80"
+        }
+      ],
+      "name": "getRoundData",
+      "outputs": [
+        {
+          "internalType": "uint80",
+          "name": "roundId",
+          "type": "uint80"
+        },
+        {
+          "internalType": "int256",
+          "name": "answer",
+          "type": "int256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "startedAt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "updatedAt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint80",
+          "name": "answeredInRound",
+          "type": "uint80"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "getTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestAnswer",
+      "outputs": [
+        {
+          "internalType": "int256",
+          "name": "",
+          "type": "int256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestRound",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestRoundData",
+      "outputs": [
+        {
+          "internalType": "uint80",
+          "name": "roundId",
+          "type": "uint80"
+        },
+        {
+          "internalType": "int256",
+          "name": "answer",
+          "type": "int256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "startedAt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "updatedAt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint80",
+          "name": "answeredInRound",
+          "type": "uint80"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "vault",
+      "outputs": [
+        {
+          "internalType": "contract IHDCLVault",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "version",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "transactionHash": "0xe0933fe066c512d4fcd721e4f8a517b6718470cf56853187dee65e3e0b495e48",
+  "receipt": {
+    "to": null,
+    "from": "0x222222B60cA97a4998B7D07b99034Fa4d9339531",
+    "contractAddress": "0x90a6B6357bA5925e730657813173C4B1a9af8346",
+    "transactionIndex": 0,
+    "gasUsed": "500322",
+    "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "blockHash": "0x5f24906b1890f45df616482cb5a655004028b6cf4d50ecf6a80bc6d11c05b8c2",
+    "transactionHash": "0xe0933fe066c512d4fcd721e4f8a517b6718470cf56853187dee65e3e0b495e48",
+    "logs": [],
+    "blockNumber": 171793,
+    "cumulativeGasUsed": "500322",
+    "status": 1,
+    "byzantium": true
+  },
+  "args": [
+    "0xB82cF8A62EB1b51a2f2A9d71C120E2fB8ae548D8"
+  ],
+  "numDeployments": 1,
+  "solcInputHash": "4ffb585f2ae68120867961264332cfdf",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.10+commit.fc410830\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_vault\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"int256\",\"name\":\"current\",\"type\":\"int256\"},{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"timestamp\",\"type\":\"uint256\"}],\"name\":\"AnswerUpdated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"startedBy\",\"type\":\"address\"}],\"name\":\"NewRound\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"decimals\",\"outputs\":[{\"internalType\":\"uint8\",\"name\":\"\",\"type\":\"uint8\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"description\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"getAnswer\",\"outputs\":[{\"internalType\":\"int256\",\"name\":\"\",\"type\":\"int256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint80\",\"name\":\"_roundId\",\"type\":\"uint80\"}],\"name\":\"getRoundData\",\"outputs\":[{\"internalType\":\"uint80\",\"name\":\"roundId\",\"type\":\"uint80\"},{\"internalType\":\"int256\",\"name\":\"answer\",\"type\":\"int256\"},{\"internalType\":\"uint256\",\"name\":\"startedAt\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"updatedAt\",\"type\":\"uint256\"},{\"internalType\":\"uint80\",\"name\":\"answeredInRound\",\"type\":\"uint80\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"getTimestamp\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestAnswer\",\"outputs\":[{\"internalType\":\"int256\",\"name\":\"\",\"type\":\"int256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestRound\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestRoundData\",\"outputs\":[{\"internalType\":\"uint80\",\"name\":\"roundId\",\"type\":\"uint80\"},{\"internalType\":\"int256\",\"name\":\"answer\",\"type\":\"int256\"},{\"internalType\":\"uint256\",\"name\":\"startedAt\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"updatedAt\",\"type\":\"uint256\"},{\"internalType\":\"uint80\",\"name\":\"answeredInRound\",\"type\":\"uint80\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestTimestamp\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"vault\",\"outputs\":[{\"internalType\":\"contract IHDCLVault\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"version\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"title\":\"HDCLOracleAdapter\",\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{\"getRoundData(uint80)\":{\"notice\":\"Vault.exchangeRate is monotonically updated every block, so         every read effectively returns the \\\"current round\\\" with no         meaningful history. We return the same shape for any roundId.\"}},\"notice\":\"Chainlink-compatible oracle for HDCL/USD price.         Reads exchangeRate() from HDCLVault (18 decimals, HDCL\\u2192HOLLAR).         Since HOLLAR \\u2248 $1, the exchange rate is effectively HDCL/USD.         Scales the 18-decimal WAD value down to 8 decimals for Aave compatibility.         Implements the FULL Chainlink V3 AggregatorV3Interface (in addition         to Aave's IEACAggregatorProxy) \\u2014 required by Hydration's stableswap         pallet `MMOracle` peg-source resolver, which calls `latestRoundData`         (not just `latestAnswer`). Without this, `stableswap.create_pool_with_pegs`         errors with `MissingTargetPegOracle`.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"contracts/HDCLOracleAdapter.sol\":\"HDCLOracleAdapter\"},\"evmVersion\":\"berlin\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":100000},\"remappings\":[]},\"sources\":{\"@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol\":{\"content\":\"// SPDX-License-Identifier: AGPL-3.0\\npragma solidity ^0.8.10;\\n\\ninterface IEACAggregatorProxy {\\n  function decimals() external view returns (uint8);\\n\\n  function latestAnswer() external view returns (int256);\\n\\n  function latestTimestamp() external view returns (uint256);\\n\\n  function latestRound() external view returns (uint256);\\n\\n  function getAnswer(uint256 roundId) external view returns (int256);\\n\\n  function getTimestamp(uint256 roundId) external view returns (uint256);\\n\\n  event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 timestamp);\\n  event NewRound(uint256 indexed roundId, address indexed startedBy);\\n}\\n\",\"keccak256\":\"0x75bb34641419925730f87eeb122521b34cfd953b800212c362770ed1c7c5d719\",\"license\":\"AGPL-3.0\"},\"contracts/HDCLOracleAdapter.sol\":{\"content\":\"// SPDX-License-Identifier: AGPL-3.0\\npragma solidity ^0.8.10;\\n\\nimport \\\"@aave/periphery-v3/contracts/misc/interfaces/IEACAggregatorProxy.sol\\\";\\n\\ninterface IHDCLVault {\\n    function exchangeRate() external view returns (uint256);\\n}\\n\\n/// @title HDCLOracleAdapter\\n/// @notice Chainlink-compatible oracle for HDCL/USD price.\\n///         Reads exchangeRate() from HDCLVault (18 decimals, HDCL\\u2192HOLLAR).\\n///         Since HOLLAR \\u2248 $1, the exchange rate is effectively HDCL/USD.\\n///         Scales the 18-decimal WAD value down to 8 decimals for Aave compatibility.\\n///\\n///         Implements the FULL Chainlink V3 AggregatorV3Interface (in addition\\n///         to Aave's IEACAggregatorProxy) \\u2014 required by Hydration's stableswap\\n///         pallet `MMOracle` peg-source resolver, which calls `latestRoundData`\\n///         (not just `latestAnswer`). Without this, `stableswap.create_pool_with_pegs`\\n///         errors with `MissingTargetPegOracle`.\\ncontract HDCLOracleAdapter is IEACAggregatorProxy {\\n\\n    uint8 public constant decimals = 8;\\n    uint256 public constant version = 4; // Chainlink V3 interface version\\n    IHDCLVault public immutable vault;\\n\\n    constructor(address _vault) {\\n        require(_vault != address(0), \\\"Zero vault address\\\");\\n        vault = IHDCLVault(_vault);\\n    }\\n\\n    // ---- Legacy IEACAggregatorProxy methods (used by Aave's AaveOracle) ----\\n\\n    function latestAnswer() public view returns (int256) {\\n        uint256 rateWad = vault.exchangeRate(); // 18 decimals\\n        return int256(rateWad / 1e10); // scale 18 \\u2192 8 decimals\\n    }\\n\\n    function latestTimestamp() external view returns (uint256) {\\n        return block.timestamp;\\n    }\\n\\n    function latestRound() external view returns (uint256) {\\n        return block.number;\\n    }\\n\\n    function getAnswer(uint256) external view returns (int256) {\\n        return this.latestAnswer();\\n    }\\n\\n    function getTimestamp(uint256) external view returns (uint256) {\\n        return block.timestamp;\\n    }\\n\\n    // ---- Chainlink V3 AggregatorV3Interface (used by stableswap MMOracle) ----\\n\\n    function description() external pure returns (string memory) {\\n        return \\\"HDCL / USD\\\";\\n    }\\n\\n    /// @notice Vault.exchangeRate is monotonically updated every block, so\\n    ///         every read effectively returns the \\\"current round\\\" with no\\n    ///         meaningful history. We return the same shape for any roundId.\\n    function getRoundData(uint80 _roundId)\\n        external\\n        view\\n        returns (\\n            uint80 roundId,\\n            int256 answer,\\n            uint256 startedAt,\\n            uint256 updatedAt,\\n            uint80 answeredInRound\\n        )\\n    {\\n        return _roundData(_roundId);\\n    }\\n\\n    function latestRoundData()\\n        external\\n        view\\n        returns (\\n            uint80 roundId,\\n            int256 answer,\\n            uint256 startedAt,\\n            uint256 updatedAt,\\n            uint80 answeredInRound\\n        )\\n    {\\n        return _roundData(uint80(block.number));\\n    }\\n\\n    function _roundData(uint80 _roundId)\\n        internal\\n        view\\n        returns (\\n            uint80 roundId,\\n            int256 answer,\\n            uint256 startedAt,\\n            uint256 updatedAt,\\n            uint80 answeredInRound\\n        )\\n    {\\n        roundId = _roundId;\\n        answer = latestAnswer();\\n        startedAt = block.timestamp;\\n        updatedAt = block.timestamp;\\n        answeredInRound = _roundId;\\n    }\\n}\\n\",\"keccak256\":\"0xdc38c4198b5702b33f94d43d8a1bbc0991c6edd8fb80f5e4479cc17f2eaae819\",\"license\":\"AGPL-3.0\"}},\"version\":1}",
+  "bytecode": "0x60a060405234801561001057600080fd5b506040516105c83803806105c883398101604081905261002f9161008f565b6001600160a01b03811661007e5760405162461bcd60e51b81526020600482015260126024820152715a65726f207661756c74206164647265737360701b604482015260640160405180910390fd5b6001600160a01b03166080526100bf565b6000602082840312156100a157600080fd5b81516001600160a01b03811681146100b857600080fd5b9392505050565b6080516104e76100e1600039600081816101cb015261021f01526104e76000f3fe608060405234801561001057600080fd5b50600436106100c95760003560e01c80638205bf6a11610081578063b633620c1161005b578063b633620c146101b3578063fbfa77cf146101c6578063feaf968c1461021257600080fd5b80638205bf6a146101505780639a6fc8f514610156578063b5ab58dc146101a057600080fd5b806354fd4d50116100b257806354fd4d5014610103578063668a0f021461010b5780637284e4161461011157600080fd5b8063313ce567146100ce57806350d25bcd146100ed575b600080fd5b6100d6600881565b60405160ff90911681526020015b60405180910390f35b6100f561021a565b6040519081526020016100e4565b6100f5600481565b436100f5565b604080518082018252600a81527f4844434c202f2055534400000000000000000000000000000000000000000000602082015290516100e4919061039e565b426100f5565b610169610164366004610411565b6102c3565b6040805169ffffffffffffffffffff968716815260208101959095528401929092526060830152909116608082015260a0016100e4565b6100f56101ae366004610444565b6102e6565b6100f56101c1366004610444565b504290565b6101ed7f000000000000000000000000000000000000000000000000000000000000000081565b60405173ffffffffffffffffffffffffffffffffffffffff90911681526020016100e4565b61016961035d565b6000807f000000000000000000000000000000000000000000000000000000000000000073ffffffffffffffffffffffffffffffffffffffff16633ba0b9a96040518163ffffffff1660e01b8152600401602060405180830381865afa158015610288573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906102ac919061045d565b90506102bd6402540be40082610476565b91505090565b60008060008060006102d48661037f565b939a9299509097509550909350915050565b60003073ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa158015610333573d6000803e3d6000fd5b505050506040513d601f19601f82011682018060405250810190610357919061045d565b92915050565b600080600080600061036e4361037f565b945094509450945094509091929394565b80600080808061038d61021a565b949694954295869550909350915050565b600060208083528351808285015260005b818110156103cb578581018301518582016040015282016103af565b818111156103dd576000604083870101525b50601f017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe016929092016040019392505050565b60006020828403121561042357600080fd5b813569ffffffffffffffffffff8116811461043d57600080fd5b9392505050565b60006020828403121561045657600080fd5b5035919050565b60006020828403121561046f57600080fd5b5051919050565b6000826104ac577f4e487b7100000000000000000000000000000000000000000000000000000000600052601260045260246000fd5b50049056fea2646970667358221220b1137f7c7cc95310199b85ac2c32a0822c09ae1e0245fd86cee1d4447aff42ee64736f6c634300080a0033",
+  "deployedBytecode": "0x608060405234801561001057600080fd5b50600436106100c95760003560e01c80638205bf6a11610081578063b633620c1161005b578063b633620c146101b3578063fbfa77cf146101c6578063feaf968c1461021257600080fd5b80638205bf6a146101505780639a6fc8f514610156578063b5ab58dc146101a057600080fd5b806354fd4d50116100b257806354fd4d5014610103578063668a0f021461010b5780637284e4161461011157600080fd5b8063313ce567146100ce57806350d25bcd146100ed575b600080fd5b6100d6600881565b60405160ff90911681526020015b60405180910390f35b6100f561021a565b6040519081526020016100e4565b6100f5600481565b436100f5565b604080518082018252600a81527f4844434c202f2055534400000000000000000000000000000000000000000000602082015290516100e4919061039e565b426100f5565b610169610164366004610411565b6102c3565b6040805169ffffffffffffffffffff968716815260208101959095528401929092526060830152909116608082015260a0016100e4565b6100f56101ae366004610444565b6102e6565b6100f56101c1366004610444565b504290565b6101ed7f000000000000000000000000000000000000000000000000000000000000000081565b60405173ffffffffffffffffffffffffffffffffffffffff90911681526020016100e4565b61016961035d565b6000807f000000000000000000000000000000000000000000000000000000000000000073ffffffffffffffffffffffffffffffffffffffff16633ba0b9a96040518163ffffffff1660e01b8152600401602060405180830381865afa158015610288573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906102ac919061045d565b90506102bd6402540be40082610476565b91505090565b60008060008060006102d48661037f565b939a9299509097509550909350915050565b60003073ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa158015610333573d6000803e3d6000fd5b505050506040513d601f19601f82011682018060405250810190610357919061045d565b92915050565b600080600080600061036e4361037f565b945094509450945094509091929394565b80600080808061038d61021a565b949694954295869550909350915050565b600060208083528351808285015260005b818110156103cb578581018301518582016040015282016103af565b818111156103dd576000604083870101525b50601f017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe016929092016040019392505050565b60006020828403121561042357600080fd5b813569ffffffffffffffffffff8116811461043d57600080fd5b9392505050565b60006020828403121561045657600080fd5b5035919050565b60006020828403121561046f57600080fd5b5051919050565b6000826104ac577f4e487b7100000000000000000000000000000000000000000000000000000000600052601260045260246000fd5b50049056fea2646970667358221220b1137f7c7cc95310199b85ac2c32a0822c09ae1e0245fd86cee1d4447aff42ee64736f6c634300080a0033",
+  "devdoc": {
+    "kind": "dev",
+    "methods": {},
+    "title": "HDCLOracleAdapter",
+    "version": 1
+  },
+  "userdoc": {
+    "kind": "user",
+    "methods": {
+      "getRoundData(uint80)": {
+        "notice": "Vault.exchangeRate is monotonically updated every block, so         every read effectively returns the \"current round\" with no         meaningful history. We return the same shape for any roundId."
+      }
+    },
+    "notice": "Chainlink-compatible oracle for HDCL/USD price.         Reads exchangeRate() from HDCLVault (18 decimals, HDCL→HOLLAR).         Since HOLLAR ≈ $1, the exchange rate is effectively HDCL/USD.         Scales the 18-decimal WAD value down to 8 decimals for Aave compatibility.         Implements the FULL Chainlink V3 AggregatorV3Interface (in addition         to Aave's IEACAggregatorProxy) — required by Hydration's stableswap         pallet `MMOracle` peg-source resolver, which calls `latestRoundData`         (not just `latestAnswer`). Without this, `stableswap.create_pool_with_pegs`         errors with `MissingTargetPegOracle`.",
+    "version": 1
+  },
+  "storageLayout": {
+    "storage": [],
+    "types": null
+  }
+}

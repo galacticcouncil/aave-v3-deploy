@@ -21,3 +21,5 @@ types
 deployments/*
 !deployments/hydration
 !deployments/nice
+!deployments/lark
+# deployments/chopsticks is intentionally ignored — it's a disposable local fork.

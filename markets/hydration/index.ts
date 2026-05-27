@@ -27,6 +27,8 @@ import {
   strategyPRIME,
   strategySOL,
   strategyGSOL,
+  strategyEURC,
+  strategyHEURC,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -67,6 +69,8 @@ export const HydrationConfig: IAaveConfiguration = {
     PRIME: strategyPRIME,
     SOL: strategySOL,
     "2-POOL-GSOL": strategyGSOL,
+    EURC: strategyEURC,
+    "2-POOL-HEURC": strategyHEURC,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -89,6 +93,8 @@ export const HydrationConfig: IAaveConfiguration = {
       PRIME: tokenAddress(43),
       SOL: tokenAddress(1000752),
       "2-POOL-GSOL": tokenAddress(90001),
+      EURC: tokenAddress(44),
+      "2-POOL-HEURC": tokenAddress(10044),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -153,6 +159,14 @@ export const HydrationConfig: IAaveConfiguration = {
       label: "SOL correlated",
       assets: ["SOL", "2-Pool-GSOL"],
     },
+    EurozoneEMode: {
+      id: "5",
+      ltv: "8000",
+      liquidationThreshold: "8500",
+      liquidationBonus: "10300",
+      label: "EUROZONE",
+      assets: ["EURC", "2-POOL-HEURC"],
+    },
   },
   ChainlinkAggregator: {
     [eHydrationNetwork.hydration]: {
@@ -181,6 +195,10 @@ export const HydrationConfig: IAaveConfiguration = {
       SOL: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
       "2-POOL-GSOL": "0xCD3648A48378cBDa915f6be0A30073b76593Ed9A",
       JITOSOL_SOL: "0x5B29bceaCBD1c37FD4A2c32a052b63813ed0D4b8",
+      // HEURC oracles
+      EURC: "0xaa47a5662269270D3DF33Ae08F806e383611575c", // DIA EUR/USD oracle
+      "2-POOL-HEURC": "0x71691b7EE575a2842b242cE8E0AEcdB0e031B725",
+      EURUSD: "0xaa47a5662269270D3DF33Ae08F806e383611575c", // DIA EUR/USD oracle (used for HEURC pool drifting peg)
     },
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
@@ -281,6 +299,16 @@ export const HydrationConfig: IAaveConfiguration = {
           ...gdotSupplyIncentive,
         },
       ],
+      "2-POOL-HEURC": [
+        {
+          emissionPerSecond: BigNumber.from(
+            "3,044,902,607,709,750".replace(/,/g, "")
+          ),
+          distributionEnd: Date.parse("18 May 2026 00:00:00 GMT") / 1000,
+          reserve: "2-Pool-HEURC",
+          ...gdotSupplyIncentive,
+        },
+      ],
     },
   },
   USDOracleAdapter: {
@@ -313,6 +341,11 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-GSOL": {
         assetToX: "0x00000102737461626c657377000003f100015f91", // hydration's chainlink precompile, stableswap 10min., aSOL(1009)/gSOLs(90001)
         xToUSD: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
+      },
+      // HEURC - stableswap price oracle for 2-POOL-HEURC
+      "2-POOL-HEURC": {
+        assetToX: "0x00000102737461626c657377000004140000273c", // hydration's chainlink precompile, stableswap 10min., aEURC(1044)/2-Pool-HEURC(10044)
+        xToUSD: "0xaa47a5662269270D3DF33Ae08F806e383611575c", // DIA EUR/USD oracle
       },
     },
     [eHydrationNetwork.zombie]: {

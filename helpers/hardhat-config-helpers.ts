@@ -102,6 +102,11 @@ export const NETWORKS_RPC_URL: iParamsPerNetwork<string> = {
   [eHydrationNetwork.nice]: "https://rpc.nice.hydration.cloud",
   [eHydrationNetwork.hydration]: process.env.RPC || "https://rpc.hydradx.cloud",
   [eHydrationNetwork.zombie]: process.env.RPC || "http://localhost:9999",
+  // 0.lark testnet — mainnet fork kept long-running for pre-prod rehearsals.
+  [eHydrationNetwork.lark]: process.env.RPC || "https://0.lark.hydration.cloud",
+  // Local chopsticks fork — disposable, used for dry-runs before 0.lark.
+  // Default port matches `npx @acala-network/chopsticks` default (8000).
+  [eHydrationNetwork.chopsticks]: process.env.RPC || "http://localhost:8000",
 };
 
 export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
@@ -114,6 +119,10 @@ export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
   [eOptimismNetwork.main]: true,
   [eHydrationNetwork.hydration]: true,
   [eHydrationNetwork.nice]: true,
+  [eHydrationNetwork.lark]: true,
+  // chopsticks is a mainnet-state fork — real HOLLAR / HDX / HDCL tokens
+  // exist on it. Mark as live so deploys don't fall back to mock testnet tokens.
+  [eHydrationNetwork.chopsticks]: true,
   [eBaseNetwork.base]: true,
 };
 
@@ -155,6 +164,9 @@ export const getCommonNetworkConfig = (
   blockGasLimit: DEFAULT_BLOCK_GAS_LIMIT,
   chainId,
   gasPrice: GAS_PRICE_PER_NET[networkName] || undefined,
+  // Hydration/lark nodes return unreliable eth_estimateGas for contract calls.
+  // Observed multiple OOG reverts with 5x; bump to 20x to avoid repeated failures.
+  gasMultiplier: 20,
   accounts: [
     process.env.PRIV_KEY ||
       "d9b59470b079ffd6a0373c0870dcf7faf8c20f7340b6d05acbeb8a8a8473b131",

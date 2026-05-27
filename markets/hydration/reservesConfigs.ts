@@ -2,7 +2,7 @@ import { rateStrategyVolatileOne } from "./../aave/rateStrategies";
 import { eContractid, IReserveParams } from "../../helpers/types";
 import {
   rateStrategyDOT,
-  rateStrategyDOT10,
+  rateStrategyDOT5,
   rateStrategyStables,
   rateStrategyStables80,
 } from "./rateStrategies";
@@ -54,13 +54,13 @@ export const strategyWBTC = {
   ...strategyWETH,
   baseLTVAsCollateral: "6000",
   liquidationThreshold: "7000",
-  supplyCap: "33",
+  supplyCap: "1",
   borrowCap: "10",
   reserveDecimals: "8",
 };
 
 export const strategyDOT: IReserveParams = {
-  strategy: rateStrategyDOT10,
+  strategy: rateStrategyDOT5,
   baseLTVAsCollateral: "8000",
   liquidationThreshold: "8500",
   liquidationBonus: "10700",
@@ -223,8 +223,8 @@ export const strategyPAXG: IReserveParams = {
   reserveDecimals: "18",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "100",
-  borrowCap: "70",
+  supplyCap: "250",
+  borrowCap: "175",
   debtCeiling,
   borrowableIsolation: false,
 };
@@ -241,9 +241,9 @@ export const strategyPRIME: IReserveParams = {
   reserveDecimals: "6",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "5000000",
+  supplyCap: "10000000",
   borrowCap: "3000000",
-  debtCeiling: "400000000",
+  debtCeiling: "800000000",
   borrowableIsolation: false,
 };
 
@@ -282,4 +282,28 @@ export const strategyGSOL: IReserveParams = {
   borrowCap: "0",
   debtCeiling,
   borrowableIsolation: false,
+};
+
+// HEURC reserve configurations
+export const strategyEURC: IReserveParams = {
+  strategy: rateStrategyStables80,
+  baseLTVAsCollateral: "7500",
+  liquidationThreshold: "8000",
+  liquidationBonus: "10300",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: true,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "6", // EURC has 6 decimals
+  aTokenImpl: eContractid.AToken,
+  reserveFactor: "1000",
+  supplyCap: "4,000,000".replace(/,/g, ""),
+  borrowCap: "3,500,000".replace(/,/g, ""),
+  debtCeiling,
+  borrowableIsolation: false,
+};
+
+export const strategyHEURC: IReserveParams = {
+  ...strategyHtoken,
+  supplyCap: "8,000,000".replace(/,/g, ""),
 };

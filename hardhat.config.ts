@@ -136,6 +136,14 @@ export default {
       eHydrationNetwork.nice,
       222222
     ),
+    [eHydrationNetwork.lark]: getCommonNetworkConfig(
+      eHydrationNetwork.lark,
+      222222
+    ),
+    [eHydrationNetwork.chopsticks]: getCommonNetworkConfig(
+      eHydrationNetwork.chopsticks,
+      222222
+    ),
     [eBaseNetwork.base]: getCommonNetworkConfig(eBaseNetwork.base, 8453),
     [eBaseNetwork.baseGoerli]: getCommonNetworkConfig(
       eBaseNetwork.baseGoerli,
