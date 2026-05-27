@@ -140,6 +140,10 @@ export default {
       eHydrationNetwork.lark,
       222222
     ),
+    [eHydrationNetwork.lark2]: getCommonNetworkConfig(
+      eHydrationNetwork.lark2,
+      222222
+    ),
     [eHydrationNetwork.chopsticks]: getCommonNetworkConfig(
       eHydrationNetwork.chopsticks,
       222222

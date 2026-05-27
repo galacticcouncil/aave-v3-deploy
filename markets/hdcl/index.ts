@@ -35,6 +35,13 @@ export const HDCLConfig: IAaveConfiguration = {
     [eHydrationNetwork.lark]: {
       DCL: tokenAddress(550),
     },
+    // 2.lark — DCL must be registered as a substrate Erc20 asset pointing at
+    // the lark-2 vault (0xbDAFEB92440d8696d6C143bc7e6B086d461e3502) during the
+    // governance proposal (Phase D in tasks/proposals/hdcl.ts). Asset id 550
+    // mirrors the established scheme; confirm/assign during that step.
+    [eHydrationNetwork.lark2]: {
+      DCL: tokenAddress(550),
+    },
     [eHydrationNetwork.chopsticks]: {
       DCL: tokenAddress(550),
     },
@@ -49,6 +56,18 @@ export const HDCLConfig: IAaveConfiguration = {
     // 0.lark — HDCLOracleAdapter deployed 2026-04-23.
     [eHydrationNetwork.lark]: {
       DCL: "0x45edf76c0F2c20fD91639f65444af28440A206ca",
+      HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
+    },
+    // 2.lark — deploy a fresh HDCLOracleAdapter against the lark-2 vault and
+    // paste its address here:
+    //   HARDHAT_NETWORK=lark2 npx hardhat deploy-HDCLOracleAdapter \
+    //     --vault 0xbDAFEB92440d8696d6C143bc7e6B086d461e3502
+    // (The raw WDCLOracle at 0x8DFD81…93Fa reads the same exchangeRate but only
+    // implements the slim AggregatorV3 interface; the adapter adds the
+    // IEACAggregatorProxy surface Aave's oracle infra + MMOracle peg resolver
+    // expect, so deploy the adapter rather than pointing at WDCLOracle.)
+    [eHydrationNetwork.lark2]: {
+      DCL: "TODO_DEPLOY_HDCLOracleAdapter",
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
     },
     // chopsticks dry-run — redeploy HDCLOracleAdapter each fresh fork.

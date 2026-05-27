@@ -9,9 +9,10 @@ interface IERC20 {
 }
 
 interface IHDCLVault {
-    /// @notice Deposit HOLLAR, mint HDCL shares to the caller.
-    /// @return hdclMinted Exact number of HDCL shares minted.
-    function deposit(uint256 hollarAmount) external returns (uint256 hdclMinted);
+    /// @notice ERC-4626 deposit. Pulls `assets` HOLLAR from msg.sender and
+    ///         mints the corresponding shares to `receiver`.
+    /// @return shares Exact number of HDCL shares minted to `receiver`.
+    function deposit(uint256 assets, address receiver) external returns (uint256 shares);
 }
 
 interface IAavePool {
@@ -113,10 +114,11 @@ contract HDCLDepositZap {
             revert HollarTransferFailed();
         }
 
-        // 2. Deposit into the vault. Mints HDCL to *this* contract and
+        // 2. Deposit into the vault. ERC-4626 `deposit(assets, receiver)`
+        //    mints HDCL to *this* contract (receiver = address(this)) and
         //    returns the exact amount minted — no off-chain prediction
         //    needed.
-        uint256 hdclMinted = VAULT.deposit(hollarAmount);
+        uint256 hdclMinted = VAULT.deposit(hollarAmount, address(this));
 
         // 3. Supply the freshly-minted HDCL into the pool, crediting the
         //    aTokens to the original caller. `pool.supply` will pull the

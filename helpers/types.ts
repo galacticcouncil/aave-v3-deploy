@@ -81,6 +81,7 @@ export enum eHydrationNetwork {
   nice = "nice",
   zombie = "zombie",
   lark = "lark",
+  lark2 = "lark2",
   chopsticks = "chopsticks",
 }
 
