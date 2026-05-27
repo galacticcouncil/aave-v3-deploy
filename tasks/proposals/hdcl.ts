@@ -443,10 +443,15 @@ task(
   // need a separate ERC-20 approve() before pool.supply / repay. Idempotent:
   // skip if already in EVMAccounts.ApprovedContract.
   const poolProxyAddress = (await hre.deployments.get("Pool-Proxy-HDCL")).address;
-  const approvedEntry: any = await api.query.eVMAccounts.approvedContract(poolProxyAddress);
+  // Pallet name is `evmAccounts` in the current (mainnet / lark-2) runtime
+  // metadata. (The 0.lark fork ran an older runtime that camelCased it as
+  // `eVMAccounts`.) Fall back to the old casing so this works on both.
+  const evmAccountsQuery = api.query.evmAccounts ?? api.query.eVMAccounts;
+  const evmAccountsTx = hydrationTx.evmAccounts ?? hydrationTx.eVMAccounts;
+  const approvedEntry: any = await evmAccountsQuery.approvedContract(poolProxyAddress);
   if (!approvedEntry.isSome) {
     console.log(`---------> approve Pool-Proxy-HDCL (${poolProxyAddress}) for managed-balance access`);
-    txs.push(hydrationTx.eVMAccounts.approveContract(poolProxyAddress));
+    txs.push(evmAccountsTx.approveContract(poolProxyAddress));
   } else {
     console.log(`---------> Pool-Proxy-HDCL already approved — skipping`);
   }
