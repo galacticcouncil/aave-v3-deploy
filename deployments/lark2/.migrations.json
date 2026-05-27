@@ -1,0 +1,15 @@
+{
+  "PoolAddressesProviderRegistry": 1779888596,
+  "LogicLibraries": 1779888676,
+  "Treasury": 1779889722,
+  "PoolAddressesProvider:HDCL:aave-v3-core@1.19.3": 1779889762,
+  "PoolConfigurator": 1779889815,
+  "ACLManager:HDCL:aave-v3-core@1.19.3": 1779889863,
+  "Oracles:HDCL:aave-v3-core@1.19.3": 1779889868,
+  "InitOracles:HDCL:aave-v3-core@1.19.3": 1779889874,
+  "PoolInitalization:HDCL:aave-v3-core@1.19.3": 1779889915,
+  "Incentives:HDCL:aave-v3-periphery@2.5.2": 1779889984,
+  "TokenImplementations:HDCL:aave-v3-core@1.19.3": 1779890059,
+  "ReservesInit:HDCL:aave-v3-core@1.19.3": 1779890104,
+  "PeripheryInit:HDCL:aave-v3-periphery@2.5.2": 1779890104
+}

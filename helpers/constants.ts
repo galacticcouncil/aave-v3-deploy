@@ -156,9 +156,11 @@ export const POOL_ADMIN: Record<string, string> = {
   [eHydrationNetwork.hydration]: "0xaa7e0000000000000000000000000000000aa7e0",
   [eHydrationNetwork.nice]: HYDRATION_TEST_ADMIN,
   [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
-  // lark + chopsticks are mainnet forks — the aave-manager precompile exists
-  // at the same address, so the real pool admin is inherited from mainnet state.
+  // lark / lark2 / chopsticks are all mainnet-state forks — the aave-manager
+  // precompile exists at the same address, so the real pool admin is inherited
+  // from mainnet state. Same value for every fork (and mainnet itself).
   [eHydrationNetwork.lark]: "0xaa7e0000000000000000000000000000000aa7e0",
+  [eHydrationNetwork.lark2]: "0xaa7e0000000000000000000000000000000aa7e0",
   [eHydrationNetwork.chopsticks]: "0xaa7e0000000000000000000000000000000aa7e0",
 };
 
@@ -174,6 +176,7 @@ export const EMERGENCY_ADMIN: Record<string, string> = {
   [eHydrationNetwork.nice]: "0xb847e0fd2a5e62d621a0382419bddb0a351a6d9c",
   [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
   [eHydrationNetwork.lark]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b",
+  [eHydrationNetwork.lark2]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b",
   [eHydrationNetwork.chopsticks]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b",
 };
 

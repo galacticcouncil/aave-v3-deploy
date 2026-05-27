@@ -46,6 +46,18 @@ export const HDCLConfig: IAaveConfiguration = {
       DCL: tokenAddress(550),
     },
   },
+  // Reuse the main Hydration money-market treasury as the reserve-factor
+  // recipient instead of standing up a fresh one. lark-2 is a mainnet-state
+  // fork, so this address exists there too — and using the same value for
+  // `hydration` keeps the eventual mainnet run identical to the lark-2
+  // rehearsal. The treasury deploy step (deploy/01_periphery_pre/01_treasury.ts)
+  // sees a non-zero address here and adopts it (no new treasury deployed).
+  ReserveFactorTreasuryAddress: {
+    [eHydrationNetwork.hydration]: "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9",
+    [eHydrationNetwork.lark]: "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9",
+    [eHydrationNetwork.lark2]: "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9",
+    [eHydrationNetwork.chopsticks]: "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9",
+  },
   EModes: {},
   ChainlinkAggregator: {
     // mainnet — populate after HDCLOracleAdapter is deployed on mainnet.
@@ -66,8 +78,9 @@ export const HDCLConfig: IAaveConfiguration = {
     // implements the slim AggregatorV3 interface; the adapter adds the
     // IEACAggregatorProxy surface Aave's oracle infra + MMOracle peg resolver
     // expect, so deploy the adapter rather than pointing at WDCLOracle.)
+    // 2.lark — HDCLOracleAdapter deployed 2026-05-27 against vault 0xbDAFEB….
     [eHydrationNetwork.lark2]: {
-      DCL: "TODO_DEPLOY_HDCLOracleAdapter",
+      DCL: "0xAc4C01AbA189d90eCD707938D545f47535843642",
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
     },
     // chopsticks dry-run — redeploy HDCLOracleAdapter each fresh fork.

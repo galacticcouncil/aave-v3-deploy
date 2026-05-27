@@ -1,0 +1,199 @@
+{
+  "address": "0x146F6C43a0070F42cB532C74c412A34bb55A5729",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_hollar",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "_vault",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "_pool",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "_hdclPrecompile",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "HollarTransferFailed",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "user",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "hollarAmount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "hdclMinted",
+          "type": "uint256"
+        }
+      ],
+      "name": "DepositAndSupply",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "HDCL_PRECOMPILE",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "HOLLAR",
+      "outputs": [
+        {
+          "internalType": "contract IERC20",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "POOL",
+      "outputs": [
+        {
+          "internalType": "contract IAavePool",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "VAULT",
+      "outputs": [
+        {
+          "internalType": "contract IHDCLVault",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "hollarAmount",
+          "type": "uint256"
+        }
+      ],
+      "name": "depositAndSupply",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "transactionHash": "0xded375a1671fb17eb8bced74abb77c5cc6c96afdcb51e10e138f035890e2f81e",
+  "receipt": {
+    "to": null,
+    "from": "0x222222B60cA97a4998B7D07b99034Fa4d9339531",
+    "contractAddress": "0x146F6C43a0070F42cB532C74c412A34bb55A5729",
+    "transactionIndex": 0,
+    "gasUsed": "515694",
+    "logsBloom": "0x00000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000040000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000008008000040000000000000000000000000000020000000000000000000000000000000000000000000004008000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000100000000000000000000000000000000",
+    "blockHash": "0x9be627a5c82e5b86ddca1ab5b158ae9284b48cd047064804f2bcb359759c1780",
+    "transactionHash": "0xded375a1671fb17eb8bced74abb77c5cc6c96afdcb51e10e138f035890e2f81e",
+    "logs": [
+      {
+        "transactionIndex": 0,
+        "blockNumber": 214328,
+        "transactionHash": "0xded375a1671fb17eb8bced74abb77c5cc6c96afdcb51e10e138f035890e2f81e",
+        "address": "0x531a654d1696ED52e7275A8cede955E82620f99a",
+        "topics": [
+          "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925",
+          "0x000000000000000000000000146f6c43a0070f42cb532c74c412a34bb55a5729",
+          "0x000000000000000000000000bdafeb92440d8696d6c143bc7e6b086d461e3502"
+        ],
+        "data": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "logIndex": 0,
+        "blockHash": "0x9be627a5c82e5b86ddca1ab5b158ae9284b48cd047064804f2bcb359759c1780"
+      }
+    ],
+    "blockNumber": 214328,
+    "cumulativeGasUsed": "515694",
+    "status": 1,
+    "byzantium": true
+  },
+  "args": [
+    "0x531a654d1696ED52e7275A8cede955E82620f99a",
+    "0xbDAFEB92440d8696d6C143bc7e6B086d461e3502",
+    "0xEAb87D2aAc4C70AF63D2d9E85876665060e117E2",
+    "0x0000000000000000000000000000000100000226"
+  ],
+  "numDeployments": 1,
+  "solcInputHash": "14e7560c1da003792b76a8c1903a72b2",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.10+commit.fc410830\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_hollar\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_vault\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_pool\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_hdclPrecompile\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"HollarTransferFailed\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"user\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"hollarAmount\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"hdclMinted\",\"type\":\"uint256\"}],\"name\":\"DepositAndSupply\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"HDCL_PRECOMPILE\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"HOLLAR\",\"outputs\":[{\"internalType\":\"contract IERC20\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"POOL\",\"outputs\":[{\"internalType\":\"contract IAavePool\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"VAULT\",\"outputs\":[{\"internalType\":\"contract IHDCLVault\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"hollarAmount\",\"type\":\"uint256\"}],\"name\":\"depositAndSupply\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"details\":\"Holds no funds between calls. The constructor pre-approves      `HOLLAR -> VAULT` with max allowance because the only way HOLLAR      enters this contract is via `transferFrom` inside `depositAndSupply`      and is consumed by `vault.deposit` in the same call. There's no      window where leftover HOLLAR sits in this contract waiting to be      drained, so the max approval is safe.      No HDCL allowance to POOL is set: Hydration's Aave V3 pool reaches      HDCL via the substrate-asset precompile, and the pool itself is on      the `pallet_evm_accounts::approved_contracts` whitelist, which lets      the precompile bypass ERC20 allowance for that spender. The supply      step routes through `pallet_currencies` \\u2192 `Erc20Currency::transfer`      \\u2192 `vault.transfer(aToken, amount)` from `msg.sender = this contract`.\",\"kind\":\"dev\",\"methods\":{\"depositAndSupply(uint256)\":{\"details\":\"The caller must first approve this contract to spend         `hollarAmount` of HOLLAR (via standard ERC20.approve, or in a         substrate batch alongside this call).\",\"params\":{\"hollarAmount\":\"Amount of HOLLAR to deposit, in wei (18 decimals).\"}}},\"title\":\"HDCLDepositZap\",\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{\"HDCL_PRECOMPILE()\":{\"notice\":\"Substrate-asset precompile for HDCL. The Aave reserve is         registered under this address in `getReservesList()`, so this         is the address `pool.supply` expects as the underlying.\"},\"depositAndSupply(uint256)\":{\"notice\":\"Deposit HOLLAR -> mint HDCL -> supply HDCL as collateral, all in         one transaction. The aTokens are minted to `msg.sender` (the         caller), the underlying HDCL is held by the Aave aToken contract.\"}},\"notice\":\"Atomic single-call helper that bundles HOLLAR deposit + HDCL supply         into one EVM transaction.         Without this contract the UI has to predict `vault.deposit`'s mint         amount off-chain (via `previewDeposit`) and pass that to         `pool.supply` in a substrate batch. Because yield accrues between         the prediction and on-chain execution, the actual mint can come         out a few wei smaller than predicted, causing the supply step to         revert with insufficient balance \\u2014 and `Utility.batch_all` is not         atomic across `evm.ExecutedFailed` so partial state can land.         By reading the exact mint return value here on-chain and passing         it straight to `pool.supply`, the precision gap is eliminated and         the whole flow either fully succeeds or fully reverts.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"contracts/HDCLDepositZap.sol\":\"HDCLDepositZap\"},\"evmVersion\":\"berlin\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":100000},\"remappings\":[]},\"sources\":{\"contracts/HDCLDepositZap.sol\":{\"content\":\"// SPDX-License-Identifier: AGPL-3.0\\npragma solidity ^0.8.10;\\n\\ninterface IERC20 {\\n    function transfer(address to, uint256 amount) external returns (bool);\\n    function transferFrom(address from, address to, uint256 amount) external returns (bool);\\n    function approve(address spender, uint256 amount) external returns (bool);\\n    function balanceOf(address account) external view returns (uint256);\\n}\\n\\ninterface IHDCLVault {\\n    /// @notice ERC-4626 deposit. Pulls `assets` HOLLAR from msg.sender and\\n    ///         mints the corresponding shares to `receiver`.\\n    /// @return shares Exact number of HDCL shares minted to `receiver`.\\n    function deposit(uint256 assets, address receiver) external returns (uint256 shares);\\n}\\n\\ninterface IAavePool {\\n    /// @notice Supply `amount` of `asset` and credit aTokens to `onBehalfOf`.\\n    function supply(\\n        address asset,\\n        uint256 amount,\\n        address onBehalfOf,\\n        uint16 referralCode\\n    ) external;\\n}\\n\\n/// @title HDCLDepositZap\\n/// @notice Atomic single-call helper that bundles HOLLAR deposit + HDCL supply\\n///         into one EVM transaction.\\n///\\n///         Without this contract the UI has to predict `vault.deposit`'s mint\\n///         amount off-chain (via `previewDeposit`) and pass that to\\n///         `pool.supply` in a substrate batch. Because yield accrues between\\n///         the prediction and on-chain execution, the actual mint can come\\n///         out a few wei smaller than predicted, causing the supply step to\\n///         revert with insufficient balance \\u2014 and `Utility.batch_all` is not\\n///         atomic across `evm.ExecutedFailed` so partial state can land.\\n///\\n///         By reading the exact mint return value here on-chain and passing\\n///         it straight to `pool.supply`, the precision gap is eliminated and\\n///         the whole flow either fully succeeds or fully reverts.\\n///\\n/// @dev Holds no funds between calls. The constructor pre-approves\\n///      `HOLLAR -> VAULT` with max allowance because the only way HOLLAR\\n///      enters this contract is via `transferFrom` inside `depositAndSupply`\\n///      and is consumed by `vault.deposit` in the same call. There's no\\n///      window where leftover HOLLAR sits in this contract waiting to be\\n///      drained, so the max approval is safe.\\n///\\n///      No HDCL allowance to POOL is set: Hydration's Aave V3 pool reaches\\n///      HDCL via the substrate-asset precompile, and the pool itself is on\\n///      the `pallet_evm_accounts::approved_contracts` whitelist, which lets\\n///      the precompile bypass ERC20 allowance for that spender. The supply\\n///      step routes through `pallet_currencies` \\u2192 `Erc20Currency::transfer`\\n///      \\u2192 `vault.transfer(aToken, amount)` from `msg.sender = this contract`.\\ncontract HDCLDepositZap {\\n    IERC20 public immutable HOLLAR;\\n    IHDCLVault public immutable VAULT;\\n    IAavePool public immutable POOL;\\n    /// @notice Substrate-asset precompile for HDCL. The Aave reserve is\\n    ///         registered under this address in `getReservesList()`, so this\\n    ///         is the address `pool.supply` expects as the underlying.\\n    address public immutable HDCL_PRECOMPILE;\\n\\n    error HollarTransferFailed();\\n\\n    event DepositAndSupply(\\n        address indexed user,\\n        uint256 hollarAmount,\\n        uint256 hdclMinted\\n    );\\n\\n    constructor(\\n        address _hollar,\\n        address _vault,\\n        address _pool,\\n        address _hdclPrecompile\\n    ) {\\n        require(_hollar != address(0), \\\"Zero HOLLAR\\\");\\n        require(_vault != address(0), \\\"Zero VAULT\\\");\\n        require(_pool != address(0), \\\"Zero POOL\\\");\\n        require(_hdclPrecompile != address(0), \\\"Zero precompile\\\");\\n\\n        HOLLAR = IERC20(_hollar);\\n        VAULT = IHDCLVault(_vault);\\n        POOL = IAavePool(_pool);\\n        HDCL_PRECOMPILE = _hdclPrecompile;\\n\\n        // Pre-approve HOLLAR for the vault once at deploy. Vault is fixed\\n        // and immutable on this contract, the approval can never be\\n        // redirected. Since the contract holds no HOLLAR between calls,\\n        // there's nothing for an attacker to extract via the allowance.\\n        require(\\n            IERC20(_hollar).approve(_vault, type(uint256).max),\\n            \\\"HOLLAR approve failed\\\"\\n        );\\n    }\\n\\n    /// @notice Deposit HOLLAR -> mint HDCL -> supply HDCL as collateral, all in\\n    ///         one transaction. The aTokens are minted to `msg.sender` (the\\n    ///         caller), the underlying HDCL is held by the Aave aToken contract.\\n    ///\\n    /// @dev    The caller must first approve this contract to spend\\n    ///         `hollarAmount` of HOLLAR (via standard ERC20.approve, or in a\\n    ///         substrate batch alongside this call).\\n    ///\\n    /// @param hollarAmount  Amount of HOLLAR to deposit, in wei (18 decimals).\\n    function depositAndSupply(uint256 hollarAmount) external {\\n        // 1. Pull HOLLAR from the caller. Reverting on `false` covers any\\n        //    non-standard ERC20 that returns a bool instead of reverting on\\n        //    insufficient balance / allowance.\\n        if (!HOLLAR.transferFrom(msg.sender, address(this), hollarAmount)) {\\n            revert HollarTransferFailed();\\n        }\\n\\n        // 2. Deposit into the vault. ERC-4626 `deposit(assets, receiver)`\\n        //    mints HDCL to *this* contract (receiver = address(this)) and\\n        //    returns the exact amount minted \\u2014 no off-chain prediction\\n        //    needed.\\n        uint256 hdclMinted = VAULT.deposit(hollarAmount, address(this));\\n\\n        // 3. Supply the freshly-minted HDCL into the pool, crediting the\\n        //    aTokens to the original caller. `pool.supply` will pull the\\n        //    HDCL from msg.sender (= this contract) via the precompile;\\n        //    no allowance is required because the pool is whitelisted in\\n        //    pallet_evm_accounts. See contract-level docs above.\\n        POOL.supply(HDCL_PRECOMPILE, hdclMinted, msg.sender, 0);\\n\\n        emit DepositAndSupply(msg.sender, hollarAmount, hdclMinted);\\n    }\\n}\\n\",\"keccak256\":\"0xff063da77bce347570c25f86c8989f3406a388e24116d30c8b920e45c9eb1622\",\"license\":\"AGPL-3.0\"}},\"version\":1}",
+  "bytecode": "0x61010060405234801561001157600080fd5b506040516107b13803806107b183398101604081905261003091610245565b6001600160a01b0384166100795760405162461bcd60e51b815260206004820152600b60248201526a2d32b937902427a62620a960a91b60448201526064015b60405180910390fd5b6001600160a01b0383166100bc5760405162461bcd60e51b815260206004820152600a60248201526916995c9bc8159055531560b21b6044820152606401610070565b6001600160a01b0382166100fe5760405162461bcd60e51b815260206004820152600960248201526816995c9bc81413d3d360ba1b6044820152606401610070565b6001600160a01b0381166101465760405162461bcd60e51b815260206004820152600f60248201526e5a65726f20707265636f6d70696c6560881b6044820152606401610070565b6001600160a01b03848116608081905284821660a081905284831660c05291831660e05260405163095ea7b360e01b8152600481019290925260001960248301529063095ea7b3906044016020604051808303816000875af11580156101b0573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906101d49190610299565b6102205760405162461bcd60e51b815260206004820152601560248201527f484f4c4c415220617070726f7665206661696c656400000000000000000000006044820152606401610070565b505050506102c2565b80516001600160a01b038116811461024057600080fd5b919050565b6000806000806080858703121561025b57600080fd5b61026485610229565b935061027260208601610229565b925061028060408601610229565b915061028e60608601610229565b905092959194509250565b6000602082840312156102ab57600080fd5b815180151581146102bb57600080fd5b9392505050565b60805160a05160c05160e05161049d6103146000396000818160c1015261033001526000818161010f015261036f0152600081816071015261027101526000818160e80152610181015261049d6000f3fe608060405234801561001057600080fd5b50600436106100675760003560e01c806368b6184b1161005057806368b6184b146100e35780637535d2461461010a5780639a047c941461013157600080fd5b8063411557d11461006c5780634c13a38e146100bc575b600080fd5b6100937f000000000000000000000000000000000000000000000000000000000000000081565b60405173ffffffffffffffffffffffffffffffffffffffff909116815260200160405180910390f35b6100937f000000000000000000000000000000000000000000000000000000000000000081565b6100937f000000000000000000000000000000000000000000000000000000000000000081565b6100937f000000000000000000000000000000000000000000000000000000000000000081565b61014461013f36600461040c565b610146565b005b6040517f23b872dd000000000000000000000000000000000000000000000000000000008152336004820152306024820152604481018290527f000000000000000000000000000000000000000000000000000000000000000073ffffffffffffffffffffffffffffffffffffffff16906323b872dd906064016020604051808303816000875af11580156101df573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906102039190610425565b610239576040517fced8fd8800000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b6040517f6e553f65000000000000000000000000000000000000000000000000000000008152600481018290523060248201526000907f000000000000000000000000000000000000000000000000000000000000000073ffffffffffffffffffffffffffffffffffffffff1690636e553f65906044016020604051808303816000875af11580156102cf573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906102f3919061044e565b6040517f617ba03700000000000000000000000000000000000000000000000000000000815273ffffffffffffffffffffffffffffffffffffffff7f00000000000000000000000000000000000000000000000000000000000000008116600483015260248201839052336044830152600060648301529192507f00000000000000000000000000000000000000000000000000000000000000009091169063617ba03790608401600060405180830381600087803b1580156103b557600080fd5b505af11580156103c9573d6000803e3d6000fd5b505060408051858152602081018590523393507f93eb214b78d4914cd87b8ea2e126beb23b18c40a67418c704bf1dbc1e05af2aa92500160405180910390a25050565b60006020828403121561041e57600080fd5b5035919050565b60006020828403121561043757600080fd5b8151801515811461044757600080fd5b9392505050565b60006020828403121561046057600080fd5b505191905056fea26469706673582212202bd634f02c24aacd9ca74031cbfcfe66664b643fad85310a70a8e2ba239e31e464736f6c634300080a0033",
+  "deployedBytecode": "0x608060405234801561001057600080fd5b50600436106100675760003560e01c806368b6184b1161005057806368b6184b146100e35780637535d2461461010a5780639a047c941461013157600080fd5b8063411557d11461006c5780634c13a38e146100bc575b600080fd5b6100937f000000000000000000000000000000000000000000000000000000000000000081565b60405173ffffffffffffffffffffffffffffffffffffffff909116815260200160405180910390f35b6100937f000000000000000000000000000000000000000000000000000000000000000081565b6100937f000000000000000000000000000000000000000000000000000000000000000081565b6100937f000000000000000000000000000000000000000000000000000000000000000081565b61014461013f36600461040c565b610146565b005b6040517f23b872dd000000000000000000000000000000000000000000000000000000008152336004820152306024820152604481018290527f000000000000000000000000000000000000000000000000000000000000000073ffffffffffffffffffffffffffffffffffffffff16906323b872dd906064016020604051808303816000875af11580156101df573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906102039190610425565b610239576040517fced8fd8800000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b6040517f6e553f65000000000000000000000000000000000000000000000000000000008152600481018290523060248201526000907f000000000000000000000000000000000000000000000000000000000000000073ffffffffffffffffffffffffffffffffffffffff1690636e553f65906044016020604051808303816000875af11580156102cf573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906102f3919061044e565b6040517f617ba03700000000000000000000000000000000000000000000000000000000815273ffffffffffffffffffffffffffffffffffffffff7f00000000000000000000000000000000000000000000000000000000000000008116600483015260248201839052336044830152600060648301529192507f00000000000000000000000000000000000000000000000000000000000000009091169063617ba03790608401600060405180830381600087803b1580156103b557600080fd5b505af11580156103c9573d6000803e3d6000fd5b505060408051858152602081018590523393507f93eb214b78d4914cd87b8ea2e126beb23b18c40a67418c704bf1dbc1e05af2aa92500160405180910390a25050565b60006020828403121561041e57600080fd5b5035919050565b60006020828403121561043757600080fd5b8151801515811461044757600080fd5b9392505050565b60006020828403121561046057600080fd5b505191905056fea26469706673582212202bd634f02c24aacd9ca74031cbfcfe66664b643fad85310a70a8e2ba239e31e464736f6c634300080a0033",
+  "devdoc": {
+    "details": "Holds no funds between calls. The constructor pre-approves      `HOLLAR -> VAULT` with max allowance because the only way HOLLAR      enters this contract is via `transferFrom` inside `depositAndSupply`      and is consumed by `vault.deposit` in the same call. There's no      window where leftover HOLLAR sits in this contract waiting to be      drained, so the max approval is safe.      No HDCL allowance to POOL is set: Hydration's Aave V3 pool reaches      HDCL via the substrate-asset precompile, and the pool itself is on      the `pallet_evm_accounts::approved_contracts` whitelist, which lets      the precompile bypass ERC20 allowance for that spender. The supply      step routes through `pallet_currencies` → `Erc20Currency::transfer`      → `vault.transfer(aToken, amount)` from `msg.sender = this contract`.",
+    "kind": "dev",
+    "methods": {
+      "depositAndSupply(uint256)": {
+        "details": "The caller must first approve this contract to spend         `hollarAmount` of HOLLAR (via standard ERC20.approve, or in a         substrate batch alongside this call).",
+        "params": {
+          "hollarAmount": "Amount of HOLLAR to deposit, in wei (18 decimals)."
+        }
+      }
+    },
+    "title": "HDCLDepositZap",
+    "version": 1
+  },
+  "userdoc": {
+    "kind": "user",
+    "methods": {
+      "HDCL_PRECOMPILE()": {
+        "notice": "Substrate-asset precompile for HDCL. The Aave reserve is         registered under this address in `getReservesList()`, so this         is the address `pool.supply` expects as the underlying."
+      },
+      "depositAndSupply(uint256)": {
+        "notice": "Deposit HOLLAR -> mint HDCL -> supply HDCL as collateral, all in         one transaction. The aTokens are minted to `msg.sender` (the         caller), the underlying HDCL is held by the Aave aToken contract."
+      }
+    },
+    "notice": "Atomic single-call helper that bundles HOLLAR deposit + HDCL supply         into one EVM transaction.         Without this contract the UI has to predict `vault.deposit`'s mint         amount off-chain (via `previewDeposit`) and pass that to         `pool.supply` in a substrate batch. Because yield accrues between         the prediction and on-chain execution, the actual mint can come         out a few wei smaller than predicted, causing the supply step to         revert with insufficient balance — and `Utility.batch_all` is not         atomic across `evm.ExecutedFailed` so partial state can land.         By reading the exact mint return value here on-chain and passing         it straight to `pool.supply`, the precision gap is eliminated and         the whole flow either fully succeeds or fully reverts.",
+    "version": 1
+  },
+  "storageLayout": {
+    "storage": [],
+    "types": null
+  }
+}
