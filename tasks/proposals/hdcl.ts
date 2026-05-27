@@ -57,6 +57,41 @@ task(
     batch: true,
   });
 
+  // Register the HDCL PoolAddressesProvider into the shared (main money-market)
+  // PoolAddressesProviderRegistry. The registry is owned by the aave-manager
+  // precompile, so the deploy step deferred this to governance — done here as
+  // an aave-manager call. ProviderId 22222255 per markets/hdcl/index.ts.
+  // Idempotent: skip if already registered (registerAddressesProvider reverts
+  // on a duplicate id, which would brick the whole batchAll).
+  {
+    const HDCL_PROVIDER_ID = 22222255;
+    const registryArtifact = await hre.deployments.get(
+      "PoolAddressesProviderRegistry"
+    );
+    const registry = await hre.ethers.getContractAt(
+      registryArtifact.abi,
+      registryArtifact.address
+    );
+    const existingId = await registry.getAddressesProviderIdByAddress(
+      poolAddressesProvider.address
+    );
+    if (existingId.gt(0)) {
+      console.log(
+        `---------> HDCL provider ${poolAddressesProvider.address} already in registry ${registryArtifact.address} (id=${existingId.toString()}) — skipping`
+      );
+    } else {
+      console.log(
+        `---------> register HDCL provider ${poolAddressesProvider.address} into shared registry ${registryArtifact.address} (id ${HDCL_PROVIDER_ID})`
+      );
+      const tx = await registry.populateTransaction.registerAddressesProvider(
+        poolAddressesProvider.address,
+        HDCL_PROVIDER_ID,
+        { gasLimit: 1_000_000 }
+      );
+      addTransaction(tx);
+    }
+  }
+
   const dclTxs = await Promise.all(
     getBatch().map((tx) => aaveManagerCall({ ...tx, from: admin }))
   );
