@@ -138,31 +138,44 @@ Target role-holders on the HDCL ACLManager after this step:
 |---|---|
 | `DEFAULT_ADMIN_ROLE` | `0xaa7e0000000000000000000000000000000aa7e0` (aave-manager precompile) |
 | `POOL_ADMIN` | `0xaa7e0000000000000000000000000000000aa7e0` (precompile) |
-| `EMERGENCY_ADMIN` | `0xaa7e0000000000000000000000000000000aa7e1` (precompile + 1) — **HDCL convention** |
+| `EMERGENCY_ADMIN` | `0xaa7e0000000000000000000000000000000aa7e0` (precompile — same as PoolAdmin; what the task grants by default) |
 | `PoolAddressesProvider-HDCL` owner | `0xaa7e0000000000000000000000000000000aa7e0` (precompile) |
-
-**Note on EMERGENCY_ADMIN.** `transfer-protocol-ownership.ts` grants the
-precompile (`aa7e0`) as `EMERGENCY_ADMIN`. The HDCL convention is `aa7e1`
-(precompile + 1) — if you want to switch, do it via two `cast send` calls
-(`addEmergencyAdmin(aa7e1)` then `removeEmergencyAdmin(aa7e0)`) **while the
-deployer still holds `DEFAULT_ADMIN_ROLE`**. Once renounced, only governance can.
-Do NOT grant `0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b` — that's the legacy
-main-MM multisig and is not used by the new market.
 
 Verify final state before proceeding:
 
 ```sh
 ACL=<ACLManager-HDCL>
 RPC=<mainnet-rpc>
-cast call $ACL 'isEmergencyAdmin(address)(bool)' 0xaa7e0000000000000000000000000000000aa7e1 --rpc-url $RPC  # → true
-cast call $ACL 'isEmergencyAdmin(address)(bool)' 0xaa7e0000000000000000000000000000000aa7e0 --rpc-url $RPC  # → false
-cast call $ACL 'isEmergencyAdmin(address)(bool)' 0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b --rpc-url $RPC  # → false
-cast call $ACL 'isPoolAdmin(address)(bool)' 0xaa7e0000000000000000000000000000000aa7e0 --rpc-url $RPC  # → true
+cast call $ACL 'isPoolAdmin(address)(bool)'      0xaa7e0000000000000000000000000000000aa7e0 --rpc-url $RPC  # → true
+cast call $ACL 'isEmergencyAdmin(address)(bool)' 0xaa7e0000000000000000000000000000000aa7e0 --rpc-url $RPC  # → true
+cast call $ACL 'hasRole(bytes32,address)(bool)' \
+  0x0000000000000000000000000000000000000000000000000000000000000000 \
+  0xaa7e0000000000000000000000000000000aa7e0 --rpc-url $RPC                                                  # → true (DEFAULT_ADMIN)
+cast call $ACL 'isPoolAdmin(address)(bool)'      <deployer-eoa> --rpc-url $RPC                              # → false
 ```
 
 ---
 
 ## 6. Governance proposal — register asset, init reserves, facilitator
+
+**HDCL launch parameters** (source of truth: `markets/hdcl/reservesConfigs.ts`
+in this repo; `helpers/config.ts` in the `hollar` repo):
+
+| Parameter | Value | Source |
+|---|---|---|
+| DCL `baseLTVAsCollateral` | 8000 (80%) | `reservesConfigs.ts` |
+| DCL `liquidationThreshold` | 8500 (85%) | `reservesConfigs.ts` |
+| DCL `liquidationBonus` | 10700 (7%) | `reservesConfigs.ts` |
+| DCL `liquidationProtocolFee` | 1000 (10%) | `reservesConfigs.ts` |
+| DCL `reserveFactor` | 2000 (20%) | `reservesConfigs.ts` |
+| DCL `supplyCap` | 3_000_000 | `reservesConfigs.ts` |
+| DCL `borrowingEnabled` | false | `reservesConfigs.ts` |
+| HOLLAR borrow rate | **10% APY** (= 9.531% APR in ray) | `hollar/helpers/config.ts` (`apyToAprPercent(10)`) |
+| HOLLAR facilitator cap | 1_000_000 HOLLAR | `hollar/helpers/config.ts` (`hdclEntityConfig.mintLimit`) |
+| HDCL provider id (registry) | 22222255 | `markets/hdcl/index.ts` |
+
+These get baked into the proposal hex by `tasks/proposals/hdcl.ts`. Verify them
+in the decoded proposal print-out before submitting.
 
 Generate the proposal preimage:
 
@@ -204,6 +217,22 @@ Per current intent, **not** using the TC-whitelist track. Submit the bare
 batchAll on the appropriate OpenGov track and let it run the normal referendum
 → vote → enactment cycle. Idempotency guards in the task mean a re-run after a
 partial landing is safe (skips already-registered assets/facilitator/provider).
+
+### Verify after enactment
+
+Wait for the enactment block, then check events + state:
+
+```sh
+MARKET_NAME=HDCL HARDHAT_NETWORK=hydration RPC=<mainnet-rpc> \
+  PROPOSAL_WS=<mainnet-ws> \
+  npx hardhat run scripts/verify-hdcl-state.ts --network hydration
+```
+
+Every assertion must pass (same expected values as the dry-run section). Then
+scan the enactment block's events: every `dispatchAsAaveManager` → `evm.call`
+must be `evm.Executed`, **not** `evm.ExecutedFailed` — substrate `evm.call`
+returns `Ok` even on internal EVM revert, so the only reliable signal is the
+events list.
 
 ### Dry-run first (gc chopsticks)
 The lark-2 rehearsal confirmed `scripts/submit-hdcl-proposal.ts` works against a
@@ -305,6 +334,14 @@ substrate balance and revert).
 ---
 
 ## Lark-2 rehearsal — concrete addresses (reference)
+
+**Status: complete.** HDCL market live on lark-2; governance proposal enacted
+via Root referendum #383 at block 222762, parameter patch (LTV/LT 70/80 →
+80/85) via #384, rate-strategy revert (10% APR → 10% APY) via #385. UI flipped
+on `feat/hdcl` (commit `ab3f64bda`). End-state verified by
+`scripts/verify-hdcl-state.ts`; tight-leverage loop converged to 4.99x at
+HF 1.0628 with theoretical net APR ≈ 51.83% on equity (vault 18% APY, borrow
+9.53% APR).
 
 | Contract | lark-2 address |
 |---|---|
