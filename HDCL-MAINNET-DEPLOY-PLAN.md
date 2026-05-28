@@ -141,25 +141,13 @@ Target role-holders on the HDCL ACLManager after this step:
 | `EMERGENCY_ADMIN` | `0xaa7e0000000000000000000000000000000aa7e1` (precompile + 1) — **HDCL convention** |
 | `PoolAddressesProvider-HDCL` owner | `0xaa7e0000000000000000000000000000000aa7e0` (precompile) |
 
-**Important — emergency admin caveat.** `transfer-protocol-ownership.ts` grants
-the precompile (`aa7e0`) as `EMERGENCY_ADMIN`, not `aa7e1`. Override before the
-deployer renounces `DEFAULT_ADMIN_ROLE` (it's a single window: while Alice still
-holds `DEFAULT_ADMIN`, she can swap the emergency admin; afterwards only
-governance can):
-
-```sh
-# while deployer still holds DEFAULT_ADMIN_ROLE
-cast send <ACLManager-HDCL> 'addEmergencyAdmin(address)' \
-  0xaa7e0000000000000000000000000000000aa7e1 \
-  --rpc-url <mainnet-rpc> --private-key $DEPLOYER_PK ...
-cast send <ACLManager-HDCL> 'removeEmergencyAdmin(address)' \
-  0xaa7e0000000000000000000000000000000aa7e0 \
-  --rpc-url <mainnet-rpc> --private-key $DEPLOYER_PK ...
-```
-
-**Do NOT grant `0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b`** as emergency admin
-on the HDCL market — that's the legacy multisig on the existing main MM and is
-not used by the new market.
+**Note on EMERGENCY_ADMIN.** `transfer-protocol-ownership.ts` grants the
+precompile (`aa7e0`) as `EMERGENCY_ADMIN`. The HDCL convention is `aa7e1`
+(precompile + 1) — if you want to switch, do it via two `cast send` calls
+(`addEmergencyAdmin(aa7e1)` then `removeEmergencyAdmin(aa7e0)`) **while the
+deployer still holds `DEFAULT_ADMIN_ROLE`**. Once renounced, only governance can.
+Do NOT grant `0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b` — that's the legacy
+main-MM multisig and is not used by the new market.
 
 Verify final state before proceeding:
 
@@ -184,25 +172,32 @@ MARKET_NAME=HDCL HARDHAT_NETWORK=hydration RPC=<mainnet-rpc> \
 ```
 
 The proposal (`tasks/proposals/hdcl.ts`) bundles, as a `utility.batchAll` run as
-Root, in order:
+Root, in the order below. Critical: **the DCL substrate register runs first** —
+the substrate→EVM ERC20 precompile needs `decimals()` to resolve, which requires
+asset 550 to already be registered before EVM `initReserves(DCL)` is dispatched.
+The task hoists this automatically (`txs.unshift`).
 
-1. `AaveOracle-HDCL.setAssetSources(DCL → adapter)`
-2. `PoolConfigurator.initReserves([DCL])` — collateral reserve, treasury reused
-3. `ReservesSetupHelper.configureReserves(DCL: 70% LTV, 80% liq, 3M supply cap, borrow disabled)`
-4. `PoolConfigurator.setLiquidationProtocolFee(DCL, 10%)`
-5. **`PoolAddressesProviderRegistry.registerAddressesProvider(HDCL provider, 22222255)`** — into the shared main registry
-6. `PoolConfigurator.initReserves([HOLLAR])` — GhoAToken facilitator impls, treasury reused
-7. `setReserveBorrowing(HOLLAR, true)`
-8. `AaveOracle-HDCL.setAssetSources(HOLLAR → GhoOracle)`
-9. `HOLLAR.addFacilitator(GhoAToken proxy, "HDCL", 1M cap)`
-10. GHO cross-refs (`setVariableDebtToken`, `updateGhoTreasury`, `setAToken`, `updateDiscountRateStrategy`)
-11. Substrate: `assetRegistry.register/update` DCL (550 → vault) + HDCL (55 → aToken)
-12. Substrate: `multiTransactionPayment.addCurrency` (DCL, HDCL as fee currencies)
-13. Substrate: `evmAccounts.approveContract(Pool-Proxy-HDCL)` (managed-balance, no ERC-20 approve needed)
+1. **Substrate: `assetRegistry.register(550, DCL → vault)`** — must precede #3
+2. `AaveOracle-HDCL.setAssetSources(DCL → adapter)`
+3. `PoolConfigurator.initReserves([DCL])` — collateral reserve, treasury reused
+4. `ReservesSetupHelper.configureReserves(DCL: 80% LTV, 85% liq, 3M supply cap, borrow disabled)`
+5. `PoolConfigurator.setLiquidationProtocolFee(DCL, 10%)`
+6. **`PoolAddressesProviderRegistry.registerAddressesProvider(HDCL provider, 22222255)`** — into the shared main registry
+7. `PoolConfigurator.initReserves([HOLLAR])` — GhoAToken facilitator impls, treasury reused
+8. `setReserveBorrowing(HOLLAR, true)`
+9. `AaveOracle-HDCL.setAssetSources(HOLLAR → GhoOracle)`
+10. `HOLLAR.addFacilitator(GhoAToken proxy, "HDCL", 1M cap)`
+11. GHO cross-refs on `GhoAToken-HDCL`: `setVariableDebtToken`, `updateGhoTreasury`
+12. GHO cross-refs on `GhoVariableDebtToken-HDCL`: `setAToken`, `updateDiscountRateStrategy`, `updateDiscountToken(HOLLAR)`
+13. Substrate: `assetRegistry.register(55, HDCL → DCL aToken proxy)`
+14. Substrate: `multiTransactionPayment.addCurrency` (DCL, HDCL as fee currencies)
+15. Substrate: `evmAccounts.approveContract(Pool-Proxy-HDCL)` (managed-balance — saves users from per-ERC20 approve before `pool.supply` / `repay`)
 
 All EVM calls are wrapped via `aaveManagerCall` (`dispatcher.dispatchAsAaveManager`,
 source = aave-manager precompile). The task prints both the **whitelisted-call
-hash** and the **bare batchAll hex** ("Encoded proposal").
+hash** and the **bare batchAll hex** ("Encoded proposal"). Watch the log line
+`reordered: DCL substrate register moved <idx> → 0` — that confirms the hoist
+fired and the ordering bug is avoided.
 
 ### Submitting on mainnet
 Per current intent, **not** using the TC-whitelist track. Submit the bare
@@ -210,43 +205,85 @@ batchAll on the appropriate OpenGov track and let it run the normal referendum
 → vote → enactment cycle. Idempotency guards in the task mean a re-run after a
 partial landing is safe (skips already-registered assets/facilitator/provider).
 
-### Dry-run first (chopsticks)
-Fork mainnet with the gc chopsticks config and force-enact without a real vote:
+### Dry-run first (gc chopsticks)
+The lark-2 rehearsal confirmed `scripts/submit-hdcl-proposal.ts` works against a
+gc chopsticks fork. Same flow for the mainnet dry-run:
 
 ```sh
-# terminal 1 — gc chopsticks (~/git/chopsticks, branch gc; EVM-capable, mock-signature)
-yarn start --config configs/hydradx.yml --endpoint <mainnet-rpc> --port 8000
+# terminal 1 — gc chopsticks (~/git/chopsticks; needs ../@galacticcouncil/chopsticks-db
+# symlinked into node_modules/@acala-network/chopsticks-db until the rebrand is
+# pushed through the dist build)
+node packages/chopsticks/chopsticks.cjs \
+  --config configs/hydradx.yml \
+  --endpoint <mainnet-rpc> \
+  --port 8000 \
+  --db ./hydradx-mainnet.db.sqlite
 
-# terminal 2 — fast-execute the bare batchAll (moonbeam-tools, branch hydration)
-bun src/tools/fast-execute-chopstick-proposal.ts --url ws://127.0.0.1:8000 \
-  --encoded-proposal "$(cat batchall.hex)"
+# terminal 2 — submit + enact in one pass (regenerates the proposal, switches
+# chopsticks to Instant block mode, bumps Alice to 5B HDX, votes on Root, scans
+# events). PROPOSAL_WS points the script at chopsticks; HARDHAT_NETWORK + RPC
+# point ethers/hardhat at the same fork so address resolution matches.
+MARKET_NAME=HDCL HARDHAT_NETWORK=hydration RPC=http://localhost:8000 \
+  PROPOSAL_WS=ws://localhost:8000 \
+  npx hardhat run scripts/submit-hdcl-proposal.ts --network hydration
 ```
 
-This submits a Root referendum then overrides referendum + scheduler storage via
-`dev_setStorage`/`dev_newBlock` to enact in the next block — no deposit/vote/
-balance needed. Inspect the post-enactment events: every `dispatchAsAaveManager`
-→ `evm.call` must succeed (substrate `evm.call` returns `Ok` even on internal
-EVM revert and emits `evm.ExecutedFailed`, so check the **events**, not the
-extrinsic result).
+The script (idempotent — safe to re-run after a partial landing):
+- Calls `dev_setBlockBuildMode("Instant")` so each tx auto-seals a block (working
+  around chopsticks's "Failed to apply inherents" startup error in Instant mode)
+- Bumps Alice's free balance to ≥5B HDX via `dev_setStorage` (gc's hydradx.yml
+  import-storage truncates her to ~1000 HDX otherwise)
+- Submits the batchAll on the Root track, places decision deposit, votes aye with
+  full conviction, fast-forwards via `dev_newBlock` until approval + enactment
 
-> ⚠️ Known snag (2026-05): `moonbeam-tools` imports `@moonbeam-network/api-augment`
-> across many modules, which fails to resolve against the installed
-> `@polkadot/types`. `fast-execute-chopstick-proposal.ts` was patched to import
-> `getApiFor`/`NETWORK_YARGS_OPTIONS` from `../utils/networks.ts` directly, but
-> `networks.ts` → `moonbeam-types-bundle` still drags it in. Resolve the augment
-> version (or stub the package) before relying on the chopsticks dry-run.
+Inspect the post-enactment events: every `dispatchAsAaveManager` → `evm.call`
+must emit `evm.Executed`, not `evm.ExecutedFailed` (substrate `evm.call` returns
+`Ok` even on internal EVM revert — **check the events, not the extrinsic result**).
+Then run the state verification:
+
+```sh
+MARKET_NAME=HDCL HARDHAT_NETWORK=hydration RPC=http://localhost:8000 \
+  PROPOSAL_WS=ws://localhost:8000 \
+  npx hardhat run scripts/verify-hdcl-state.ts --network hydration
+```
+
+Expected output (all ✓):
+- 2 reserves: DCL + HOLLAR
+- DCL: LTV 8000, liqThreshold 8500, supplyCap 3M, borrowing off, collateral on,
+  liqProtocolFee 1000, price ≈ vault exchange rate × 1e8
+- HOLLAR: borrowing on, collateral off, price 1e8
+- HOLLAR facilitator: label `HDCL`, bucketCapacity 1e24 (1M × 1e18), level 0
+- ACL: precompile is PoolAdmin + EmergencyAdmin, deployer is not
+- ProviderRegistry: HDCL id 22222255, total providers 2
+- Substrate asset 550 (DCL) → vault, Erc20, fee currency
+- Substrate asset 55 (HDCL) → aToken proxy, Erc20, fee currency
+- `evmAccounts.approvedContract(Pool-Proxy-HDCL)` = true
+
+> Note: `moonbeam-tools fast-execute-chopstick-proposal.ts` (force-enact without
+> a vote) is broken as of 2026-05 — `@moonbeam-network/api-augment` doesn't
+> resolve against the installed `@polkadot/types`. The submit-and-vote flow
+> above replaces it for HDCL.
 
 ---
 
 ## 7. Flip the UI on
 
-In `hydration-ui` (`feat/hdcl`), set in `modules/strategies/hdcl/constants.ts`:
+In `hydration-ui` (`feat/hdcl`), set in
+`apps/main/src/modules/strategies/hdcl/constants.ts`:
 
 ```ts
 export const HDCL_HAS_AAVE_LAYER = true
-export const HDCL_POOL_ADDRESS = "<Pool-Proxy-HDCL>"
-export const HDCL_ATOKEN_ADDRESS = "<DCL aToken proxy>"
-export const HDCL_DEPOSIT_ZAP_ADDRESS = "<HDCLDepositZap>"
+export const HDCL_POOL_ADDRESS         = "<Pool-Proxy-HDCL on mainnet>"
+export const HDCL_ATOKEN_ADDRESS       = "<DCL aToken proxy on mainnet>"
+export const HDCL_DEPOSIT_ZAP_ADDRESS  = "<HDCLDepositZap on mainnet>"
+```
+
+Lark-2 reference values (already committed on `feat/hdcl`):
+
+```ts
+HDCL_POOL_ADDRESS         = "0xEAb87D2aAc4C70AF63D2d9E85876665060e117E2"
+HDCL_ATOKEN_ADDRESS       = "0x8912ff2164655A3406902ee9e802EBb16ec881D9"
+HDCL_DEPOSIT_ZAP_ADDRESS  = "0x146F6C43a0070F42cB532C74c412A34bb55A5729"
 ```
 
 Borrow / supply-as-collateral / instant-redeem flows are already coded behind

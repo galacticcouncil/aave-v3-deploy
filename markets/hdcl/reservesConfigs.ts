@@ -7,8 +7,8 @@ import { rateStrategyStables } from "./rateStrategies";
 // positions are auto-deposited into the pool.
 export const strategyDCL: IReserveParams = {
   strategy: rateStrategyStables,
-  baseLTVAsCollateral: "7000",
-  liquidationThreshold: "8000",
+  baseLTVAsCollateral: "8000",
+  liquidationThreshold: "8500",
   liquidationBonus: "10700",
   liquidationProtocolFee: "1000",
   borrowingEnabled: false,
