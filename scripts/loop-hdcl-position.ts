@@ -21,7 +21,7 @@ const DCL_PRECOMPILE = "0x0000000000000000000000000000000100000226";
 
 const TARGET_RATIO = 0.999;      // tight: borrow 99.9% of headroom (no buffer)
 const MIN_NEXT_BORROW = 10n ** 17n; // 0.1 HOLLAR floor — stop when below
-const MAX_ROUNDS = 20;
+const MAX_ROUNDS = 25;
 const VARIABLE_RATE_MODE = 2;
 const REFERRAL_CODE = 0;
 
@@ -46,6 +46,16 @@ async function main() {
   const me = await eth.getSigner(deployer);
   const meAddr = await me.getAddress();
   console.log(`acting as ${meAddr}\n`);
+
+  // Manual nonce — hardhat-deploy + ethers v5 cache "latest" nonce, which goes
+  // stale between rapid borrow→zap tx pairs on lark-2 and crashes with
+  // NONCE_EXPIRED. Track it explicitly here.
+  let nonce: number = await eth.provider.getTransactionCount(meAddr, "pending");
+  const sendTx = async (txPromiseFn: () => Promise<any>) => {
+    const tx = await txPromiseFn();
+    await tx.wait();
+    nonce++;
+  };
 
   const pool = await eth.getContractAt(
     [
@@ -85,10 +95,10 @@ async function main() {
     const cur: bigint = (await dcl.allowance(meAddr, pool.address)).toBigInt();
     if (cur < initialDcl) {
       console.log(`approve DCL → pool`);
-      await (await dcl.approve(pool.address, eth.constants.MaxUint256, { gasLimit: 200_000 })).wait();
+      await sendTx(() => dcl.approve(pool.address, eth.constants.MaxUint256, { gasLimit: 200_000, nonce }));
     }
     console.log(`supply ${fmt18(initialDcl)} DCL`);
-    await (await pool.supply(DCL_PRECOMPILE, initialDcl, meAddr, REFERRAL_CODE, { gasLimit: 1_500_000 })).wait();
+    await sendTx(() => pool.supply(DCL_PRECOMPILE, initialDcl, meAddr, REFERRAL_CODE, { gasLimit: 1_500_000, nonce }));
   }
 
   // Step 2 — seed-zap with any existing HOLLAR the deployer holds (skips one borrow round).
@@ -97,10 +107,10 @@ async function main() {
     const cur: bigint = (await hollar.allowance(meAddr, zap.address)).toBigInt();
     if (cur < initialHollar) {
       console.log(`approve HOLLAR → zap`);
-      await (await hollar.approve(zap.address, eth.constants.MaxUint256, { gasLimit: 200_000 })).wait();
+      await sendTx(() => hollar.approve(zap.address, eth.constants.MaxUint256, { gasLimit: 200_000, nonce }));
     }
     console.log(`seed-zap ${fmt18(initialHollar)} HOLLAR → DCL → supply`);
-    await (await zap.depositAndSupply(initialHollar, { gasLimit: 3_000_000 })).wait();
+    await sendTx(() => zap.depositAndSupply(initialHollar, { gasLimit: 3_000_000, nonce }));
   }
 
   const printPosition = async (tag: string) => {
@@ -133,10 +143,10 @@ async function main() {
       console.log(`next borrow ${fmt18(nextBorrow)} HOLLAR < floor — stop`);
       break;
     }
-    console.log(`\nround ${i + 1}: borrow ${fmt18(nextBorrow)} HOLLAR (${(TARGET_RATIO*100).toFixed(0)}% of headroom)`);
-    await (await pool.borrow(HOLLAR, nextBorrow, VARIABLE_RATE_MODE, REFERRAL_CODE, meAddr, { gasLimit: 1_500_000 })).wait();
+    console.log(`\nround ${i + 1}: borrow ${fmt18(nextBorrow)} HOLLAR (${(TARGET_RATIO*100).toFixed(1)}% of headroom)`);
+    await sendTx(() => pool.borrow(HOLLAR, nextBorrow, VARIABLE_RATE_MODE, REFERRAL_CODE, meAddr, { gasLimit: 1_500_000, nonce }));
     console.log(`  zap → DCL → supply`);
-    await (await zap.depositAndSupply(nextBorrow, { gasLimit: 3_000_000 })).wait();
+    await sendTx(() => zap.depositAndSupply(nextBorrow, { gasLimit: 3_000_000, nonce }));
     await printPosition(`r${i + 1}`);
   }
 
@@ -147,20 +157,30 @@ async function main() {
   const equity = coll - debt;
   console.log(`equity≈ $${fmt8(equity)}  leverage≈ ${Number(coll * 100n / equity)/100}x\n`);
 
-  // APR readout — Aave stores rates in ray (1e27) representing annual linear rate.
-  const dclR = await pool.getReserveData(DCL_PRECOMPILE);
+  // APR readout. The collateral side is the *vault's* intrinsic yield, not
+  // Aave's currentLiquidityRate — DCL has no borrowers (borrowing disabled),
+  // so currentLiquidityRate is 0. The vault.getAPYWad() returns the underlying
+  // Decentral-pool APY in wad (1e18), which is what shows up in the user's
+  // aDCL exchange rate over time.
+  const vault = await eth.getContractAt(
+    ["function getAPYWad() view returns (uint256)"],
+    await (await eth.getContractAt(
+      ["function vault() view returns (address)"],
+      (await hhre.deployments.get("HDCLOracleAdapter")).address
+    )).vault()
+  );
+  const apyWad: bigint = (await vault.getAPYWad()).toBigInt();
   const hollarR = await pool.getReserveData(HOLLAR);
-  const supplyRay: bigint = dclR.currentLiquidityRate.toBigInt();
   const borrowRay: bigint = hollarR.currentVariableBorrowRate.toBigInt();
-  const supplyPct = Number(supplyRay / 10n ** 23n) / 10000; // ray → %
-  const borrowPct = Number(borrowRay / 10n ** 23n) / 10000;
-  // Leveraged APR on equity:
-  //   = leverage × supply_apr − (leverage−1) × borrow_apr (approx, ignoring price drift)
+  // ray (1e27) → percent: divide by 1e25. wad (1e18) → percent: divide by 1e16.
+  const vaultApy = Number(apyWad / 10n ** 12n) / 10000;
+  const borrowApr = Number(borrowRay / 10n ** 21n) / 10000;
   const leverage = Number(coll) / Number(equity);
-  const netApr = leverage * supplyPct - (leverage - 1) * borrowPct;
-  console.log(`DCL supply APR    : ${supplyPct.toFixed(4)}%`);
-  console.log(`HOLLAR borrow APR : ${borrowPct.toFixed(4)}%`);
-  console.log(`net leveraged APR : ${netApr.toFixed(4)}%  (= ${leverage.toFixed(3)}x × ${supplyPct.toFixed(4)}% − ${(leverage-1).toFixed(3)}x × ${borrowPct.toFixed(4)}%)`);
+  const netApr = leverage * vaultApy - (leverage - 1) * borrowApr;
+  console.log(`vault APY (intrinsic) : ${vaultApy.toFixed(4)}%`);
+  console.log(`HOLLAR borrow APR     : ${borrowApr.toFixed(4)}%`);
+  console.log(`leverage              : ${leverage.toFixed(3)}x`);
+  console.log(`NET APR on equity     : +${netApr.toFixed(4)}%`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
