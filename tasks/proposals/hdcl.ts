@@ -459,19 +459,14 @@ task(
   // ===================================================================
   // Phase E: Generate proposal preimage
   // ===================================================================
-  const { whitelistedCall, proposal } = await generateProposalV2(txs, true);
-  // Bare batchAll call (no whitelist wrapper) — feed this to moonbeam-tools'
-  // fast-execute-chopstick-proposal.ts --encoded-proposal to dry-run the
-  // enactment as Root on a chopsticks fork.
-  const batchAllHex = (await generateProposalV2(txs, false)).toHex();
+  // Submitted on the Root track as the bare `utility.batchAll` — no TC
+  // whitelist wrapper. Feed this hex to chopsticks fast-execute or the
+  // referenda.submit flow.
+  const batchAll = await generateProposalV2(txs, false);
   const decoder = new ProposalDecoder(hre);
   await decoder.init();
-  console.log("whitelisted call hash:");
-  console.log(whitelistedCall.hash.toHex());
-  console.log("\nEncoded proposal (batchAll, for chopsticks fast-execute):");
-  console.log(batchAllHex);
-  console.log("\nProposal preimage:");
-  console.log(proposal.toHex());
+  console.log("Encoded proposal (batchAll):");
+  console.log(batchAll.toHex());
   console.log("\nDecoded proposal calls:");
-  decoder.printTree(decoder.transformCall(proposal.toHuman()));
+  decoder.printTree(decoder.transformCall(batchAll.toHuman()));
 });
