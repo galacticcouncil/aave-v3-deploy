@@ -122,7 +122,59 @@ amount into `pool.supply`, and `supply` won't accept a sentinel "all".)
 
 ---
 
-## 5. Governance proposal — register asset, init reserves, facilitator
+## 5. Transfer protocol ownership (last step before governance)
+
+Hand the new market's roles to the on-chain admin **before** the governance
+proposal — so the proposal can already dispatch as the configured admin.
+
+```sh
+MARKET_NAME=HDCL HARDHAT_NETWORK=hydration npx hardhat transfer-protocol-ownership \
+  --network hydration
+```
+
+Target role-holders on the HDCL ACLManager after this step:
+
+| Role | Holder |
+|---|---|
+| `DEFAULT_ADMIN_ROLE` | `0xaa7e0000000000000000000000000000000aa7e0` (aave-manager precompile) |
+| `POOL_ADMIN` | `0xaa7e0000000000000000000000000000000aa7e0` (precompile) |
+| `EMERGENCY_ADMIN` | `0xaa7e0000000000000000000000000000000aa7e1` (precompile + 1) — **HDCL convention** |
+| `PoolAddressesProvider-HDCL` owner | `0xaa7e0000000000000000000000000000000aa7e0` (precompile) |
+
+**Important — emergency admin caveat.** `transfer-protocol-ownership.ts` grants
+the precompile (`aa7e0`) as `EMERGENCY_ADMIN`, not `aa7e1`. Override before the
+deployer renounces `DEFAULT_ADMIN_ROLE` (it's a single window: while Alice still
+holds `DEFAULT_ADMIN`, she can swap the emergency admin; afterwards only
+governance can):
+
+```sh
+# while deployer still holds DEFAULT_ADMIN_ROLE
+cast send <ACLManager-HDCL> 'addEmergencyAdmin(address)' \
+  0xaa7e0000000000000000000000000000000aa7e1 \
+  --rpc-url <mainnet-rpc> --private-key $DEPLOYER_PK ...
+cast send <ACLManager-HDCL> 'removeEmergencyAdmin(address)' \
+  0xaa7e0000000000000000000000000000000aa7e0 \
+  --rpc-url <mainnet-rpc> --private-key $DEPLOYER_PK ...
+```
+
+**Do NOT grant `0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b`** as emergency admin
+on the HDCL market — that's the legacy multisig on the existing main MM and is
+not used by the new market.
+
+Verify final state before proceeding:
+
+```sh
+ACL=<ACLManager-HDCL>
+RPC=<mainnet-rpc>
+cast call $ACL 'isEmergencyAdmin(address)(bool)' 0xaa7e0000000000000000000000000000000aa7e1 --rpc-url $RPC  # → true
+cast call $ACL 'isEmergencyAdmin(address)(bool)' 0xaa7e0000000000000000000000000000000aa7e0 --rpc-url $RPC  # → false
+cast call $ACL 'isEmergencyAdmin(address)(bool)' 0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b --rpc-url $RPC  # → false
+cast call $ACL 'isPoolAdmin(address)(bool)' 0xaa7e0000000000000000000000000000000aa7e0 --rpc-url $RPC  # → true
+```
+
+---
+
+## 6. Governance proposal — register asset, init reserves, facilitator
 
 Generate the proposal preimage:
 
@@ -186,7 +238,7 @@ extrinsic result).
 
 ---
 
-## 6. Flip the UI on
+## 7. Flip the UI on
 
 In `hydration-ui` (`feat/hdcl`), set in `modules/strategies/hdcl/constants.ts`:
 

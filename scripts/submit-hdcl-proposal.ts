@@ -26,9 +26,21 @@ async function devNewBlock(api: ApiPromise, count = 1) {
   }
 }
 
+// On chopsticks: flip block-build mode to Instant so each tx auto-seals a block.
+// Default (Manual) makes signAndWait deadlock on isInBlock — and starting
+// chopsticks itself in Instant fails ("Failed to apply inherents" on the
+// startup-block build). Runtime RPC sidesteps both.
+async function setInstantBlockModeOnChopsticks(api: ApiPromise): Promise<void> {
+  if (!IS_CHOPSTICKS) return;
+  await (api as any)._rpcCore.provider.send("dev_setBlockBuildMode", ["Instant"]);
+  console.log("chopsticks: block-build mode → Instant");
+}
+
 // On chopsticks: Alice's mainnet-forked state has all her HDX locked behind an
 // unrelated conviction-voting lock. Unfreeze her so she can submit + deposit +
-// vote on the HDCL referendum here.
+// vote on the HDCL referendum here. Also bump her free balance well past the
+// 4B-HDX Root-vote threshold, since gc chopsticks' default import-storage
+// overwrites her to ~1000 HDX.
 async function unfreezeAliceOnChopsticks(api: ApiPromise, alice: any): Promise<void> {
   if (!IS_CHOPSTICKS) return;
   console.log("\n--- unfreezing Alice on chopsticks ---");
@@ -37,14 +49,18 @@ async function unfreezeAliceOnChopsticks(api: ApiPromise, alice: any): Promise<v
   const freezesKey = api.query.balances.freezes.key(alice.address);
   const acc = await api.query.system.account(alice.address);
   const nonce = (acc as any).nonce.toNumber();
-  // Keep her free balance but zero out frozen, reserved, and flags.
+  // Take max(current, 5B HDX) so she can vote on the Root track. Real-fork
+  // Alice has ~4.28B; gc's hydradx.yml import-storage clobbers her to 1000 HDX.
+  const HDX_MIN_FREE = 5_000_000_000n * 10n ** 12n; // 5B HDX (12 decimals)
+  const currentFree = (acc as any).data.free.toBigInt() as bigint;
+  const targetFree = currentFree > HDX_MIN_FREE ? currentFree : HDX_MIN_FREE;
   const newAccountInfo = api.registry.createType("AccountInfo", {
     nonce,
     consumers: 0,
     providers: 1,
     sufficients: 0,
     data: {
-      free: (acc as any).data.free.toBigInt().toString(),
+      free: targetFree.toString(),
       reserved: "0",
       frozen: "0",
       flags: "0",
@@ -135,6 +151,42 @@ async function main() {
   // for the vault token — see Phase D for the registry wiring).
   await hhre.run("init-reserve", { symbol: "DCL", batch: true });
   await hhre.run("review-reserve-factors", { fix: true, batch: true });
+
+  // Register HDCL provider into the shared PoolAddressesProviderRegistry. The
+  // registry is owned by the aave-manager precompile, so the deploy step
+  // deferred this to governance — wrapped here in the Phase A aaveManagerCall
+  // batch. Idempotent: skip if already registered (registry reverts on
+  // duplicate id, which would silently fail as ExecutedFailed).
+  {
+    const HDCL_PROVIDER_ID = 22222255;
+    const registryArtifact = await hhre.deployments.get(
+      "PoolAddressesProviderRegistry"
+    );
+    const registry = await hhre.ethers.getContractAt(
+      registryArtifact.abi,
+      registryArtifact.address
+    );
+    const existingId = await registry.getAddressesProviderIdByAddress(
+      poolAddressesProvider.address
+    );
+    if (existingId.gt(0)) {
+      console.log(
+        `HDCL provider ${poolAddressesProvider.address} already in registry (id=${existingId.toString()}) — skipping`
+      );
+    } else {
+      console.log(
+        `register HDCL provider ${poolAddressesProvider.address} into registry ${registryArtifact.address} (id ${HDCL_PROVIDER_ID})`
+      );
+      addTransaction(
+        await registry.populateTransaction.registerAddressesProvider(
+          poolAddressesProvider.address,
+          HDCL_PROVIDER_ID,
+          { gasLimit: 1_000_000 }
+        )
+      );
+    }
+  }
+
   const dclTxs = await Promise.all(getBatch().map((tx: any) => aaveManagerCall({ ...tx, from: admin })));
   txs.push(...dclTxs);
   clearBatch();
@@ -361,12 +413,36 @@ async function main() {
   // Approve Pool-Proxy-HDCL as managed-balance contract — saves users from
   // running ERC-20 approve() before pool.supply / repay. Idempotent.
   const poolProxyAddress = (await hhre.deployments.get("Pool-Proxy-HDCL")).address;
-  const approvedEntry: any = await apiInst.query.eVMAccounts.approvedContract(poolProxyAddress);
+  const evmAccountsQ: any = (apiInst.query as any).evmAccounts ?? (apiInst.query as any).eVMAccounts;
+  const evmAccountsTx: any = (hydrationTx as any).evmAccounts ?? (hydrationTx as any).eVMAccounts;
+  const approvedEntry: any = await evmAccountsQ.approvedContract(poolProxyAddress);
   if (!approvedEntry.isSome) {
     console.log(`approve Pool-Proxy-HDCL (${poolProxyAddress}) for managed-balance access`);
-    txs.push(hydrationTx.eVMAccounts.approveContract(poolProxyAddress));
+    txs.push(evmAccountsTx.approveContract(poolProxyAddress));
   } else {
     console.log(`Pool-Proxy-HDCL already approved — skipping`);
+  }
+
+  // Reorder: the substrate registration of DCL (asset 550 → vault proxy) MUST
+  // run *before* EVM PoolConfigurator.initReserves(DCL). The substrate→EVM
+  // ERC20 precompile reads asset metadata (decimals…) from the registry, so
+  // initReserves reverts if the underlying isn't registered as Erc20 yet.
+  // batchAll runs sequentially, so we hoist the DCL register/update tx to
+  // position 0. dispatcher.dispatchAsAaveManager swallows EVM reverts as
+  // ExecutedFailed events (not extrinsic failure), so this is the only way to
+  // catch the ordering bug — the proposal would otherwise "pass" with the
+  // collateral side silently missing.
+  const dclRegIdx = txs.findIndex((t: any) => {
+    const sec = t?.method?.section;
+    const meth = t?.method?.method;
+    if (sec !== "assetRegistry") return false;
+    if (meth !== "register" && meth !== "update") return false;
+    return Number(t?.args?.[0]?.toString?.() ?? -1) === DCL_ASSET_ID;
+  });
+  if (dclRegIdx > 0) {
+    const [dclRegTx] = txs.splice(dclRegIdx, 1);
+    txs.unshift(dclRegTx);
+    console.log(`reordered: DCL substrate register moved ${dclRegIdx} → 0`);
   }
 
   // For lark/chopsticks dry-run: submit the raw batchAll on the Root track.
@@ -389,6 +465,7 @@ async function main() {
   const proposalHex = batchAllCall.toHex();
   const proposalLen = batchAllCall.encodedLength;
 
+  await setInstantBlockModeOnChopsticks(api);
   await unfreezeAliceOnChopsticks(api, alice);
 
   // 1. Note proposal preimage

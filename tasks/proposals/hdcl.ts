@@ -456,6 +456,30 @@ task(
     console.log(`---------> Pool-Proxy-HDCL already approved — skipping`);
   }
 
+  // Reorder: the substrate registration of DCL (asset 550 → vault proxy) MUST
+  // run *before* EVM PoolConfigurator.initReserves(DCL). The substrate→EVM
+  // ERC20 precompile reads asset metadata (decimals…) from the registry, so
+  // initReserves reverts if the underlying isn't registered as Erc20 yet.
+  // batchAll runs sequentially, so we hoist the DCL register/update tx to
+  // position 0. dispatcher.dispatchAsAaveManager swallows EVM reverts as
+  // ExecutedFailed events (not extrinsic failure), so this is the only way to
+  // catch the ordering bug — the proposal would otherwise "pass" with the
+  // collateral side silently missing.
+  {
+    const dclRegIdx = txs.findIndex((t: any) => {
+      const sec = t?.method?.section;
+      const meth = t?.method?.method;
+      if (sec !== "assetRegistry") return false;
+      if (meth !== "register" && meth !== "update") return false;
+      return Number(t?.args?.[0]?.toString?.() ?? -1) === DCL_ASSET_ID;
+    });
+    if (dclRegIdx > 0) {
+      const [dclRegTx] = txs.splice(dclRegIdx, 1);
+      txs.unshift(dclRegTx);
+      console.log(`reordered: DCL substrate register moved ${dclRegIdx} → 0`);
+    }
+  }
+
   // ===================================================================
   // Phase E: Generate proposal preimage
   // ===================================================================
