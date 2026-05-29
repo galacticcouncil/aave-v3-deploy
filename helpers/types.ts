@@ -80,6 +80,7 @@ export enum eHydrationNetwork {
   hydration = "hydration",
   nice = "nice",
   zombie = "zombie",
+  lark = "lark",
 }
 
 export enum EthereumNetworkNames {

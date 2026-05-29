@@ -1,0 +1,26 @@
+[profile.default]
+src = "contracts"
+test = "tests/foundry"
+
+out = "out"
+cache_path = "cache/forge"
+
+libs = ["lib", "node_modules"]
+
+auto_detect_solc = true
+evm_version = "berlin"
+optimizer = true
+optimizer_runs = 100000
+
+remappings = [
+  "@openzeppelin/=node_modules/@openzeppelin/",
+  "@aave/=node_modules/@aave/"
+]
+
+fs_permissions = [{ access = "read", path = "./" }]
+
+[profile.default.fuzz]
+runs = 1000
+
+[profile.ci.fuzz]
+runs = 10000

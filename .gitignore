@@ -21,3 +21,19 @@ types
 deployments/*
 !deployments/hydration
 !deployments/nice
+
+
+# Foundry
+out/
+cache/
+broadcast/
+deployments/
+
+.env
+.env.*
+!.env.example
+
+.DS_Store
+.idea/
+.vscode/
+*.swp
