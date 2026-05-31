@@ -25,6 +25,8 @@ import {
   strategyHUSDe,
   strategyPAXG,
   strategyPRIME,
+  strategyApyUSD,
+  strategySIGIL,
   strategySOL,
   strategyGSOL,
   strategyEURC,
@@ -75,6 +77,8 @@ export const HydrationConfig: IAaveConfiguration = {
     "2-POOL-HUSDE": strategyHUSDe,
     PAXG: strategyPAXG,
     PRIME: strategyPRIME,
+    APYUSD: strategyApyUSD,
+    SIGIL: strategySIGIL,
     SOL: strategySOL,
     "2-POOL-GSOL": strategyGSOL,
     EURC: strategyEURC,
@@ -99,6 +103,8 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDE": tokenAddress(113),
       PAXG: tokenAddress(39),
       PRIME: tokenAddress(43),
+      APYUSD: tokenAddress(46),
+      SIGIL: tokenAddress(816),
       SOL: tokenAddress(1000752),
       "2-POOL-GSOL": tokenAddress(90001),
       EURC: tokenAddress(44),
@@ -199,6 +205,8 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDE": "0x00000102737461626c657377000000de00000071", // HOLLAR(222) / 2-POOL-HUSDe(113) 10 min. stablesw
       PAXG: "0x8fB61B8E81C2f17695F14A136C98b0C4013bc105",
       PRIME: "0xDEe587cC569bf1FcBdcD6d1472031d225f34C307",
+      APYUSD: "0x286BAaA3F5738ac01EF922B1E913Fcc09916AF96",
+      SIGIL: "0xe50AA7afa36A5E04C0b0D0892D0b173c924b662F",
       // GIGASOL oracles
       SOL: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
       "2-POOL-GSOL": "0xCD3648A48378cBDa915f6be0A30073b76593Ed9A",

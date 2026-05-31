@@ -247,6 +247,42 @@ export const strategyPRIME: IReserveParams = {
   borrowableIsolation: false,
 };
 
+export const strategySIGIL: IReserveParams = {
+  strategy: rateStrategyStables,
+  baseLTVAsCollateral: "8500",
+  liquidationThreshold: "8800",
+  liquidationBonus: "10700",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: false,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "18",
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "1100000",
+  borrowCap: "0",
+  debtCeiling,
+  borrowableIsolation: false,
+};
+
+export const strategyApyUSD: IReserveParams = {
+  strategy: rateStrategyVolatileOne,
+  baseLTVAsCollateral: "8500",
+  liquidationThreshold: "8800",
+  liquidationBonus: "10700",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: true,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "18",
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "5000000",
+  borrowCap: "3000000",
+  debtCeiling: "222222200",
+  borrowableIsolation: false,
+};
+
 // GIGASOL reserve configurations
 export const strategySOL: IReserveParams = {
   strategy: rateStrategyDOT,
