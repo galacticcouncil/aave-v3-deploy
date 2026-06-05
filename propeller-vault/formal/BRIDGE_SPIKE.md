@@ -2,7 +2,12 @@
 
 **Date:** 2026-06-05 · **Verity:** lfglabs-dev/verity @ main (v0.1.0, MIT) · cloned read-only to `/tmp/verity-spike`.
 
-## Verdict: **GO (qualified)** for Spike A (Verity-native).
+## Verdict: **GO (qualified)** for Spike A (Verity-native). — **executed ✓**
+
+`SyntheticToken` is built: see `bridge/`. The `verity_contract` elaborates, compiles to
+`bridge/yul/SyntheticToken.yul` (object + runtime + selector dispatch, guards intact), and its
+mint/burn specs are machine-checked (axiom-clean, 0 `sorry`). This confirms the Lean→EVM path end
+to end for a real Propeller contract; the rest of the assessment below stands.
 
 Verity is materially more capable than its public landing page implied. Propeller's
 contract surface is reachable in its **proved** fragment, with the Aave interaction
