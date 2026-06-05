@@ -31,10 +31,20 @@ The §8 invariants are validated **two independent ways** against the *same* nam
 This is the parity of record: one invariant set, fuzzed on the deployable Solidity and proven over the
 model. The invariant *names* line up one-to-one.
 
-## 2. Differential / behavioral parity (partial — `forktest/`)
+## 2. Differential / behavioral parity (runnable — `forktest/`, GREEN)
 
-Deploy the Verity bytecode and the Solidity vault against the shared `test/mocks` and compare accounting
-state after the same op. See `forktest/` for the scaffold. Current limits:
+The Verity Yul is lowered to bytecode by stock `solc 0.8.33` and deployed in a Foundry test
+(`test/formal/VerityParity.t.sol`); `deposit` runs against mocks mirroring the emitted selectors and
+**every cross-contract call + accounting slot is asserted**:
+```
+forge test --match-path test/formal/VerityParity.t.sol --evm-version shanghai
+  [PASS] test_deposit_wires_all_calls · [PASS] test_pokeSettle_onlyKeeper
+```
+(`--evm-version shanghai`+ because the bytecode uses `PUSH0`; under default `paris` it self-skips, so
+the main suite stays green. Hydration is Osaka.) This validates the *actual emitted bytecode* — deploy,
+selector dispatch, ABI-encoded cross-contract calls, storage evolution, and the `onlyKeeper` guard.
+
+Remaining limits (for a *real-Aave fork*, not the mock harness):
 - **Selector mismatch:** `MockPool` implements the real Aave `uint16` selectors (`supply` `0x617ba037`,
   `borrow` `0xa415bcad`); Verity emits `uint16→uint256` ones (`0xe9c7359c`/`0xa2b86e7b`). So the Verity
   bytecode's supply/borrow calls don't reach `MockPool` until the upstream `uint16` fix
@@ -55,6 +65,7 @@ Solidity and add a `vm.load` storage-slot differential — out of scope for the 
 
 ## Bottom line
 
-Parity today = **shared-invariant parity** (level 1), which is real, named one-to-one, and green on both
-sides. Level-2 differential testing is scaffolded and gated on standalone `solc` + the upstream `uint16`
-selector fix; level-3 is not a goal for a reference model.
+Parity today = **shared-invariant parity** (level 1, named one-to-one, green on both sides) **plus a
+runnable level-2 differential test** of the emitted bytecode (green against selector-mirroring mocks).
+A real-Aave *fork* run is one mock-swap away once the upstream `uint16` selector point is closed;
+level-3 ABI drop-in is not a goal for a reference model.

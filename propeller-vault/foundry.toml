@@ -12,6 +12,8 @@ optimizer = true
 optimizer_runs = 30
 evm_version = "paris"
 via_ir = true
+# read access for the verity forktest harness (reads bridge/forktest/bytecode/*.bin).
+fs_permissions = [{ access = "read", path = "./formal" }]
 
 [invariant]
 runs = 256

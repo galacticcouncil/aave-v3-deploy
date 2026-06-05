@@ -19,8 +19,10 @@ ver="$("$solc_bin" --version | sed -n 's/.*Version: \([0-9.]*\).*/\1/p' | head -
 for f in "$yul_dir"/*.yul; do
   name="$(basename "$f" .yul)"
   # strict-assembly compiles the `object \"...\" { ... }` form verity emits.
-  "$solc_bin" --strict-assembly --optimize --bin "$f" \
-    | awk '/Binary representation:/{getline; print; exit}' > "$out/$name.bin"
-  echo "built $out/$name.bin ($(wc -c < "$out/$name.bin") bytes hex)"
+  hex="$("$solc_bin" --strict-assembly --optimize --bin "$f" \
+    | awk '/Binary representation:/{getline; print; exit}')"
+  # 0x-prefixed, no trailing newline → ready for forge `vm.parseBytes(vm.readFile(...))`.
+  printf '0x%s' "$hex" > "$out/$name.bin"
+  echo "built $out/$name.bin (${#hex} hex chars)"
 done
 echo "done. wire VerityParity.t.sol into ../../../test/formal/ and run forge test (see README)."

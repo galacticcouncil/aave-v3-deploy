@@ -1,46 +1,44 @@
-# forktest/ — Verity-bytecode differential & fork harness
+# forktest/ — Verity-bytecode differential harness
 
-Exercises the **Verity-emitted bytecode** (not the Lean proofs) against mocks and, eventually, a real
-Aave fork — the level-2 "behavioral parity" of `../PARITY.md`. Kept **outside** the Foundry `test/`
-path on purpose, so it can't break the green Solidity suite; wire it in per "How to run" once the two
-gates below are met.
+Exercises the **Verity-emitted bytecode** (not the Lean proofs) — the level-2 "behavioral parity" of
+`../PARITY.md`. **Runnable and green:** the test deploys the bytecode `solc 0.8.33` produced from
+`../yul/CollateralVaultAave.yul`, runs `deposit` against mocks mirroring the emitted selectors, and
+asserts every cross-contract call + the accounting storage slots.
 
-## Gates (why it isn't runnable yet)
+## Status
 
-1. **standalone `solc` 0.8.33** (Verity's pin) to lower `../yul/*.yul` → bytecode. Foundry's managed
-   solc only covers the `.sol` side. Get it via `svm install 0.8.33` or Verity's `make setup-solc`.
-2. **`uint16` selector fix.** Verity models `uint16 referralCode` as `Uint256`, so the emitted `supply`
-   (`0xe9c7359c`) / `borrow` (`0xa2b86e7b`) selectors differ from mainnet Aave (`0x617ba037` /
-   `0xa415bcad`). Against the real pool (or the stock `MockPool`, which uses the `uint16` selectors)
-   those two calls miss. `repay`/`withdraw` + the inter-contract `mint`/`deposit`/`pokeRepay` already
-   match. Until fixed, test against `MockAaveU256` here (mirrors the emitted `uint256` selectors), or
-   stub the two calls.
+```
+forge test --match-path test/formal/VerityParity.t.sol --evm-version shanghai
+  [PASS] test_deposit_wires_all_calls   (deploy verity bytecode → deposit → supply/borrow/mint/seed land; slots 0/1/3/4 correct)
+  [PASS] test_pokeSettle_onlyKeeper      (non-keeper pokeSettle reverts)
+```
+Under the default `paris` EVM the test **self-skips** (the bytecode uses `PUSH0`, shanghai+), so the
+normal suite stays green. Hydration is Osaka, so shanghai/cancun is the realistic target.
 
 ## Files
 
-- `build-yul.sh` — `solc --strict-assembly --optimize` over `../yul/*.yul` → `bytecode/<name>.bin`.
-- `VerityParity.t.sol` — template Foundry test: deploy the Verity `CollateralVaultAave` bytecode, run
-  `deposit` against `MockAaveU256` + mock synth/loop, assert the accounting storage slots and that the
-  mocks recorded the calls. Compares the *internal accounting* to the Solidity vault (ABIs differ, so
-  it's state-parity, not call-for-call).
+- `build-yul.sh` — `solc --strict-assembly --optimize` over `../yul/*.yul` → `bytecode/<name>.bin`
+  (`0x`-prefixed). Needs `solc 0.8.33` (Verity's pin): `SOLC=/path/to/solc ./build-yul.sh`.
+- `bytecode/*.bin` — checked-in artifacts (so the test runs without solc); regenerate with the script.
+- the test lives at `../../../test/formal/VerityParity.t.sol` (in the Foundry tree); it reads
+  `bytecode/CollateralVaultAave.bin` (needs `fs_permissions` for `./formal`, set in `foundry.toml`).
 
-## How to run (once gated items are met)
+## Run
 
 ```sh
-# 1. build the bytecode
-SOLC=$(svm use 0.8.33 >/dev/null; which solc) ./build-yul.sh
-# 2. wire the test into the Foundry tree and run it
-cp VerityParity.t.sol ../../../test/formal/        # test = "test" in foundry.toml
-forge test --match-path 'test/formal/VerityParity.t.sol' -vvv
-# 3. (optional) real Aave fork — needs the uint16 fix first
-RPC_HYDRATION=<url> forge test --match-path 'test/formal/VerityParity.t.sol' --fork-url hydration
+# from propeller-vault/
+forge test --match-path 'test/formal/VerityParity.t.sol' --evm-version shanghai -vv
+# regenerate bytecode after editing a contract:
+SOLC=/path/to/solc-0.8.33 formal/bridge/forktest/build-yul.sh
 ```
 
-## What it proves vs. what it doesn't
+## What it proves vs. doesn't
 
-- **Proves:** the Verity bytecode dispatches and issues the cross-contract calls with correctly
-  ABI-encoded args, and its accounting storage evolves identically to the model (and, where ABIs
-  overlap, to the Solidity vault's core accounting).
-- **Doesn't:** ABI/selector drop-in equivalence (the Verity vault is a reference model — see
-  `../PARITY.md` §3). The strong parity guarantee is the shared-invariant matrix (`../PARITY.md` §1),
-  which is already green on both sides.
+- **Proves (now, green):** the Verity bytecode dispatches and issues the four cross-contract calls with
+  correctly ABI-encoded args (`supply`/`borrow`/`mint`/`subloop.deposit`), evolves its accounting
+  storage as the model says, and enforces the `onlyKeeper` guard on `pokeSettle`.
+- **Doesn't:** real-Aave-fork parity — `MockPool` (and mainnet) use the `uint16` Aave selectors, while
+  Verity emits `uint16→uint256` for `supply`/`borrow` (the open ABI point); this harness uses
+  `MockAaveU256` mirroring the emitted selectors. `repay`/`withdraw`/`mint`/`deposit`/`pokeRepay`
+  already match mainnet. A live fork test is a one-line mock swap once the `uint16` point is closed.
+- ABI drop-in equivalence is **not** a goal — the Verity vault is a reference model (`../PARITY.md` §3).
