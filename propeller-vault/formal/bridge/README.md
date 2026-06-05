@@ -14,8 +14,9 @@ build it against a Verity checkout, as below.
 SyntheticToken/{Contract,Spec,Proofs}.lean    the synthetic ERC20 (mint/burn onlyVault)
 CollateralVault/{Contract,Spec,Proofs}.lean   ERC4626 vault: deposit · requestRedeem · claim
 SubLoop/{Contract,Spec,Proofs}.lean           PRIME-isolation loop: deposit · pokeBorrow · pokeRepay · requestUnwind
-yul/{SyntheticToken,CollateralVault,SubLoop}.yul   compiler output (object + runtime + selector dispatch)
-contracts.manifest                             compiler manifest (all three contracts)
+Harvester/{Contract,Spec,Proofs}.lean         keeper: maintainPeg · deLever (guarded)
+yul/{SyntheticToken,CollateralVault,SubLoop,Harvester}.yul   compiler output (object + runtime + dispatch)
+contracts.manifest                             compiler manifest (all four contracts)
 ```
 
 ## What's proven (all axiom-clean: `propext`/`Classical.choice`/`Quot.sound`, 0 `sorry`)
@@ -41,8 +42,15 @@ loop). Headline is **equity-neutrality** of the keeper steps:
   which is exactly why the loop's risk is rate-spread (carry), not price-gap (§3 of the spec).
 - read-only `primeAmt` / `subDebt` / `balanceOf` meet their specs.
 
-The generated Yul carries the guards faithfully (e.g. `"SYNTH: only vault"` revert, checked
-overflow, `lt(balance, amount)` underflow guards) and a `switch shr(224, calldataload(0))` dispatch.
+**Harvester** — the keeper; each entrypoint re-checks an on-chain guard (mirrors HSM/liquidation):
+- `maintainPeg_restores_floor` — after `maintainPeg`, `synthValue ≥ mainDebt` (the on-chain
+  re-establishment of `principalFloored`, mirroring ℝ `maintainPeg_floors`).
+- `deLever_reverts_when_healthy` — `deLever` **reverts** when the guard fails (loop above the
+  trigger): a healthy loop can never be force-de-levered. *(Guard enforcement — a revert-path proof.)*
+- `deLever_succeeds_when_unhealthy` — when at/under the trigger, `deLever` fires and restores health.
+
+The generated Yul carries the guards faithfully (e.g. `"SYNTH: only vault"` / `"HARV: loop healthy…"`
+reverts, checked overflow, `lt(balance, amount)` underflow guards) and a `switch shr(224, calldataload(0))` dispatch.
 
 ## Scope of this cut
 
@@ -81,8 +89,10 @@ make setup-solc && solc --strict-assembly --bin yul/CollateralVault.yul
 - Aave / cross-contract calls — typed-interface ECMs, sound by assumption; scope with
   `--deny-low-level-mechanics` + `--trust-report`.
 
-## Next contracts
+## Next
 
-`Harvester` (keeper guards: harvest / deLever / maintainPeg) → the Aave typed-interface ECMs
-(`IPool.supply/borrow/repay/withdraw`) + the vault→synth and vault→loop cross-calls that wire the
-three contracts above into the full system.
+All four contracts have their share-accounting / arithmetic / guard cores verified. What remains is
+the **Aave external surface**, realized as typed-interface ECMs (sound by assumption on Aave's spec):
+`IPool.supply/borrow/repay/withdraw`, plus the cross-calls (`CollateralVault → SyntheticToken.mint`,
+`CollateralVault → SubLoop.deposit`, `Harvester → SubLoop.pokeRepay`) that wire the four contracts
+into the full system. Compile each with `--deny-low-level-mechanics` + `--trust-report`.
