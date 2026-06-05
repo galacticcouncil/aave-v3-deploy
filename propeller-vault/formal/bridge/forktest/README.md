@@ -37,8 +37,15 @@ SOLC=/path/to/solc-0.8.33 formal/bridge/forktest/build-yul.sh
 - **Proves (now, green):** the Verity bytecode dispatches and issues the four cross-contract calls with
   correctly ABI-encoded args (`supply`/`borrow`/`mint`/`subloop.deposit`), evolves its accounting
   storage as the model says, and enforces the `onlyKeeper` guard on `pokeSettle`.
-- **Doesn't:** real-Aave-fork parity — `MockPool` (and mainnet) use the `uint16` Aave selectors, while
-  Verity emits `uint16→uint256` for `supply`/`borrow` (the open ABI point); this harness uses
-  `MockAaveU256` mirroring the emitted selectors. `repay`/`withdraw`/`mint`/`deposit`/`pokeRepay`
-  already match mainnet. A live fork test is a one-line mock swap once the `uint16` point is closed.
+  **All six selectors now match mainnet Aave exactly** (`supply` `0x617ba037`, `borrow` `0xa415bcad`,
+  `repay` `0x573ade81`, `withdraw` `0x69328dec`, `mint` `0x40c10f19`, `deposit` `0xb6b55f25`) — the
+  `referralCode` params are `Uint16`, so the mock here uses the real Aave ABI and the calldata is
+  byte-identical to a live Aave call.
+- **Doesn't (the one remaining gap for a *live* fork):** real Aave `supply`/`borrow` are `void`, but
+  Verity interface methods require a return type, so they're declared `returns (Bool)` and lower to the
+  strict `externalCallWithReturn` ECM, which reverts on `returndatasize() < 32`. Against a void callee
+  that reverts after Aave already executed. The mock here `returns (bool)` to satisfy the check. A live
+  fork needs a **void / empty-returndata interface call** in Verity (a `bubblingValueCallNoOutput`-style
+  ECM routed from a no-return interface method) — analogous to the upstream PRs #1953/#1954.
+  `repay`/`withdraw` return `uint256` already, so they're fork-ready as-is.
 - ABI drop-in equivalence is **not** a goal — the Verity vault is a reference model (`../PARITY.md` §3).

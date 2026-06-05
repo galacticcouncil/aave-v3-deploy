@@ -54,6 +54,12 @@ real `call(gas(), pool, 0, ptr, len, ptr, 32)` with selector-encoded calldata an
 revert handling.
 
 ## Selector fidelity
+- **All six selectors now match mainnet** (`referralCode` declared `Uint16`): `supply` `0x617ba037`,
+  `borrow` `0xa415bcad`, `repay` `0x573ade81`, `withdraw` `0x69328dec`, `mint` `0x40c10f19`, `deposit`
+  `0xb6b55f25`. The earlier `uint16→Uint256` mismatch is closed; calldata is byte-identical to live Aave.
+  (Remaining for a live fork: void `supply`/`borrow` returns — see `forktest/README.md`.)
+
+Historical note (pre-fix):
 - **ABI-exact** (no `uint16`): `repay(address,uint256,uint256,address)` → `0x573ade81`,
   `withdraw(address,uint256,address)` → `0x69328dec` — match mainnet Aave V3.
 - **Differ** (model `uint16 referralCode` as `Uint256`, Verity lacks `uint16`): `supply` → `0xe9c7359c`

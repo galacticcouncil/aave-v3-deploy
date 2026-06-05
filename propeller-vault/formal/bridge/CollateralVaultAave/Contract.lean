@@ -13,8 +13,10 @@ import Contracts.Common
   NOTES / caveats (see bridge/AAVE_ECM_DIAGNOSIS.md):
   * Aave's real `supply`/`borrow` are `void`; Verity interface methods require a return type, so each
     is declared `returns (Bool)` and the value ignored.
-  * `referralCode` is `uint16` in real Aave; modelled here as `Uint256` (Verity lacks `uint16`), so the
-    emitted selectors differ from mainnet (supply 0xe9c7359c vs 0x617ba037, etc.).
+  * `referralCode` is `Uint16` (Aave V3), so all six emitted selectors match mainnet exactly (supply
+    0x617ba037, borrow 0xa415bcad, …); calldata is byte-identical to a live Aave call.
+  * remaining for a live fork: real `supply`/`borrow` are `void`, but `returns (Bool)` lowers to the
+    strict return-checking ECM — needs a void/empty-returndata interface call in Verity.
   * Effects precede both external calls: Checks-Effects-Interactions, enforced by Verity's codegen.
 -/
 
@@ -39,8 +41,10 @@ verity_contract CollateralVaultAave where
 
   interfaces
     interface IPool where
-      function supply(Address, Uint256, Address, Uint256) returns (Bool)
-      function borrow(Address, Uint256, Uint256, Uint256, Address) returns (Bool)
+      -- referralCode is uint16 (Aave V3) → emits the mainnet selectors (supply 0x617ba037,
+      -- borrow 0xa415bcad). uint16 args still ABI-encode to a 32-byte word, so calldata is unchanged.
+      function supply(Address, Uint256, Address, Uint16) returns (Bool)
+      function borrow(Address, Uint256, Uint256, Uint16, Address) returns (Bool)
       -- repay / withdraw return uint256 in real Aave too, and take no uint16 → the emitted
       -- selectors match mainnet exactly (repay 0x573ade81, withdraw 0x69328dec).
       function repay(Address, Uint256, Uint256, Address) returns (Uint256)

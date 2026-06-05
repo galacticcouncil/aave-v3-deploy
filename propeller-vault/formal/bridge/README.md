@@ -119,9 +119,10 @@ Same verification standard Verity uses for its own typed-interface contracts. Th
 `yul/CollateralVaultAave.yul` contains all six `call(gas(), …)` instructions, effects-first.
 
 **Selector fidelity:**
-- Aave `repay` (`0x573ade81`) and `withdraw` (`0x69328dec`) **match mainnet exactly** (no `uint16`);
-  `supply`/`borrow` differ (`0xe9c7359c`/`0xa2b86e7b` vs `0x617ba037`/`0xa415bcad`) only from the
-  `uint16 referralCode → Uint256` model.
+- **All four Aave selectors match mainnet exactly:** `supply` `0x617ba037`, `borrow` `0xa415bcad`
+  (`referralCode` is `Uint16`), `repay` `0x573ade81`, `withdraw` `0x69328dec`. Calldata is byte-identical
+  to a live Aave call. (Live fork still needs the void-return handling for `supply`/`borrow` — see
+  `forktest/`.)
 - The **inter-contract** selectors are self-consistent: `mint` → `0x40c10f19` (= `mint(address,uint256)`,
   our `SyntheticToken.mint`) and `deposit` → `0xb6b55f25` (= `deposit(uint256)`, our `SubLoop.deposit`),
   so the vault dispatches to exactly the right entrypoints on our own contracts.
@@ -168,6 +169,7 @@ All wiring is `decide`-checked (no axioms); guard enforcement is preserved throu
 ## Next
 
 Compile the whole set with `--deny-low-level-mechanics` + `--trust-report` to archive the trust
-surface; address the upstream selector/`uint16` and void-return points (verity PRs #1953/#1954 land
-the compile path). Then: deploy-side wiring (constructor addresses, access control on the keeper pokes)
+surface. Selectors now match mainnet (closed); the one remaining item for a *live* Aave fork is the
+**void-return** on `supply`/`borrow` (a void/empty-returndata interface call in Verity — analogous to
+PRs #1953/#1954). Then: deploy-side wiring (constructor addresses, access control on the keeper pokes)
 and fork-testing the emitted Yul against a real Aave deployment.

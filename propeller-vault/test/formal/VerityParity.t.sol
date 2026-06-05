@@ -1,24 +1,26 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-// TEMPLATE — lives outside the Foundry `test/` path so it can't break the green suite.
-// Wire in per ../README.md once (1) `solc 0.8.33` has built bytecode/CollateralVaultAave.bin and
-// (2) the upstream uint16 selector fix lands. It exercises the VERITY-EMITTED bytecode (not the Lean
-// proofs): deploy it, run `deposit` against mocks that mirror the emitted uint256-arg selectors, and
-// assert the accounting storage slots + that each cross-contract call was recorded.
+// Exercises the VERITY-EMITTED bytecode (not the Lean proofs): deploy CollateralVaultAave (built by
+// solc 0.8.33 from the Verity Yul), run `deposit` against mocks with the MAINNET Aave V3 ABI, and
+// assert every cross-contract call + the accounting storage slots, plus the onlyKeeper guard.
+// Run with `--evm-version shanghai` (or later; Hydration is Osaka) — the bytecode uses PUSH0, so on
+// the default `paris` EVM it self-skips and the main suite stays green. See ../formal/bridge/forktest/.
 
 import {Test} from "forge-std/Test.sol";
 
-/// aave pool mirroring the selectors Verity emits (uint256 referralCode, not uint16).
-contract MockAaveU256 {
-    bytes32 public last;            // keccak of the last call, for assertion
+/// aave pool with the MAINNET Aave V3 ABI (uint16 referralCode → selectors 0x617ba037 / 0xa415bcad):
+/// the Verity bytecode now dispatches to exactly these signatures. (real Aave's supply/borrow are
+/// `void`; here they `returns (bool)` so the strict `externalCallWithReturn` 32-byte check passes —
+/// see README: a live fork additionally needs a void/empty-returndata interface call in Verity.)
+contract MockAavePool {
     uint256 public supplied;
     uint256 public borrowed;
-    function supply(address a, uint256 amt, address obo, uint256 ref) external returns (bool) {
-        supplied += amt; last = keccak256(abi.encode("supply", a, amt, obo, ref)); return true;
+    function supply(address, uint256 amt, address, uint16) external returns (bool) {
+        supplied += amt; return true;
     }
-    function borrow(address a, uint256 amt, uint256 mode, uint256 ref, address obo) external returns (bool) {
-        borrowed += amt; last = keccak256(abi.encode("borrow", a, amt, mode, ref, obo)); return true;
+    function borrow(address, uint256 amt, uint256, uint16, address) external returns (bool) {
+        borrowed += amt; return true;
     }
     function repay(address, uint256 amt, uint256, address) external pure returns (uint256) { return amt; }
     function withdraw(address, uint256 amt, address) external pure returns (uint256) { return amt; }
@@ -42,7 +44,7 @@ contract VerityParityTest is Test {
         bytes4(keccak256("deposit(address,address,address,address,address,address,uint256,uint256,uint256)"));
 
     address vault;
-    MockAaveU256 pool;
+    MockAavePool pool;
     MockSynth synth;
     MockSubLoop loop;
     address keeper;
@@ -56,7 +58,7 @@ contract VerityParityTest is Test {
         // skip cleanly until the bytecode artifact exists (see build-yul.sh).
         string memory path = "formal/bridge/forktest/bytecode/CollateralVaultAave.bin";
         try vm.readFile(path) returns (string memory hexstr) {
-            pool = new MockAaveU256(); synth = new MockSynth(); loop = new MockSubLoop();
+            pool = new MockAavePool(); synth = new MockSynth(); loop = new MockSubLoop();
             bytes memory code = vm.parseBytes(hexstr); // init+runtime hex from solc 0.8.33
             bytes memory initWithArgs =
                 abi.encodePacked(code, abi.encode(keeper, address(pool), address(synth), address(loop)));

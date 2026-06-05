@@ -44,18 +44,22 @@ forge test --match-path test/formal/VerityParity.t.sol --evm-version shanghai
 the main suite stays green. Hydration is Osaka.) This validates the *actual emitted bytecode* — deploy,
 selector dispatch, ABI-encoded cross-contract calls, storage evolution, and the `onlyKeeper` guard.
 
-Remaining limits (for a *real-Aave fork*, not the mock harness):
-- **Selector mismatch:** `MockPool` implements the real Aave `uint16` selectors (`supply` `0x617ba037`,
-  `borrow` `0xa415bcad`); Verity emits `uint16→uint256` ones (`0xe9c7359c`/`0xa2b86e7b`). So the Verity
-  bytecode's supply/borrow calls don't reach `MockPool` until the upstream `uint16` fix
-  (verity PRs #1953/#1954 land the compile path; the `uint16` ABI point is still open). `repay`
-  (`0x573ade81`) / `withdraw` (`0x69328dec`) and the inter-contract `mint`/`deposit`/`pokeRepay`
-  selectors already match.
-- **ABI differences:** the Verity `deposit` takes interface params; the Solidity `deposit(assets,
-  receiver)` reads a stored registry. So differential testing compares the *internal accounting state*
-  (`totalAssets`/`totalSupply`/share balances/`mainDebt`), not call-for-call ABI behaviour.
-- **solc:** the Verity Yul needs a standalone `solc` (0.8.33, Verity's pin) to lower to bytecode;
-  Foundry's managed solc covers the Solidity side only.
+- **Selector parity: CLOSED.** All six emitted selectors now match mainnet Aave exactly (`supply`
+  `0x617ba037`, `borrow` `0xa415bcad`, `repay` `0x573ade81`, `withdraw` `0x69328dec`, `mint` `0x40c10f19`,
+  `deposit` `0xb6b55f25`) — `referralCode` is `Uint16` (which Verity supports), so the calldata is
+  byte-identical to a live Aave call. The harness mock uses the real Aave ABI.
+
+Remaining limit (for a *live* fork, not the mock harness):
+- **Void return:** real Aave `supply`/`borrow` are `void`, but Verity interface methods require a return
+  type, so they're declared `returns (Bool)` and lower to the strict `externalCallWithReturn` ECM, which
+  reverts on `returndatasize() < 32`. The mock `returns (bool)` to pass; a live fork needs a void /
+  empty-returndata interface call in Verity (a `bubblingValueCallNoOutput`-style ECM from a no-return
+  interface method). `repay`/`withdraw` return `uint256`, so they're fork-ready.
+- **ABI differences (vs the *Solidity* vault):** the Verity `deposit` takes interface params; the
+  Solidity `deposit(assets, receiver)` reads a stored registry — so cross-impl differential testing
+  compares *internal accounting state*, not call-for-call ABI.
+- **solc:** the Verity Yul needs standalone `solc 0.8.33` (Verity's pin) to lower to bytecode (a static
+  binary works; checked-in `.bin` lets the test run without it).
 
 ## 3. Selector / ABI parity — N/A
 

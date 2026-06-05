@@ -1,7 +1,8 @@
 // CollateralVaultAave — full deposit flow + unwind + deploy-side registry/keeper guard.
-// constructor stores keeper + pool/synth/loop addresses; pokeSettle is onlyKeeper.
-// deposit: effects → IPool.supply + IPool.borrow + SyntheticToken.mint + SubLoop.deposit.
-// pokeSettle: onlyKeeper guard → effects → IPool.repay + IPool.withdraw. stock verity-compiler.
+// referralCode is Uint16 → supply/borrow emit the MAINNET Aave selectors (0x617ba037 /
+// 0xa415bcad); all six cross-contract selectors now match mainnet exactly. stock verity-compiler.
+// (caveat: supply/borrow are declared returns(Bool); real Aave is void — a live fork additionally
+// needs a void/empty-returndata interface call. repay/withdraw/mint/deposit/pokeRepay are exact.)
 
 object "CollateralVaultAave" {
     code {
@@ -69,7 +70,7 @@ object "CollateralVaultAave" {
             let _supplied := 0
             {
                 let __ecwr_ptr := mload(64)
-                mstore(__ecwr_ptr, shl(224, 0xe9c7359c))
+                mstore(__ecwr_ptr, shl(224, 0x617ba037))
                 mstore(add(__ecwr_ptr, 4), asset)
                 mstore(add(__ecwr_ptr, 36), assets)
                 mstore(add(__ecwr_ptr, 68), onBehalfOf)
@@ -89,7 +90,7 @@ object "CollateralVaultAave" {
             let _borrowed := 0
             {
                 let __ecwr_ptr := mload(64)
-                mstore(__ecwr_ptr, shl(224, 0xa2b86e7b))
+                mstore(__ecwr_ptr, shl(224, 0xa415bcad))
                 mstore(add(__ecwr_ptr, 4), hollar)
                 mstore(add(__ecwr_ptr, 36), borrowAmount)
                 mstore(add(__ecwr_ptr, 68), 2)
@@ -355,7 +356,7 @@ object "CollateralVaultAave" {
                 let _supplied := 0
                 {
                     let __ecwr_ptr := mload(64)
-                    mstore(__ecwr_ptr, shl(224, 0xe9c7359c))
+                    mstore(__ecwr_ptr, shl(224, 0x617ba037))
                     mstore(add(__ecwr_ptr, 4), asset)
                     mstore(add(__ecwr_ptr, 36), assets)
                     mstore(add(__ecwr_ptr, 68), onBehalfOf)
@@ -375,7 +376,7 @@ object "CollateralVaultAave" {
                 let _borrowed := 0
                 {
                     let __ecwr_ptr := mload(64)
-                    mstore(__ecwr_ptr, shl(224, 0xa2b86e7b))
+                    mstore(__ecwr_ptr, shl(224, 0xa415bcad))
                     mstore(add(__ecwr_ptr, 4), hollar)
                     mstore(add(__ecwr_ptr, 36), borrowAmount)
                     mstore(add(__ecwr_ptr, 68), 2)
@@ -630,7 +631,7 @@ object "CollateralVaultAave" {
                         let _supplied := 0
                         {
                             let __ecwr_ptr := mload(64)
-                            mstore(__ecwr_ptr, shl(224, 0xe9c7359c))
+                            mstore(__ecwr_ptr, shl(224, 0x617ba037))
                             mstore(add(__ecwr_ptr, 4), asset)
                             mstore(add(__ecwr_ptr, 36), assets)
                             mstore(add(__ecwr_ptr, 68), onBehalfOf)
@@ -650,7 +651,7 @@ object "CollateralVaultAave" {
                         let _borrowed := 0
                         {
                             let __ecwr_ptr := mload(64)
-                            mstore(__ecwr_ptr, shl(224, 0xa2b86e7b))
+                            mstore(__ecwr_ptr, shl(224, 0xa415bcad))
                             mstore(add(__ecwr_ptr, 4), hollar)
                             mstore(add(__ecwr_ptr, 36), borrowAmount)
                             mstore(add(__ecwr_ptr, 68), 2)
