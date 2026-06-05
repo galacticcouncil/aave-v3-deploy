@@ -1,3 +1,8 @@
+// SubLoop — PRIME-isolation loop + deploy-side controller guard on the pokes.
+// constructor stores the controller (keeper/harvester); pokeBorrow/pokeRepay are onlyController.
+// equity-neutrality (primeAmt-subDebt invariant) proven on the authorized path; pokes revert
+// for a non-controller caller. stock verity-compiler output.
+
 object "SubLoop" {
     code {
         mstore(64, 128)
@@ -44,6 +49,15 @@ object "SubLoop" {
             stop()
         }
         function internal_internal_pokeBorrow(amount) {
+            let sender := caller()
+            let ctrl := sload(4)
+            if iszero(eq(sender, ctrl)) {
+                mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                mstore(4, 32)
+                mstore(36, 21)
+                mstore(68, 0x4c4f4f503a206f6e6c7920636f6e74726f6c6c65720000000000000000000000)
+                revert(0, 100)
+            }
             let currentPrime := sload(0)
             if lt(add(currentPrime, amount), currentPrime) {
                 mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
@@ -67,6 +81,15 @@ object "SubLoop" {
             stop()
         }
         function internal_internal_pokeRepay(amount) {
+            let sender := caller()
+            let ctrl := sload(4)
+            if iszero(eq(sender, ctrl)) {
+                mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                mstore(4, 32)
+                mstore(36, 21)
+                mstore(68, 0x4c4f4f503a206f6e6c7920636f6e74726f6c6c65720000000000000000000000)
+                revert(0, 100)
+            }
             let currentPrime := sload(0)
             if lt(currentPrime, amount) {
                 mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
@@ -129,9 +152,18 @@ object "SubLoop" {
             __ret0 := s
             leave
         }
+        let argsOffset := add(dataoffset("runtime"), datasize("runtime"))
+        let argsSize := sub(codesize(), argsOffset)
+        codecopy(0, argsOffset, argsSize)
+        if lt(argsSize, 32) {
+            revert(0, 0)
+        }
+        let controller := and(mload(0), 0xffffffffffffffffffffffffffffffffffffffff)
+        let arg0 := controller
         sstore(0, 0)
         sstore(1, 0)
         sstore(2, 0)
+        sstore(4, and(controller, 0xffffffffffffffffffffffffffffffffffffffff))
         datacopy(0, dataoffset("runtime"), datasize("runtime"))
         return(0, datasize("runtime"))
     }
@@ -177,6 +209,15 @@ object "SubLoop" {
                 stop()
             }
             function internal_internal_pokeBorrow(amount) {
+                let sender := caller()
+                let ctrl := sload(4)
+                if iszero(eq(sender, ctrl)) {
+                    mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                    mstore(4, 32)
+                    mstore(36, 21)
+                    mstore(68, 0x4c4f4f503a206f6e6c7920636f6e74726f6c6c65720000000000000000000000)
+                    revert(0, 100)
+                }
                 let currentPrime := sload(0)
                 if lt(add(currentPrime, amount), currentPrime) {
                     mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
@@ -200,6 +241,15 @@ object "SubLoop" {
                 stop()
             }
             function internal_internal_pokeRepay(amount) {
+                let sender := caller()
+                let ctrl := sload(4)
+                if iszero(eq(sender, ctrl)) {
+                    mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                    mstore(4, 32)
+                    mstore(36, 21)
+                    mstore(68, 0x4c4f4f503a206f6e6c7920636f6e74726f6c6c65720000000000000000000000)
+                    revert(0, 100)
+                }
                 let currentPrime := sload(0)
                 if lt(currentPrime, amount) {
                     mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
@@ -327,6 +377,15 @@ object "SubLoop" {
                             revert(0, 0)
                         }
                         let amount := calldataload(4)
+                        let sender := caller()
+                        let ctrl := sload(4)
+                        if iszero(eq(sender, ctrl)) {
+                            mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                            mstore(4, 32)
+                            mstore(36, 21)
+                            mstore(68, 0x4c4f4f503a206f6e6c7920636f6e74726f6c6c65720000000000000000000000)
+                            revert(0, 100)
+                        }
                         let currentPrime := sload(0)
                         if lt(add(currentPrime, amount), currentPrime) {
                             mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
@@ -361,6 +420,15 @@ object "SubLoop" {
                             revert(0, 0)
                         }
                         let amount := calldataload(4)
+                        let sender := caller()
+                        let ctrl := sload(4)
+                        if iszero(eq(sender, ctrl)) {
+                            mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                            mstore(4, 32)
+                            mstore(36, 21)
+                            mstore(68, 0x4c4f4f503a206f6e6c7920636f6e74726f6c6c65720000000000000000000000)
+                            revert(0, 100)
+                        }
                         let currentPrime := sload(0)
                         if lt(currentPrime, amount) {
                             mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)

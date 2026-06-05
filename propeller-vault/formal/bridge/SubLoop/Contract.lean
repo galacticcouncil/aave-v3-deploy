@@ -26,11 +26,13 @@ verity_contract SubLoop where
     subDebtSlot       : Uint256 := slot 1   -- HOLLAR borrowed in the loop
     totalSharesSlot   : Uint256 := slot 2   -- equity shares across all vaults
     shareBalancesSlot : Address → Uint256 := slot 3   -- per-vault equity shares
+    controllerSlot    : Address := slot 4   -- authorized poker (the keeper / harvester)
 
-  constructor () := do
+  constructor (controller : Address) := do
     setStorage primeAmtSlot 0
     setStorage subDebtSlot 0
     setStorage totalSharesSlot 0
+    setStorageAddr controllerSlot controller
 
   -- a vault seeds the loop with HOLLAR-equivalent equity → mints equity shares 1:1.
   -- (seed buys PRIME: primeAmt += seed; subDebt unchanged ⇒ equity += seed.)
@@ -47,7 +49,11 @@ verity_contract SubLoop where
     setStorage totalSharesSlot newSupply
 
   -- keeper step UP: borrow `amount` HOLLAR, buy PRIME. Both legs grow equally ⇒ equity neutral.
+  -- onlyController: only the registered keeper/harvester may move leverage.
   function pokeBorrow (amount : Uint256) : Unit := do
+    let sender ← msgSender
+    let ctrl ← getStorageAddr controllerSlot
+    require (sender == ctrl) "LOOP: only controller"
     let currentPrime ← getStorage primeAmtSlot
     let newPrime ← requireSomeUint (safeAdd currentPrime amount) "LOOP: prime overflow"
     let currentDebt ← getStorage subDebtSlot
@@ -56,7 +62,11 @@ verity_contract SubLoop where
     setStorage subDebtSlot newDebt
 
   -- keeper step DOWN: sell PRIME, repay `amount` HOLLAR. Both legs shrink equally ⇒ equity neutral.
+  -- onlyController: only the registered keeper/harvester may move leverage.
   function pokeRepay (amount : Uint256) : Unit := do
+    let sender ← msgSender
+    let ctrl ← getStorageAddr controllerSlot
+    require (sender == ctrl) "LOOP: only controller"
     let currentPrime ← getStorage primeAmtSlot
     require (currentPrime >= amount) "LOOP: prime underflow"
     let currentDebt ← getStorage subDebtSlot

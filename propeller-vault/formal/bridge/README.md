@@ -149,6 +149,11 @@ Same verification standard Verity uses for its own typed-interface contracts. Th
 - **Access control:** `pokeSettle` is `onlyKeeper` — `pokeSettle_reverts_when_not_keeper`
   (`Proofs.lean`) proves a non-keeper caller reverts before any effect or external call, so only the
   registered keeper can drive the unwind/Aave repay+withdraw.
+- **SubLoop pokes are `onlyController`:** the constructor stores the controller (keeper/harvester);
+  `pokeBorrow`/`pokeRepay` revert for anyone else (`pokeBorrow_reverts_when_not_controller` /
+  `pokeRepay_reverts_when_not_controller`). The equity-neutrality theorems are now stated on the
+  authorized path (`s.sender = controller`), so leverage can only move via an authorized poke and
+  even then keeps loop equity invariant.
 
 ## Status
 
