@@ -49,7 +49,15 @@ thresholds, WAD HF; `MockDcaScheduler` simulates the DCA tranches):
   (yield notional tracks collateral value); INV-1 preserved
 - **maintainPeg** → Main debt accrues interest → re-top synthetic so `synth·LT ≥ debt`
 
-18 tests passing (`forge test`), incl. 6 invariants under fuzzing.
+- **DCA dispatch** → `DcaDispatch` library SCALE-encodes `pallet_dca.schedule`
+  (HOLLAR↔aPRIME route) and dispatches via the `0x0401` precompile so the order
+  is owned by the SubLoop's own account. Verified **byte-exact against mainnet
+  runtime metadata** (polkadot.js). Swap seam: `setDcaScheduler(addr)` — `0` uses
+  this library inline (now), a precompile address swaps in later (optimization),
+  no other change.
+
+21 tests passing (`forge test`), incl. 6 invariants under fuzzing + the SCALE
+encoder vs runtime-metadata reference.
 
 **Remaining:** `rebalance` *down*-case (de-lever on collateral drop — a loop
 unwind; not safety-critical, the synthetic still floors HF); then the real

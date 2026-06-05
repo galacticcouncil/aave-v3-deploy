@@ -11,6 +11,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IAavePool} from "./interfaces/IAavePool.sol";
 import {IDcaScheduler} from "./interfaces/IDcaScheduler.sol";
 import {ISubLoop} from "./interfaces/ISubLoop.sol";
+import {DcaDispatch} from "./lib/DcaDispatch.sol";
 
 /// @title SubLoop
 /// @notice The single shared leveraged PRIME/HOLLAR loop (Aave isolation mode).
@@ -73,6 +74,15 @@ contract SubLoop is
     uint256 public harvestThreshold; // WAD fraction of equity
     uint256 public deployTranche; // HOLLAR per deploy-DCA execution
     uint256 public unwindTranche; // aPRIME per unwind-DCA execution
+
+    // ── DCA route config (for the dispatch path; dca == address(0)) ─────────
+    // Substrate asset ids + stableswap pool id for HOLLAR↔aPRIME, set by admin.
+    uint32 public hollarAssetId; // 222
+    uint32 public primeAssetId; // 43
+    uint32 public aPrimeAssetId; // 1043
+    uint32 public primePoolId; // stableswap 143 (HOLLAR↔PRIME)
+    uint32 public dcaPeriod; // blocks between executions
+    uint32 public dcaSlippagePpm; // Permill slippage
 
     // ── equity shares ─────────────────────────────────────────────────────
     mapping(address => uint256) internal _sharesOf;
@@ -217,7 +227,14 @@ contract SubLoop is
         // Schedule / extend the unbounded aPRIME→HOLLAR unwind order. Tranches
         // are HF-capped at execution (see the DCA adapter), so the spiral never
         // dips below the floor before pokeRepay catches up.
-        unwindOrderId = dca.scheduleUnwind(address(this), unwindTranche, collBudget);
+        if (address(dca) != address(0)) {
+            unwindOrderId = dca.scheduleUnwind(address(this), unwindTranche, collBudget);
+        } else {
+            DcaDispatch.scheduleSell(
+                dcaPeriod, uint128(collBudget), dcaSlippagePpm,
+                aPrimeAssetId, hollarAssetId, uint128(unwindTranche), 0, _unwindRoute()
+            );
+        }
         unwindId = unwindOrderId;
         emit UnwindRequested(msg.sender, shares, equityHollar, unwindId);
     }
@@ -268,9 +285,35 @@ contract SubLoop is
     /// @dev Push HOLLAR into the unbounded deploy DCA (HOLLAR→aPRIME).
     function _fundDeploy(uint256 amount) internal {
         pendingDeployHollar += amount;
-        hollar.safeApprove(address(dca), 0);
-        hollar.safeApprove(address(dca), amount);
-        deployOrderId = dca.scheduleDeploy(address(this), deployTranche, amount);
+        if (address(dca) != address(0)) {
+            // mock (tests) / future DCA precompile — SubLoop calls it directly,
+            // so the order's origin is this contract's account.
+            hollar.safeApprove(address(dca), 0);
+            hollar.safeApprove(address(dca), amount);
+            deployOrderId = dca.scheduleDeploy(address(this), deployTranche, amount);
+        } else {
+            // production: unbounded HOLLAR→aPRIME DCA, scheduled as THIS account
+            // via the 0x0401 dispatch (origin = SubLoop). Swap-in a DCA precompile
+            // later by setting `dca` to its address — no other change.
+            DcaDispatch.scheduleSell(
+                dcaPeriod, uint128(amount), dcaSlippagePpm,
+                hollarAssetId, aPrimeAssetId, uint128(deployTranche), 0, _deployRoute()
+            );
+        }
+    }
+
+    /// @dev HOLLAR →[stableswap primePoolId]→ PRIME →[Aave]→ aPRIME.
+    function _deployRoute() internal view returns (DcaDispatch.Hop[] memory r) {
+        r = new DcaDispatch.Hop[](2);
+        r[0] = DcaDispatch.Hop(DcaDispatch.POOL_STABLESWAP, true, primePoolId, hollarAssetId, primeAssetId);
+        r[1] = DcaDispatch.Hop(DcaDispatch.POOL_AAVE, false, 0, primeAssetId, aPrimeAssetId);
+    }
+
+    /// @dev aPRIME →[Aave]→ PRIME →[stableswap primePoolId]→ HOLLAR.
+    function _unwindRoute() internal view returns (DcaDispatch.Hop[] memory r) {
+        r = new DcaDispatch.Hop[](2);
+        r[0] = DcaDispatch.Hop(DcaDispatch.POOL_AAVE, false, 0, aPrimeAssetId, primeAssetId);
+        r[1] = DcaDispatch.Hop(DcaDispatch.POOL_STABLESWAP, true, primePoolId, primeAssetId, hollarAssetId);
     }
 
     /// @inheritdoc ISubLoop
@@ -412,6 +455,30 @@ contract SubLoop is
     function setTranches(uint256 _deployTranche, uint256 _unwindTranche) external onlyRole(ADMIN_ROLE) {
         deployTranche = _deployTranche;
         unwindTranche = _unwindTranche;
+    }
+
+    /// @notice Configure the HOLLAR↔aPRIME DCA route (used by the dispatch path
+    ///         when `dca == address(0)`). Mainnet: 222/43/1043/143.
+    function configureDca(
+        uint32 _hollarAssetId,
+        uint32 _primeAssetId,
+        uint32 _aPrimeAssetId,
+        uint32 _primePoolId,
+        uint32 _period,
+        uint32 _slippagePpm
+    ) external onlyRole(ADMIN_ROLE) {
+        hollarAssetId = _hollarAssetId;
+        primeAssetId = _primeAssetId;
+        aPrimeAssetId = _aPrimeAssetId;
+        primePoolId = _primePoolId;
+        dcaPeriod = _period;
+        dcaSlippagePpm = _slippagePpm;
+    }
+
+    /// @notice Set the DCA backend: `address(0)` = inline `DcaDispatch` (0x0401);
+    ///         a precompile address = call it directly (future optimization).
+    function setDcaScheduler(address _dca) external onlyRole(ADMIN_ROLE) {
+        dca = IDcaScheduler(_dca);
     }
 
     function setParams(
