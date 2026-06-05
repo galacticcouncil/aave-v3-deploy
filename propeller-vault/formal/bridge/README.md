@@ -89,10 +89,35 @@ make setup-solc && solc --strict-assembly --bin yul/CollateralVault.yul
 - Aave / cross-contract calls — typed-interface ECMs, sound by assumption; scope with
   `--deny-low-level-mechanics` + `--trust-report`.
 
+## Aave wiring — first ECM (`CollateralVaultAave/`)
+
+The first cross-contract step: `deposit` calls **Aave `IPool.supply`** before the 1:1 share
+accounting (Solidity runtime step 2, "Vault → Aave: supply collateral"). The call is a typed-interface
+ECM (`interface IPool where function supply(Address,Uint256,Address,Uint256) …`), invoked as
+`pool.supply asset assets onBehalfOf 0`.
+
+**Machine-checked wiring (`Wiring.lean`, `decide`, no axioms):**
+- `external_is_IPool_supply` — the contract's external set is exactly `["IPool.supply"]`.
+- `deposit_issues_supply_call` — `deposit`'s body issues it as a state-writing `externalCallWithReturn`
+  ECM with 5 args (pool addr + `asset`, `amount`, `onBehalfOf`, `referralCode`).
+
+This is the same verification standard Verity uses for its own typed-interface contracts.
+
+**Honest status / caveats:**
+- Real Aave `supply` is `void`; Verity interface methods require a return type, so it's declared
+  `returns (Bool)` and the value ignored (`_ok`) — a one-line change when a void external-call ECM
+  lands; the emitted `call` is identical.
+- **Yul emission for ECM specs** hits a native-eval limitation in this Verity build (`evalConstCheck`
+  on the ECM `compile` closure) — the spec evaluates fine in-interpreter (`#eval`), so this is
+  compiler plumbing, not a modelling gap. Emission is gated on Verity's ECM/linking flow.
+- The external call is `writesState` (conservative), so the clean axiom-clean `assets == supply`
+  accounting proof of the pure `CollateralVault/` no longer holds *unconditionally* on the wired
+  variant — it now sits on the **external-call trust assumption** (Aave `supply` doesn't reenter or
+  mutate this contract's slots). That is exactly the documented boundary; the pure `CollateralVault/`
+  retains the unconditional proof.
+
 ## Next
 
-All four contracts have their share-accounting / arithmetic / guard cores verified. What remains is
-the **Aave external surface**, realized as typed-interface ECMs (sound by assumption on Aave's spec):
-`IPool.supply/borrow/repay/withdraw`, plus the cross-calls (`CollateralVault → SyntheticToken.mint`,
-`CollateralVault → SubLoop.deposit`, `Harvester → SubLoop.pokeRepay`) that wire the four contracts
-into the full system. Compile each with `--deny-low-level-mechanics` + `--trust-report`.
+Remaining Aave surface as ECMs (sound by assumption): `IPool.borrow/repay/withdraw`, plus the other
+cross-calls (`CollateralVault → SyntheticToken.mint`, `→ SubLoop.deposit`, `Harvester → SubLoop.pokeRepay`).
+Compile each with `--deny-low-level-mechanics` + `--trust-report`.
