@@ -50,7 +50,20 @@ external call"* (Verity issue #1728). This is a **real security guard**, and it 
 reentrancy hazard in the first draft (which called `pool.supply` before the share writes).
 
 - **Fix (correct, committed):** order **effects before the interaction** — do the share/asset/supply
-  storage writes, then `pool.supply` last. `CollateralVaultAave/Contract.lean` is now CEI-compliant.
+  storage writes, then `pool.supply` last. `CollateralVaultAave/Contract.lean` is CEI-compliant.
+
+### 3b. Multiple external calls (supply → borrow) — `allow_post_interaction_writes`
+Wiring a **second** Aave call (`IPool.borrow`, the HOLLAR borrow leg) after `supply` re-triggers CEI:
+`externalCallWithReturn` is `writesState`, so Verity treats the *second* external call as a
+"writing ECM after an external call" (`CEIEcmWriteAfterCallRejected`), even though no *storage* write
+follows either call. The standard supply-then-borrow sequence therefore needs the
+`allow_post_interaction_writes` function annotation (the escape hatch the error names).
+
+- **Justified here:** every storage write (`shares`, `totalAssets`, `totalSupply`, `mainDebt`)
+  precedes **both** calls; the only operation after the first call is the second call to the **same
+  trusted pool**, with no storage write after either. Reentrancy w.r.t. our own state is unaffected.
+- Arguably the CEI rule is over-conservative when the post-call "write" is itself another external
+  call (a ubiquitous pattern), but a sound escape hatch exists, so this is *not* filed as a bug.
 
 ## Result
 With (1) the static emit path, (2) the external-identifier relaxation, and (3) CEI-correct ordering,

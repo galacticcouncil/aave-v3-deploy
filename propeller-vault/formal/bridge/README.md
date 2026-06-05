@@ -89,19 +89,24 @@ make setup-solc && solc --strict-assembly --bin yul/CollateralVault.yul
 - Aave / cross-contract calls — typed-interface ECMs, sound by assumption; scope with
   `--deny-low-level-mechanics` + `--trust-report`.
 
-## Aave wiring — first ECM (`CollateralVaultAave/`)
+## Aave wiring (`CollateralVaultAave/`)
 
-The first cross-contract step: `deposit` calls **Aave `IPool.supply`** before the 1:1 share
-accounting (Solidity runtime step 2, "Vault → Aave: supply collateral"). The call is a typed-interface
-ECM (`interface IPool where function supply(Address,Uint256,Address,Uint256) …`), invoked as
-`pool.supply asset assets onBehalfOf 0`.
+`deposit` mints shares 1:1 + records the HOLLAR debt (effects), then **supplies the collateral to
+Aave and borrows HOLLAR against it** (interactions) — Solidity runtime step 2 ("supply ETH, then
+borrow HOLLAR ≤74% LTV"). Both are typed-interface ECMs:
+`interface IPool where function supply(…); function borrow(…) end`, invoked as
+`pool.supply …` / `pool.borrow …`. `deposit` is annotated `allow_post_interaction_writes` (see §3b of
+`AAVE_ECM_DIAGNOSIS.md`): all storage writes precede both calls, and the only thing after the first
+call is the second call to the same trusted pool.
 
 **Machine-checked wiring (`Wiring.lean`, `decide`, no axioms):**
-- `external_is_IPool_supply` — the contract's external set is exactly `["IPool.supply"]`.
-- `deposit_issues_supply_call` — `deposit`'s body issues it as a state-writing `externalCallWithReturn`
-  ECM with 5 args (pool addr + `asset`, `amount`, `onBehalfOf`, `referralCode`).
+- `externals_are_supply_then_borrow` — external set is exactly `["IPool.supply", "IPool.borrow"]`.
+- `deposit_issues_supply_call` / `deposit_issues_borrow_call` — `deposit` issues each as a
+  state-writing `externalCallWithReturn` ECM (supply: 5 args; borrow: 6 args).
+- `deposit_issues_exactly_two_calls` — and no others.
 
-This is the same verification standard Verity uses for its own typed-interface contracts.
+Same verification standard Verity uses for its own typed-interface contracts. The emitted
+`yul/CollateralVaultAave.yul` contains both `call(gas(), pool, …)` instructions, effects-first.
 
 **Honest status / caveats:**
 - Real Aave `supply` is `void`; Verity interface methods require a return type, so it's declared

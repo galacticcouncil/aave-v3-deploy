@@ -2,14 +2,20 @@ import Contracts.Common
 
 /-!
   Propeller `CollateralVault` — Aave-wired variant. Demonstrates the cross-contract / external-call
-  path: `deposit` calls `IPool.supply` (Aave V3) before the 1:1 share accounting, mirroring the
-  Solidity runtime step 2 ("Vault → Aave: supply collateral").
+  path: `deposit` mints shares 1:1 (effects), then **supplies the collateral to Aave and borrows
+  HOLLAR against it** (interactions) — Solidity runtime step 2 ("Vault → Aave: supply ETH, then
+  borrow HOLLAR ≤74% LTV").
 
-  The `IPool.supply` call is a typed-interface ECM → lowers to a real EVM `call` with the supply
-  selector. It is **sound by assumption** on Aave's spec (the trust boundary; compile with
-  `--deny-low-level-mechanics` + `--trust-report`). NOTE: Aave's real `supply` is `void`; Verity
-  interface methods require a return type, so it is declared `returns (Bool)` and the value ignored
-  — a one-line change once a void external-call ECM lands; the emitted `call` is the same.
+  `IPool.supply` / `IPool.borrow` are typed-interface ECMs → each lowers to a real EVM `call` with the
+  method selector. They are **sound by assumption** on Aave's spec (the trust boundary; compile with
+  `--deny-low-level-mechanics` + `--trust-report`).
+
+  NOTES / caveats (see bridge/AAVE_ECM_DIAGNOSIS.md):
+  * Aave's real `supply`/`borrow` are `void`; Verity interface methods require a return type, so each
+    is declared `returns (Bool)` and the value ignored.
+  * `referralCode` is `uint16` in real Aave; modelled here as `Uint256` (Verity lacks `uint16`), so the
+    emitted selectors differ from mainnet (supply 0xe9c7359c vs 0x617ba037, etc.).
+  * Effects precede both external calls: Checks-Effects-Interactions, enforced by Verity's codegen.
 -/
 
 namespace Contracts
@@ -23,19 +29,30 @@ verity_contract CollateralVaultAave where
     totalAssetsSlot   : Uint256 := slot 0
     totalSupplySlot   : Uint256 := slot 1
     shareBalancesSlot : Address → Uint256 := slot 2
+    mainDebtSlot      : Uint256 := slot 3   -- HOLLAR borrowed against the supplied collateral
 
   interfaces
     interface IPool where
       function supply(Address, Uint256, Address, Uint256) returns (Bool)
+      function borrow(Address, Uint256, Uint256, Uint256, Address) returns (Bool)
     end
 
   constructor () := do
     setStorage totalAssetsSlot 0
     setStorage totalSupplySlot 0
+    setStorage mainDebtSlot 0
 
-  -- deposit collateral → mint shares 1:1 (effects) → supply to Aave (interaction).
-  -- Effects precede the external call: Checks-Effects-Interactions, enforced by Verity's codegen.
-  function deposit (pool : IPool, asset : Address, onBehalfOf : Address, assets : Uint256) : Unit := do
+  -- deposit collateral → mint shares 1:1 + record HOLLAR debt (effects) → supply collateral to
+  -- Aave, then borrow HOLLAR against it (interactions). `borrowAmount` (≤ LTV·assets) and the
+  -- HOLLAR asset are supplied by the caller; interestRateMode 2 = variable.
+  --
+  -- `allow_post_interaction_writes`: ALL storage writes precede BOTH external calls (true CEI);
+  -- the only thing after the first call (`supply`) is the second call (`borrow`) to the SAME
+  -- trusted Aave pool, with no storage write following either. Verity's CEI check is conservative
+  -- about a second writing-ECM after any external call, so the annotation is required for the
+  -- standard supply-then-borrow sequence. Reentrancy w.r.t. our own state is unaffected.
+  function allow_post_interaction_writes deposit (pool : IPool, asset : Address, hollar : Address,
+      onBehalfOf : Address, assets : Uint256, borrowAmount : Uint256) : Unit := do
     let sender ← msgSender
     let currentShares ← getMapping shareBalancesSlot sender
     let newShares ← requireSomeUint (safeAdd currentShares assets) "VAULT: share overflow"
@@ -43,10 +60,14 @@ verity_contract CollateralVaultAave where
     let newAssets ← requireSomeUint (safeAdd currentAssets assets) "VAULT: assets overflow"
     let currentSupply ← getStorage totalSupplySlot
     let newSupply ← requireSomeUint (safeAdd currentSupply assets) "VAULT: supply overflow"
+    let currentDebt ← getStorage mainDebtSlot
+    let newDebt ← requireSomeUint (safeAdd currentDebt borrowAmount) "VAULT: debt overflow"
     setMapping shareBalancesSlot sender newShares
     setStorage totalAssetsSlot newAssets
     setStorage totalSupplySlot newSupply
-    let _ok ← pool.supply asset assets onBehalfOf 0
+    setStorage mainDebtSlot newDebt
+    let _supplied ← pool.supply asset assets onBehalfOf 0
+    let _borrowed ← pool.borrow hollar borrowAmount 2 0 onBehalfOf
 
   function balanceOf (addr : Address) : Uint256 := do
     let s ← getMapping shareBalancesSlot addr
@@ -59,5 +80,9 @@ verity_contract CollateralVaultAave where
   function totalSupply () : Uint256 := do
     let t ← getStorage totalSupplySlot
     return t
+
+  function mainDebt () : Uint256 := do
+    let d ← getStorage mainDebtSlot
+    return d
 
 end Contracts
