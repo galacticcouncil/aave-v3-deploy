@@ -41,11 +41,11 @@ SOLC=/path/to/solc-0.8.33 formal/bridge/forktest/build-yul.sh
   `repay` `0x573ade81`, `withdraw` `0x69328dec`, `mint` `0x40c10f19`, `deposit` `0xb6b55f25`) — the
   `referralCode` params are `Uint16`, so the mock here uses the real Aave ABI and the calldata is
   byte-identical to a live Aave call.
-- **Doesn't (the one remaining gap for a *live* fork):** real Aave `supply`/`borrow` are `void`, but
-  Verity interface methods require a return type, so they're declared `returns (Bool)` and lower to the
-  strict `externalCallWithReturn` ECM, which reverts on `returndatasize() < 32`. Against a void callee
-  that reverts after Aave already executed. The mock here `returns (bool)` to satisfy the check. A live
-  fork needs a **void / empty-returndata interface call** in Verity (a `bubblingValueCallNoOutput`-style
-  ECM routed from a no-return interface method) — analogous to the upstream PRs #1953/#1954.
-  `repay`/`withdraw` return `uint256` already, so they're fork-ready as-is.
+- **Void Aave calls now work:** `supply`/`borrow` are declared **void** (no `returns`) and lower to the
+  no-return ECM (`externalCallNoReturn`) — bare `call(...)` with no `returndatasize` check — so the
+  mocks here are **void** (real Aave shape, return nothing) and `deposit` completes. This needs the
+  void-call compiler change (verity PR #1957); the pre-PR `returns (Bool)`/strict bytecode reverted
+  against these same void callees. `repay`/`withdraw` return `uint256` and keep their decode.
 - ABI drop-in equivalence is **not** a goal — the Verity vault is a reference model (`../PARITY.md` §3).
+- **Remaining for a literal live fork:** a real RPC + the verity PRs (#1953/#1954/#1957) merged into a
+  Verity build; against a live Aave pool the same calldata applies (selectors + void handling are done).

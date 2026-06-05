@@ -49,12 +49,15 @@ selector dispatch, ABI-encoded cross-contract calls, storage evolution, and the 
   `deposit` `0xb6b55f25`) — `referralCode` is `Uint16` (which Verity supports), so the calldata is
   byte-identical to a live Aave call. The harness mock uses the real Aave ABI.
 
-Remaining limit (for a *live* fork, not the mock harness):
-- **Void return:** real Aave `supply`/`borrow` are `void`, but Verity interface methods require a return
-  type, so they're declared `returns (Bool)` and lower to the strict `externalCallWithReturn` ECM, which
-  reverts on `returndatasize() < 32`. The mock `returns (bool)` to pass; a live fork needs a void /
-  empty-returndata interface call in Verity (a `bubblingValueCallNoOutput`-style ECM from a no-return
-  interface method). `repay`/`withdraw` return `uint256`, so they're fork-ready.
+- **Void return: CLOSED.** `supply`/`borrow` are declared **void** and lower to the no-return ECM
+  (`externalCallNoReturn` — no `returndatasize` check), so the harness mocks are **void** (real Aave
+  shape) and `deposit` completes; the pre-change strict bytecode reverted against the same void callees.
+  Needs the void-call compiler change (verity PR #1957). `repay`/`withdraw` return `uint256` and keep
+  their decode.
+
+Remaining for a *literal* live fork (not the mock harness):
+- A real RPC + the verity PRs (#1953/#1954/#1957) in the Verity build used to emit bytecode. The
+  emitted calldata (selectors + void handling) already matches a live Aave pool.
 - **ABI differences (vs the *Solidity* vault):** the Verity `deposit` takes interface params; the
   Solidity `deposit(assets, receiver)` reads a stored registry — so cross-impl differential testing
   compares *internal accounting state*, not call-for-call ABI.

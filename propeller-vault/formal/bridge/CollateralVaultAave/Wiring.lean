@@ -21,28 +21,30 @@ theorem externals_are_the_six_calls :
       = ["IPool.supply", "IPool.borrow", "IPool.repay", "IPool.withdraw",
          "ISynth.mint", "ISubLoop.deposit"] := by decide
 
-/-- `deposit` issues the `supply` call: a state-writing `externalCallWithReturn` ECM with 5 args
-    (pool + `asset`, `amount`, `onBehalfOf`, `referralCode`). -/
+/-- `deposit` issues the `supply` call: a state-writing **void** `externalCallNoReturn` ECM with 5 args
+    (pool + `asset`, `amount`, `onBehalfOf`, `referralCode`). Real Aave V3 `supply` is `void`, so this
+    is the no-output ECM (`resultVars := []`, no returndata check) — not `externalCallWithReturn`. -/
 theorem deposit_issues_supply_call :
     (CollateralVaultAave.spec.functions).any (fun fn =>
       fn.name == "deposit" &&
         fn.body.any (fun stmt =>
           match stmt with
           | Stmt.ecm mod args =>
-              mod.name == "externalCallWithReturn" && mod.numArgs == 5 && mod.writesState &&
-                args.length == 5
+              mod.name == "externalCallNoReturn" && mod.numArgs == 5 && mod.writesState &&
+                mod.resultVars == [] && args.length == 5
           | _ => false)) = true := by decide
 
-/-- `deposit` also issues the `borrow` call: a state-writing `externalCallWithReturn` ECM with 6 args
-    (pool + `asset`, `amount`, `interestRateMode`, `referralCode`, `onBehalfOf`). -/
+/-- `deposit` also issues the `borrow` call: a state-writing **void** `externalCallNoReturn` ECM with
+    6 args (pool + `asset`, `amount`, `interestRateMode`, `referralCode`, `onBehalfOf`). Real Aave V3
+    `borrow` is `void`, so this is the no-output ECM — not `externalCallWithReturn`. -/
 theorem deposit_issues_borrow_call :
     (CollateralVaultAave.spec.functions).any (fun fn =>
       fn.name == "deposit" &&
         fn.body.any (fun stmt =>
           match stmt with
           | Stmt.ecm mod args =>
-              mod.name == "externalCallWithReturn" && mod.numArgs == 6 && mod.writesState &&
-                args.length == 6
+              mod.name == "externalCallNoReturn" && mod.numArgs == 6 && mod.writesState &&
+                mod.resultVars == [] && args.length == 6
           | _ => false)) = true := by decide
 
 /-- `deposit` issues the **inter-contract** `SyntheticToken.mint` call (3 args: synth + `to`,`amount`). -/

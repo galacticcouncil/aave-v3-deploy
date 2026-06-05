@@ -11,12 +11,12 @@ import Contracts.Common
   `--deny-low-level-mechanics` + `--trust-report`).
 
   NOTES / caveats (see bridge/AAVE_ECM_DIAGNOSIS.md):
-  * Aave's real `supply`/`borrow` are `void`; Verity interface methods require a return type, so each
-    is declared `returns (Bool)` and the value ignored.
+  * Aave's real `supply`/`borrow` are `void`. They are declared here with **no `returns` clause**, so
+    each lowers to the no-output `externalCallNoReturn` ECM: a selector+args `call(...)` that bubbles
+    failure returndata but performs **no `returndatasize` check** and decodes no return value — exactly
+    what a void callee (empty returndata) needs. `repay`/`withdraw` keep `returns (Uint256)`.
   * `referralCode` is `Uint16` (Aave V3), so all six emitted selectors match mainnet exactly (supply
     0x617ba037, borrow 0xa415bcad, …); calldata is byte-identical to a live Aave call.
-  * remaining for a live fork: real `supply`/`borrow` are `void`, but `returns (Bool)` lowers to the
-    strict return-checking ECM — needs a void/empty-returndata interface call in Verity.
   * Effects precede both external calls: Checks-Effects-Interactions, enforced by Verity's codegen.
 -/
 
@@ -43,8 +43,9 @@ verity_contract CollateralVaultAave where
     interface IPool where
       -- referralCode is uint16 (Aave V3) → emits the mainnet selectors (supply 0x617ba037,
       -- borrow 0xa415bcad). uint16 args still ABI-encode to a 32-byte word, so calldata is unchanged.
-      function supply(Address, Uint256, Address, Uint16) returns (Bool)
-      function borrow(Address, Uint256, Uint256, Uint16, Address) returns (Bool)
+      -- void in real aave v3; declared with no returns clause → no-return ECM.
+      function supply(Address, Uint256, Address, Uint16)
+      function borrow(Address, Uint256, Uint256, Uint16, Address)
       -- repay / withdraw return uint256 in real Aave too, and take no uint16 → the emitted
       -- selectors match mainnet exactly (repay 0x573ade81, withdraw 0x69328dec).
       function repay(Address, Uint256, Uint256, Address) returns (Uint256)
@@ -98,8 +99,8 @@ verity_contract CollateralVaultAave where
     setStorage totalSupplySlot newSupply
     setStorage mainDebtSlot newDebt
     setStorage synthSupplySlot newSynth
-    let _supplied ← pool.supply asset assets onBehalfOf 0
-    let _borrowed ← pool.borrow hollar borrowAmount 2 0 onBehalfOf
+    pool.supply asset assets onBehalfOf 0
+    pool.borrow hollar borrowAmount 2 0 onBehalfOf
     let _minted ← synth.mint onBehalfOf synthAmount           -- CollateralVault → SyntheticToken
     let _seeded ← loop.deposit borrowAmount                   -- CollateralVault → SubLoop
 

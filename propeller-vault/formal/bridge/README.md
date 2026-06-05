@@ -121,16 +121,15 @@ Same verification standard Verity uses for its own typed-interface contracts. Th
 **Selector fidelity:**
 - **All four Aave selectors match mainnet exactly:** `supply` `0x617ba037`, `borrow` `0xa415bcad`
   (`referralCode` is `Uint16`), `repay` `0x573ade81`, `withdraw` `0x69328dec`. Calldata is byte-identical
-  to a live Aave call. (Live fork still needs the void-return handling for `supply`/`borrow` — see
-  `forktest/`.)
+  to a live Aave call.
 - The **inter-contract** selectors are self-consistent: `mint` → `0x40c10f19` (= `mint(address,uint256)`,
   our `SyntheticToken.mint`) and `deposit` → `0xb6b55f25` (= `deposit(uint256)`, our `SubLoop.deposit`),
   so the vault dispatches to exactly the right entrypoints on our own contracts.
 
 **Honest status / caveats:**
-- Real Aave `supply`/`borrow` are `void`; Verity interface methods require a return type, so each is
-  declared `returns (Bool)` and the value ignored — a one-line change when a void external-call ECM
-  lands; the emitted `call` is identical.
+- `supply`/`borrow` are declared **void** (real Aave shape) and lower to the no-return ECM
+  (`externalCallNoReturn`, no `returndatasize` check) via verity PR #1957 — so the harness mocks are
+  void and `deposit` completes; the pre-PR `returns (Bool)`/strict bytecode reverted on void callees.
 - **Yul emission now works through the stock `verity-compiler` CLI** — the two compiler bugs that
   blocked it ([verity#1951](https://github.com/lfglabs-dev/verity/issues/1951) `loadExts`/`supportInterpreter`,
   [verity#1952](https://github.com/lfglabs-dev/verity/issues/1952) dotted external name) are fixed in

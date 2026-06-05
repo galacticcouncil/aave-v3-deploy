@@ -9,19 +9,15 @@ pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
 
-/// aave pool with the MAINNET Aave V3 ABI (uint16 referralCode → selectors 0x617ba037 / 0xa415bcad):
-/// the Verity bytecode now dispatches to exactly these signatures. (real Aave's supply/borrow are
-/// `void`; here they `returns (bool)` so the strict `externalCallWithReturn` 32-byte check passes —
-/// see README: a live fork additionally needs a void/empty-returndata interface call in Verity.)
+/// aave pool with the EXACT mainnet Aave V3 ABI: `supply`/`borrow` are **void** (selectors
+/// 0x617ba037 / 0xa415bcad), `repay`/`withdraw` return uint256. The Verity bytecode dispatches to
+/// these signatures; because supply/borrow now lower to the no-return ECM (verity PR #1957), the
+/// deposit completes against these void callees — the pre-PR strict bytecode reverted here.
 contract MockAavePool {
     uint256 public supplied;
     uint256 public borrowed;
-    function supply(address, uint256 amt, address, uint16) external returns (bool) {
-        supplied += amt; return true;
-    }
-    function borrow(address, uint256 amt, uint256, uint16, address) external returns (bool) {
-        borrowed += amt; return true;
-    }
+    function supply(address, uint256 amt, address, uint16) external { supplied += amt; }
+    function borrow(address, uint256 amt, uint256, uint16, address) external { borrowed += amt; }
     function repay(address, uint256 amt, uint256, address) external pure returns (uint256) { return amt; }
     function withdraw(address, uint256 amt, address) external pure returns (uint256) { return amt; }
 }

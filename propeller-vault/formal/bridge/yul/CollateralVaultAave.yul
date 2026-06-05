@@ -1,8 +1,8 @@
 // CollateralVaultAave — full deposit flow + unwind + deploy-side registry/keeper guard.
-// referralCode is Uint16 → supply/borrow emit the MAINNET Aave selectors (0x617ba037 /
-// 0xa415bcad); all six cross-contract selectors now match mainnet exactly. stock verity-compiler.
-// (caveat: supply/borrow are declared returns(Bool); real Aave is void — a live fork additionally
-// needs a void/empty-returndata interface call. repay/withdraw/mint/deposit/pokeRepay are exact.)
+// supply/borrow are VOID (no returns) → lower to the no-return ECM (externalCallNoReturn):
+// bare call(...) with the MAINNET selectors (supply 0x617ba037, borrow 0xa415bcad) and NO
+// returndatasize check — so a live (void) Aave call doesn't revert. repay/withdraw return
+// uint256 and keep their decode. needs the void-call compiler change (verity PR #1957).
 
 object "CollateralVaultAave" {
     code {
@@ -67,46 +67,36 @@ object "CollateralVaultAave" {
             sstore(1, newSupply)
             sstore(3, newDebt)
             sstore(4, newSynth)
-            let _supplied := 0
             {
-                let __ecwr_ptr := mload(64)
-                mstore(__ecwr_ptr, shl(224, 0x617ba037))
-                mstore(add(__ecwr_ptr, 4), asset)
-                mstore(add(__ecwr_ptr, 36), assets)
-                mstore(add(__ecwr_ptr, 68), onBehalfOf)
-                mstore(add(__ecwr_ptr, 100), 0)
-                mstore(64, add(__ecwr_ptr, 160))
-                let __ecwr_success := call(gas(), pool, 0, __ecwr_ptr, 132, __ecwr_ptr, 32)
-                if iszero(__ecwr_success) {
-                    let __ecwr_rds := returndatasize()
-                    returndatacopy(0, 0, __ecwr_rds)
-                    revert(0, __ecwr_rds)
+                let __ecnr_ptr := mload(64)
+                mstore(__ecnr_ptr, shl(224, 0x617ba037))
+                mstore(add(__ecnr_ptr, 4), asset)
+                mstore(add(__ecnr_ptr, 36), assets)
+                mstore(add(__ecnr_ptr, 68), onBehalfOf)
+                mstore(add(__ecnr_ptr, 100), 0)
+                mstore(64, add(__ecnr_ptr, 160))
+                let __ecnr_success := call(gas(), pool, 0, __ecnr_ptr, 132, 0, 0)
+                if iszero(__ecnr_success) {
+                    let __ecnr_rds := returndatasize()
+                    returndatacopy(0, 0, __ecnr_rds)
+                    revert(0, __ecnr_rds)
                 }
-                if lt(returndatasize(), 32) {
-                    revert(0, 0)
-                }
-                _supplied := mload(__ecwr_ptr)
             }
-            let _borrowed := 0
             {
-                let __ecwr_ptr := mload(64)
-                mstore(__ecwr_ptr, shl(224, 0xa415bcad))
-                mstore(add(__ecwr_ptr, 4), hollar)
-                mstore(add(__ecwr_ptr, 36), borrowAmount)
-                mstore(add(__ecwr_ptr, 68), 2)
-                mstore(add(__ecwr_ptr, 100), 0)
-                mstore(add(__ecwr_ptr, 132), onBehalfOf)
-                mstore(64, add(__ecwr_ptr, 192))
-                let __ecwr_success := call(gas(), pool, 0, __ecwr_ptr, 164, __ecwr_ptr, 32)
-                if iszero(__ecwr_success) {
-                    let __ecwr_rds := returndatasize()
-                    returndatacopy(0, 0, __ecwr_rds)
-                    revert(0, __ecwr_rds)
+                let __ecnr_ptr := mload(64)
+                mstore(__ecnr_ptr, shl(224, 0xa415bcad))
+                mstore(add(__ecnr_ptr, 4), hollar)
+                mstore(add(__ecnr_ptr, 36), borrowAmount)
+                mstore(add(__ecnr_ptr, 68), 2)
+                mstore(add(__ecnr_ptr, 100), 0)
+                mstore(add(__ecnr_ptr, 132), onBehalfOf)
+                mstore(64, add(__ecnr_ptr, 192))
+                let __ecnr_success := call(gas(), pool, 0, __ecnr_ptr, 164, 0, 0)
+                if iszero(__ecnr_success) {
+                    let __ecnr_rds := returndatasize()
+                    returndatacopy(0, 0, __ecnr_rds)
+                    revert(0, __ecnr_rds)
                 }
-                if lt(returndatasize(), 32) {
-                    revert(0, 0)
-                }
-                _borrowed := mload(__ecwr_ptr)
             }
             let _minted := 0
             {
@@ -353,46 +343,36 @@ object "CollateralVaultAave" {
                 sstore(1, newSupply)
                 sstore(3, newDebt)
                 sstore(4, newSynth)
-                let _supplied := 0
                 {
-                    let __ecwr_ptr := mload(64)
-                    mstore(__ecwr_ptr, shl(224, 0x617ba037))
-                    mstore(add(__ecwr_ptr, 4), asset)
-                    mstore(add(__ecwr_ptr, 36), assets)
-                    mstore(add(__ecwr_ptr, 68), onBehalfOf)
-                    mstore(add(__ecwr_ptr, 100), 0)
-                    mstore(64, add(__ecwr_ptr, 160))
-                    let __ecwr_success := call(gas(), pool, 0, __ecwr_ptr, 132, __ecwr_ptr, 32)
-                    if iszero(__ecwr_success) {
-                        let __ecwr_rds := returndatasize()
-                        returndatacopy(0, 0, __ecwr_rds)
-                        revert(0, __ecwr_rds)
+                    let __ecnr_ptr := mload(64)
+                    mstore(__ecnr_ptr, shl(224, 0x617ba037))
+                    mstore(add(__ecnr_ptr, 4), asset)
+                    mstore(add(__ecnr_ptr, 36), assets)
+                    mstore(add(__ecnr_ptr, 68), onBehalfOf)
+                    mstore(add(__ecnr_ptr, 100), 0)
+                    mstore(64, add(__ecnr_ptr, 160))
+                    let __ecnr_success := call(gas(), pool, 0, __ecnr_ptr, 132, 0, 0)
+                    if iszero(__ecnr_success) {
+                        let __ecnr_rds := returndatasize()
+                        returndatacopy(0, 0, __ecnr_rds)
+                        revert(0, __ecnr_rds)
                     }
-                    if lt(returndatasize(), 32) {
-                        revert(0, 0)
-                    }
-                    _supplied := mload(__ecwr_ptr)
                 }
-                let _borrowed := 0
                 {
-                    let __ecwr_ptr := mload(64)
-                    mstore(__ecwr_ptr, shl(224, 0xa415bcad))
-                    mstore(add(__ecwr_ptr, 4), hollar)
-                    mstore(add(__ecwr_ptr, 36), borrowAmount)
-                    mstore(add(__ecwr_ptr, 68), 2)
-                    mstore(add(__ecwr_ptr, 100), 0)
-                    mstore(add(__ecwr_ptr, 132), onBehalfOf)
-                    mstore(64, add(__ecwr_ptr, 192))
-                    let __ecwr_success := call(gas(), pool, 0, __ecwr_ptr, 164, __ecwr_ptr, 32)
-                    if iszero(__ecwr_success) {
-                        let __ecwr_rds := returndatasize()
-                        returndatacopy(0, 0, __ecwr_rds)
-                        revert(0, __ecwr_rds)
+                    let __ecnr_ptr := mload(64)
+                    mstore(__ecnr_ptr, shl(224, 0xa415bcad))
+                    mstore(add(__ecnr_ptr, 4), hollar)
+                    mstore(add(__ecnr_ptr, 36), borrowAmount)
+                    mstore(add(__ecnr_ptr, 68), 2)
+                    mstore(add(__ecnr_ptr, 100), 0)
+                    mstore(add(__ecnr_ptr, 132), onBehalfOf)
+                    mstore(64, add(__ecnr_ptr, 192))
+                    let __ecnr_success := call(gas(), pool, 0, __ecnr_ptr, 164, 0, 0)
+                    if iszero(__ecnr_success) {
+                        let __ecnr_rds := returndatasize()
+                        returndatacopy(0, 0, __ecnr_rds)
+                        revert(0, __ecnr_rds)
                     }
-                    if lt(returndatasize(), 32) {
-                        revert(0, 0)
-                    }
-                    _borrowed := mload(__ecwr_ptr)
                 }
                 let _minted := 0
                 {
@@ -628,46 +608,36 @@ object "CollateralVaultAave" {
                         sstore(1, newSupply)
                         sstore(3, newDebt)
                         sstore(4, newSynth)
-                        let _supplied := 0
                         {
-                            let __ecwr_ptr := mload(64)
-                            mstore(__ecwr_ptr, shl(224, 0x617ba037))
-                            mstore(add(__ecwr_ptr, 4), asset)
-                            mstore(add(__ecwr_ptr, 36), assets)
-                            mstore(add(__ecwr_ptr, 68), onBehalfOf)
-                            mstore(add(__ecwr_ptr, 100), 0)
-                            mstore(64, add(__ecwr_ptr, 160))
-                            let __ecwr_success := call(gas(), pool, 0, __ecwr_ptr, 132, __ecwr_ptr, 32)
-                            if iszero(__ecwr_success) {
-                                let __ecwr_rds := returndatasize()
-                                returndatacopy(0, 0, __ecwr_rds)
-                                revert(0, __ecwr_rds)
+                            let __ecnr_ptr := mload(64)
+                            mstore(__ecnr_ptr, shl(224, 0x617ba037))
+                            mstore(add(__ecnr_ptr, 4), asset)
+                            mstore(add(__ecnr_ptr, 36), assets)
+                            mstore(add(__ecnr_ptr, 68), onBehalfOf)
+                            mstore(add(__ecnr_ptr, 100), 0)
+                            mstore(64, add(__ecnr_ptr, 160))
+                            let __ecnr_success := call(gas(), pool, 0, __ecnr_ptr, 132, 0, 0)
+                            if iszero(__ecnr_success) {
+                                let __ecnr_rds := returndatasize()
+                                returndatacopy(0, 0, __ecnr_rds)
+                                revert(0, __ecnr_rds)
                             }
-                            if lt(returndatasize(), 32) {
-                                revert(0, 0)
-                            }
-                            _supplied := mload(__ecwr_ptr)
                         }
-                        let _borrowed := 0
                         {
-                            let __ecwr_ptr := mload(64)
-                            mstore(__ecwr_ptr, shl(224, 0xa415bcad))
-                            mstore(add(__ecwr_ptr, 4), hollar)
-                            mstore(add(__ecwr_ptr, 36), borrowAmount)
-                            mstore(add(__ecwr_ptr, 68), 2)
-                            mstore(add(__ecwr_ptr, 100), 0)
-                            mstore(add(__ecwr_ptr, 132), onBehalfOf)
-                            mstore(64, add(__ecwr_ptr, 192))
-                            let __ecwr_success := call(gas(), pool, 0, __ecwr_ptr, 164, __ecwr_ptr, 32)
-                            if iszero(__ecwr_success) {
-                                let __ecwr_rds := returndatasize()
-                                returndatacopy(0, 0, __ecwr_rds)
-                                revert(0, __ecwr_rds)
+                            let __ecnr_ptr := mload(64)
+                            mstore(__ecnr_ptr, shl(224, 0xa415bcad))
+                            mstore(add(__ecnr_ptr, 4), hollar)
+                            mstore(add(__ecnr_ptr, 36), borrowAmount)
+                            mstore(add(__ecnr_ptr, 68), 2)
+                            mstore(add(__ecnr_ptr, 100), 0)
+                            mstore(add(__ecnr_ptr, 132), onBehalfOf)
+                            mstore(64, add(__ecnr_ptr, 192))
+                            let __ecnr_success := call(gas(), pool, 0, __ecnr_ptr, 164, 0, 0)
+                            if iszero(__ecnr_success) {
+                                let __ecnr_rds := returndatasize()
+                                returndatacopy(0, 0, __ecnr_rds)
+                                revert(0, __ecnr_rds)
                             }
-                            if lt(returndatasize(), 32) {
-                                revert(0, 0)
-                            }
-                            _borrowed := mload(__ecwr_ptr)
                         }
                         let _minted := 0
                         {
