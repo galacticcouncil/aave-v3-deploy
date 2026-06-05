@@ -48,6 +48,10 @@ loop). Headline is **equity-neutrality** of the keeper steps:
 - `deLever_reverts_when_healthy` — `deLever` **reverts** when the guard fails (loop above the
   trigger): a healthy loop can never be force-de-levered. *(Guard enforcement — a revert-path proof.)*
 - `deLever_succeeds_when_unhealthy` — when at/under the trigger, `deLever` fires and restores health.
+- `deLeverLoop` adds the **inter-contract** call `SubLoop.pokeRepay` (`Wiring.lean`,
+  `external_is_subloop_pokeRepay` / `deLeverLoop_issues_pokeRepay`, `decide`/no axioms); and
+  `deLeverLoop_reverts_when_healthy` proves the guard **still protects** the wired path — a healthy
+  loop can't be de-levered even though `deLeverLoop` makes a cross-contract call.
 
 The generated Yul carries the guards faithfully (e.g. `"SYNTH: only vault"` / `"HARV: loop healthy…"`
 reverts, checked overflow, `lt(balance, amount)` underflow guards) and a `switch shr(224, calldataload(0))` dispatch.
@@ -136,8 +140,19 @@ Same verification standard Verity uses for its own typed-interface contracts. Th
   the **external-call trust assumption** (Aave doesn't reenter or mutate this contract's slots). The
   pure `CollateralVault/` retains the unconditional proof.
 
+## Status
+
+The full Main-position + inter-contract surface is wired and compiles to real `call`-bearing Yul via
+the stock CLI:
+- **Aave (4):** `supply` · `borrow` (deposit) · `repay` · `withdraw` (unwind) — `CollateralVaultAave`.
+- **Inter-contract (3):** `CollateralVault → SyntheticToken.mint` · `→ SubLoop.deposit` (deposit) ·
+  `Harvester → SubLoop.pokeRepay` (`deLeverLoop`).
+
+All wiring is `decide`-checked (no axioms); guard enforcement is preserved through the wired paths.
+
 ## Next
 
-Remaining Aave surface as ECMs (sound by assumption): `IPool.borrow/repay/withdraw`, plus the other
-cross-calls (`CollateralVault → SyntheticToken.mint`, `→ SubLoop.deposit`, `Harvester → SubLoop.pokeRepay`).
-Compile each with `--deny-low-level-mechanics` + `--trust-report`.
+Compile the whole set with `--deny-low-level-mechanics` + `--trust-report` to archive the trust
+surface; address the upstream selector/`uint16` and void-return points (verity PRs #1953/#1954 land
+the compile path). Then: deploy-side wiring (constructor addresses, access control on the keeper pokes)
+and fork-testing the emitted Yul against a real Aave deployment.

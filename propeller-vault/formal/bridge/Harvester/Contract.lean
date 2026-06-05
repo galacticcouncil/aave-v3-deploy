@@ -27,6 +27,11 @@ verity_contract Harvester where
     synthValueSlot     : Uint256 := slot 2   -- synthetic risk-weighted value
     mainDebtSlot       : Uint256 := slot 3   -- Main HOLLAR debt
 
+  interfaces
+    interface ISubLoop where
+      function pokeRepay(Uint256) returns (Bool)
+    end
+
   constructor (trigger : Uint256) := do
     setStorage deLeverTriggerSlot trigger
     setStorage subHealthSlot 0
@@ -45,6 +50,16 @@ verity_contract Harvester where
     require (h <= trig) "HARV: loop healthy, no de-lever"
     -- (ECM: SubLoop.pokeRepay raises HF) — model: health restored up to the trigger.
     setStorage subHealthSlot trig
+
+  -- guarded de-lever that actually drives the loop: same guard as `deLever`, then the
+  -- inter-contract call `SubLoop.pokeRepay` (Harvester → SubLoop). Check → effect → interaction,
+  -- so no `allow_post_interaction_writes` needed (the lone external call follows the state write).
+  function deLeverLoop (loop : ISubLoop, amount : Uint256) : Unit := do
+    let h ← getStorage subHealthSlot
+    let trig ← getStorage deLeverTriggerSlot
+    require (h <= trig) "HARV: loop healthy, no de-lever"
+    setStorage subHealthSlot trig
+    let _repaid ← loop.pokeRepay amount
 
   function subHealth () : Uint256 := do
     let h ← getStorage subHealthSlot

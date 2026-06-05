@@ -102,6 +102,17 @@ theorem deLever_reverts_when_healthy (s : ContractState)
   verity_unfold deLever
   simp [subHealthSlot, deLeverTriggerSlot, hval]
 
+/-- **Guard enforcement survives the inter-contract wiring.** `deLeverLoop` (which calls
+`SubLoop.pokeRepay`) still reverts when the loop is healthy — the guard precedes the state write
+and the external call, so a healthy loop can never be de-levered. -/
+theorem deLeverLoop_reverts_when_healthy (s : ContractState) (loop : Verity.Address) (amount : Uint256)
+    (hnle : ¬ (s.storage 0 ≤ s.storage 1)) :
+    (deLeverLoop loop amount).run s = ContractResult.revert "HARV: loop healthy, no de-lever" s := by
+  have hval : ¬ ((s.storage 0).val ≤ (s.storage 1).val) := by
+    rwa [Verity.Core.Uint256.le_def] at hnle
+  verity_unfold deLeverLoop
+  simp [subHealthSlot, deLeverTriggerSlot, hval]
+
 /-! ### Read-only views -/
 
 theorem subHealth_meets_spec (s : ContractState) :
