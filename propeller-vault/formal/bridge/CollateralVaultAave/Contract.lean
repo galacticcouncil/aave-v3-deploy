@@ -29,8 +29,13 @@ verity_contract CollateralVaultAave where
     totalAssetsSlot   : Uint256 := slot 0
     totalSupplySlot   : Uint256 := slot 1
     shareBalancesSlot : Address → Uint256 := slot 2
-    mainDebtSlot      : Uint256 := slot 3   -- HOLLAR borrowed against the supplied collateral
-    synthSupplySlot   : Uint256 := slot 4   -- synthetic minted (= tracks the Main debt floor)
+    mainDebtSlot      : Uint256 := slot 3   -- hollar borrowed against the supplied collateral
+    synthSupplySlot   : Uint256 := slot 4   -- synthetic minted (= tracks the main debt floor)
+    -- deploy-side registry: keeper + canonical dependency addresses, set at construction.
+    keeperSlot        : Address := slot 5   -- authorized caller of the keeper entrypoints
+    poolRegSlot       : Address := slot 6   -- aave pool
+    synthRegSlot      : Address := slot 7   -- SyntheticToken
+    loopRegSlot       : Address := slot 8   -- SubLoop
 
   interfaces
     interface IPool where
@@ -49,11 +54,15 @@ verity_contract CollateralVaultAave where
       function deposit(Uint256) returns (Bool)
     end
 
-  constructor () := do
+  constructor (keeper : Address, poolAddr : Address, synthAddr : Address, loopAddr : Address) := do
     setStorage totalAssetsSlot 0
     setStorage totalSupplySlot 0
     setStorage mainDebtSlot 0
     setStorage synthSupplySlot 0
+    setStorageAddr keeperSlot keeper
+    setStorageAddr poolRegSlot poolAddr
+    setStorageAddr synthRegSlot synthAddr
+    setStorageAddr loopRegSlot loopAddr
 
   -- deposit collateral → mint shares 1:1 + record HOLLAR debt (effects) → supply collateral to
   -- Aave, then borrow HOLLAR against it (interactions). `borrowAmount` (≤ LTV·assets) and the
@@ -94,6 +103,10 @@ verity_contract CollateralVaultAave where
   -- Effects (lower debt + shares + assets) precede both interactions; same CEI annotation as deposit.
   function allow_post_interaction_writes pokeSettle (pool : IPool, hollar : Address, asset : Address,
       onBehalfOf : Address, recipient : Address, repayAmount : Uint256, withdrawAmount : Uint256) : Unit := do
+    -- deploy-side access control: only the registered keeper drives settlement.
+    let sender ← msgSender
+    let k ← getStorageAddr keeperSlot
+    require (sender == k) "VAULT: only keeper"
     let currentDebt ← getStorage mainDebtSlot
     require (currentDebt >= repayAmount) "VAULT: repay exceeds debt"
     let currentAssets ← getStorage totalAssetsSlot
@@ -105,6 +118,23 @@ verity_contract CollateralVaultAave where
     setStorage totalSupplySlot (sub currentSupply withdrawAmount)
     let _repaid ← pool.repay hollar repayAmount 2 onBehalfOf
     let _withdrawn ← pool.withdraw asset withdrawAmount recipient
+
+  -- deploy-side registry getters.
+  function keeper () : Address := do
+    let k ← getStorageAddr keeperSlot
+    return k
+
+  function poolAddress () : Address := do
+    let a ← getStorageAddr poolRegSlot
+    return a
+
+  function synthAddress () : Address := do
+    let a ← getStorageAddr synthRegSlot
+    return a
+
+  function loopAddress () : Address := do
+    let a ← getStorageAddr loopRegSlot
+    return a
 
   function balanceOf (addr : Address) : Uint256 := do
     let s ← getMapping shareBalancesSlot addr

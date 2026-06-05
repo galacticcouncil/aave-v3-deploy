@@ -1,10 +1,7 @@
-// CollateralVaultAave — full Propeller deposit flow + unwind, compiler output (Verity → Yul).
+// CollateralVaultAave — full deposit flow + unwind + deploy-side registry/keeper guard.
+// constructor stores keeper + pool/synth/loop addresses; pokeSettle is onlyKeeper.
 // deposit: effects → IPool.supply + IPool.borrow + SyntheticToken.mint + SubLoop.deposit.
-// pokeSettle: effects → IPool.repay + IPool.withdraw.
-// Emitted by the STOCK verity-compiler CLI (verity#1951+#1952 fixes applied to the checkout).
-// Selectors: Aave repay 0x573ade81 / withdraw 0x69328dec match mainnet; supply 0xe9c7359c /
-// borrow 0xa2b86e7b differ (uint16→Uint256). Inter-contract mint 0x40c10f19 = mint(address,
-// uint256) and SubLoop deposit 0xb6b55f25 = deposit(uint256) match our SyntheticToken/SubLoop.
+// pokeSettle: onlyKeeper guard → effects → IPool.repay + IPool.withdraw. stock verity-compiler.
 
 object "CollateralVaultAave" {
     code {
@@ -148,6 +145,15 @@ object "CollateralVaultAave" {
             stop()
         }
         function internal_internal_pokeSettle(pool, hollar, asset, onBehalfOf, recipient, repayAmount, withdrawAmount) {
+            let sender := caller()
+            let k := sload(5)
+            if iszero(eq(sender, k)) {
+                mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                mstore(4, 32)
+                mstore(36, 18)
+                mstore(68, 0x5641554c543a206f6e6c79206b65657065720000000000000000000000000000)
+                revert(0, 100)
+            }
             let currentDebt := sload(3)
             if lt(currentDebt, repayAmount) {
                 mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
@@ -216,6 +222,26 @@ object "CollateralVaultAave" {
             }
             stop()
         }
+        function internal_internal_keeper() -> __ret0 {
+            let k := sload(5)
+            __ret0 := k
+            leave
+        }
+        function internal_internal_poolAddress() -> __ret0 {
+            let a := sload(6)
+            __ret0 := a
+            leave
+        }
+        function internal_internal_synthAddress() -> __ret0 {
+            let a := sload(7)
+            __ret0 := a
+            leave
+        }
+        function internal_internal_loopAddress() -> __ret0 {
+            let a := sload(8)
+            __ret0 := a
+            leave
+        }
         function internal_internal_balanceOf(addr) -> __ret0 {
             let s := sload(mappingSlot(2, addr))
             __ret0 := s
@@ -236,10 +262,28 @@ object "CollateralVaultAave" {
             __ret0 := d
             leave
         }
+        let argsOffset := add(dataoffset("runtime"), datasize("runtime"))
+        let argsSize := sub(codesize(), argsOffset)
+        codecopy(0, argsOffset, argsSize)
+        if lt(argsSize, 128) {
+            revert(0, 0)
+        }
+        let keeper := and(mload(0), 0xffffffffffffffffffffffffffffffffffffffff)
+        let poolAddr := and(mload(32), 0xffffffffffffffffffffffffffffffffffffffff)
+        let synthAddr := and(mload(64), 0xffffffffffffffffffffffffffffffffffffffff)
+        let loopAddr := and(mload(96), 0xffffffffffffffffffffffffffffffffffffffff)
+        let arg0 := keeper
+        let arg1 := poolAddr
+        let arg2 := synthAddr
+        let arg3 := loopAddr
         sstore(0, 0)
         sstore(1, 0)
         sstore(3, 0)
         sstore(4, 0)
+        sstore(5, and(keeper, 0xffffffffffffffffffffffffffffffffffffffff))
+        sstore(6, and(poolAddr, 0xffffffffffffffffffffffffffffffffffffffff))
+        sstore(7, and(synthAddr, 0xffffffffffffffffffffffffffffffffffffffff))
+        sstore(8, and(loopAddr, 0xffffffffffffffffffffffffffffffffffffffff))
         datacopy(0, dataoffset("runtime"), datasize("runtime"))
         return(0, datasize("runtime"))
     }
@@ -387,6 +431,15 @@ object "CollateralVaultAave" {
                 stop()
             }
             function internal_internal_pokeSettle(pool, hollar, asset, onBehalfOf, recipient, repayAmount, withdrawAmount) {
+                let sender := caller()
+                let k := sload(5)
+                if iszero(eq(sender, k)) {
+                    mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                    mstore(4, 32)
+                    mstore(36, 18)
+                    mstore(68, 0x5641554c543a206f6e6c79206b65657065720000000000000000000000000000)
+                    revert(0, 100)
+                }
                 let currentDebt := sload(3)
                 if lt(currentDebt, repayAmount) {
                     mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
@@ -454,6 +507,26 @@ object "CollateralVaultAave" {
                     _withdrawn := mload(__ecwr_ptr)
                 }
                 stop()
+            }
+            function internal_internal_keeper() -> __ret0 {
+                let k := sload(5)
+                __ret0 := k
+                leave
+            }
+            function internal_internal_poolAddress() -> __ret0 {
+                let a := sload(6)
+                __ret0 := a
+                leave
+            }
+            function internal_internal_synthAddress() -> __ret0 {
+                let a := sload(7)
+                __ret0 := a
+                leave
+            }
+            function internal_internal_loopAddress() -> __ret0 {
+                let a := sload(8)
+                __ret0 := a
+                leave
             }
             function internal_internal_balanceOf(addr) -> __ret0 {
                 let s := sload(mappingSlot(2, addr))
@@ -650,6 +723,15 @@ object "CollateralVaultAave" {
                         let recipient := and(calldataload(132), 0xffffffffffffffffffffffffffffffffffffffff)
                         let repayAmount := calldataload(164)
                         let withdrawAmount := calldataload(196)
+                        let sender := caller()
+                        let k := sload(5)
+                        if iszero(eq(sender, k)) {
+                            mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                            mstore(4, 32)
+                            mstore(36, 18)
+                            mstore(68, 0x5641554c543a206f6e6c79206b65657065720000000000000000000000000000)
+                            revert(0, 100)
+                        }
                         let currentDebt := sload(3)
                         if lt(currentDebt, repayAmount) {
                             mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
@@ -717,6 +799,66 @@ object "CollateralVaultAave" {
                             _withdrawn := mload(__ecwr_ptr)
                         }
                         stop()
+                    }
+                    case 0xaced1661 {
+                        /* keeper() */
+                        if callvalue() {
+                            revert(0, 0)
+                        }
+                        if lt(calldatasize(), 4) {
+                            revert(0, 0)
+                        }
+                        if lt(calldatasize(), 4) {
+                            revert(0, 0)
+                        }
+                        let k := sload(5)
+                        mstore(0, k)
+                        return(0, 32)
+                    }
+                    case 0x1755ff21 {
+                        /* poolAddress() */
+                        if callvalue() {
+                            revert(0, 0)
+                        }
+                        if lt(calldatasize(), 4) {
+                            revert(0, 0)
+                        }
+                        if lt(calldatasize(), 4) {
+                            revert(0, 0)
+                        }
+                        let a := sload(6)
+                        mstore(0, a)
+                        return(0, 32)
+                    }
+                    case 0xa8e4b17d {
+                        /* synthAddress() */
+                        if callvalue() {
+                            revert(0, 0)
+                        }
+                        if lt(calldatasize(), 4) {
+                            revert(0, 0)
+                        }
+                        if lt(calldatasize(), 4) {
+                            revert(0, 0)
+                        }
+                        let a := sload(7)
+                        mstore(0, a)
+                        return(0, 32)
+                    }
+                    case 0x7f3a5695 {
+                        /* loopAddress() */
+                        if callvalue() {
+                            revert(0, 0)
+                        }
+                        if lt(calldatasize(), 4) {
+                            revert(0, 0)
+                        }
+                        if lt(calldatasize(), 4) {
+                            revert(0, 0)
+                        }
+                        let a := sload(8)
+                        mstore(0, a)
+                        return(0, 32)
                     }
                     case 0x70a08231 {
                         /* balanceOf() */

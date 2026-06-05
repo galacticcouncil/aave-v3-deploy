@@ -140,6 +140,16 @@ Same verification standard Verity uses for its own typed-interface contracts. Th
   the **external-call trust assumption** (Aave doesn't reenter or mutate this contract's slots). The
   pure `CollateralVault/` retains the unconditional proof.
 
+## Deploy-side wiring
+
+- **Registry:** `CollateralVaultAave`'s constructor stores the `keeper` + canonical dependency
+  addresses (`pool`/`synth`/`loop`), exposed via getters. (Interface *call targets* stay params —
+  Verity tags interface-ness on params only, so a storage-loaded address can't be a dot-call
+  receiver; the registry is the deploy-time config + on-chain reference.)
+- **Access control:** `pokeSettle` is `onlyKeeper` — `pokeSettle_reverts_when_not_keeper`
+  (`Proofs.lean`) proves a non-keeper caller reverts before any effect or external call, so only the
+  registered keeper can drive the unwind/Aave repay+withdraw.
+
 ## Status
 
 The full Main-position + inter-contract surface is wired and compiles to real `call`-bearing Yul via
