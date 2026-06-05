@@ -13,9 +13,9 @@ build it against a Verity checkout, as below.
 ```
 SyntheticToken/{Contract,Spec,Proofs}.lean    the synthetic ERC20 (mint/burn onlyVault)
 CollateralVault/{Contract,Spec,Proofs}.lean   ERC4626 vault: deposit · requestRedeem · claim
-yul/SyntheticToken.yul                         compiler output (object + runtime + selector dispatch)
-yul/CollateralVault.yul                        compiler output
-contracts.manifest                             compiler manifest (both contracts)
+SubLoop/{Contract,Spec,Proofs}.lean           PRIME-isolation loop: deposit · pokeBorrow · pokeRepay · requestUnwind
+yul/{SyntheticToken,CollateralVault,SubLoop}.yul   compiler output (object + runtime + selector dispatch)
+contracts.manifest                             compiler manifest (all three contracts)
 ```
 
 ## What's proven (all axiom-clean: `propext`/`Classical.choice`/`Quot.sound`, 0 `sorry`)
@@ -32,6 +32,14 @@ contracts.manifest                             compiler manifest (both contracts
 - `requestRedeem_preserves_synced` — escrowing shares (balance→escrow) touches neither slot.
 - `claim_preserves_synced` — claim lowers both by `shares`.
 - read-only `balanceOf` / `escrowOf` / `totalAssets` / `totalSupply` meet their specs.
+
+**SubLoop** — the PRIME-isolation loop; gradual DCA means one keeper step per tx (no in-contract
+loop). Headline is **equity-neutrality** of the keeper steps:
+- `pokeBorrow_equity_neutral` — `pokeBorrow` raises `primeAmt` and `subDebt` by the *same* `amount`.
+- `pokeRepay_equity_neutral` — `pokeRepay` lowers both by the *same* `amount`.
+- so loop equity (`primeAmt − subDebt`) is invariant under both: leverage moves, equity doesn't —
+  which is exactly why the loop's risk is rate-spread (carry), not price-gap (§3 of the spec).
+- read-only `primeAmt` / `subDebt` / `balanceOf` meet their specs.
 
 The generated Yul carries the guards faithfully (e.g. `"SYNTH: only vault"` revert, checked
 overflow, `lt(balance, amount)` underflow guards) and a `switch shr(224, calldataload(0))` dispatch.
@@ -75,5 +83,6 @@ make setup-solc && solc --strict-assembly --bin yul/CollateralVault.yul
 
 ## Next contracts
 
-`SubLoop` (single-step `pokeBorrow`/`pokeRepay`, PRIME isolation loop) → `Harvester` (keeper guards)
-→ the Aave typed-interface ECMs (`IPool.supply/borrow/repay/withdraw`) wiring the legs together.
+`Harvester` (keeper guards: harvest / deLever / maintainPeg) → the Aave typed-interface ECMs
+(`IPool.supply/borrow/repay/withdraw`) + the vault→synth and vault→loop cross-calls that wire the
+three contracts above into the full system.
