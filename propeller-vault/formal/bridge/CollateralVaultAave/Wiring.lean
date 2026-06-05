@@ -14,10 +14,11 @@ namespace Contracts.CollateralVaultAave.Wiring
 open Contracts
 open Compiler.CompilationModel
 
-/-- The contract declares exactly two external dependencies, in order: Aave `IPool.supply`
-    then `IPool.borrow`. -/
-theorem externals_are_supply_then_borrow :
-    (CollateralVaultAave.spec.externals).map (·.name) = ["IPool.supply", "IPool.borrow"] := by decide
+/-- The contract declares exactly the four Aave Main-position externals, in order:
+    `supply` · `borrow` (deposit leg) then `repay` · `withdraw` (unwind leg). -/
+theorem externals_are_the_four_aave_calls :
+    (CollateralVaultAave.spec.externals).map (·.name)
+      = ["IPool.supply", "IPool.borrow", "IPool.repay", "IPool.withdraw"] := by decide
 
 /-- `deposit` issues the `supply` call: a state-writing `externalCallWithReturn` ECM with 5 args
     (pool + `asset`, `amount`, `onBehalfOf`, `referralCode`). -/
@@ -47,6 +48,38 @@ theorem deposit_issues_borrow_call :
 theorem deposit_issues_exactly_two_calls :
     ((CollateralVaultAave.spec.functions).filterMap (fun fn =>
       if fn.name == "deposit" then
+        some ((fn.body.filter (fun stmt =>
+          match stmt with | Stmt.ecm _ _ => true | _ => false)).length)
+      else none)) = [2] := by decide
+
+/-- `pokeSettle` (the unwind leg) issues the `repay` call: an `externalCallWithReturn` ECM with 5 args
+    (pool + `asset`, `amount`, `interestRateMode`, `onBehalfOf`). -/
+theorem pokeSettle_issues_repay_call :
+    (CollateralVaultAave.spec.functions).any (fun fn =>
+      fn.name == "pokeSettle" &&
+        fn.body.any (fun stmt =>
+          match stmt with
+          | Stmt.ecm mod args =>
+              mod.name == "externalCallWithReturn" && mod.numArgs == 5 && mod.writesState &&
+                args.length == 5
+          | _ => false)) = true := by decide
+
+/-- `pokeSettle` also issues the `withdraw` call: an `externalCallWithReturn` ECM with 4 args
+    (pool + `asset`, `amount`, `recipient`). -/
+theorem pokeSettle_issues_withdraw_call :
+    (CollateralVaultAave.spec.functions).any (fun fn =>
+      fn.name == "pokeSettle" &&
+        fn.body.any (fun stmt =>
+          match stmt with
+          | Stmt.ecm mod args =>
+              mod.name == "externalCallWithReturn" && mod.numArgs == 4 && mod.writesState &&
+                args.length == 4
+          | _ => false)) = true := by decide
+
+/-- `pokeSettle` issues exactly two external calls (repay + withdraw), no more. -/
+theorem pokeSettle_issues_exactly_two_calls :
+    ((CollateralVaultAave.spec.functions).filterMap (fun fn =>
+      if fn.name == "pokeSettle" then
         some ((fn.body.filter (fun stmt =>
           match stmt with | Stmt.ecm _ _ => true | _ => false)).length)
       else none)) = [2] := by decide

@@ -91,22 +91,30 @@ make setup-solc && solc --strict-assembly --bin yul/CollateralVault.yul
 
 ## Aave wiring (`CollateralVaultAave/`)
 
-`deposit` mints shares 1:1 + records the HOLLAR debt (effects), then **supplies the collateral to
-Aave and borrows HOLLAR against it** (interactions) — Solidity runtime step 2 ("supply ETH, then
-borrow HOLLAR ≤74% LTV"). Both are typed-interface ECMs:
-`interface IPool where function supply(…); function borrow(…) end`, invoked as
-`pool.supply …` / `pool.borrow …`. `deposit` is annotated `allow_post_interaction_writes` (see §3b of
-`AAVE_ECM_DIAGNOSIS.md`): all storage writes precede both calls, and the only thing after the first
+Both legs of the Main Aave position are wired through one typed `IPool` interface
+(`supply` · `borrow` · `repay` · `withdraw`):
+
+- **`deposit`** (Solidity step 2): mint shares 1:1 + record HOLLAR debt (effects) → `pool.supply`
+  the collateral, then `pool.borrow` HOLLAR against it (interactions, ≤74% LTV).
+- **`pokeSettle`** (Solidity step 5, unwind): lower debt + shares + assets (effects) → `pool.repay`
+  the HOLLAR debt, then `pool.withdraw` the freed collateral (interactions).
+
+Both are multi-call functions annotated `allow_post_interaction_writes` (see §3b of
+`AAVE_ECM_DIAGNOSIS.md`): all storage writes precede every call, and the only thing after the first
 call is the second call to the same trusted pool.
 
 **Machine-checked wiring (`Wiring.lean`, `decide`, no axioms):**
-- `externals_are_supply_then_borrow` — external set is exactly `["IPool.supply", "IPool.borrow"]`.
-- `deposit_issues_supply_call` / `deposit_issues_borrow_call` — `deposit` issues each as a
-  state-writing `externalCallWithReturn` ECM (supply: 5 args; borrow: 6 args).
-- `deposit_issues_exactly_two_calls` — and no others.
+- `externals_are_the_four_aave_calls` — external set is exactly
+  `["IPool.supply", "IPool.borrow", "IPool.repay", "IPool.withdraw"]`.
+- `deposit_issues_supply_call` / `deposit_issues_borrow_call` / `deposit_issues_exactly_two_calls`.
+- `pokeSettle_issues_repay_call` / `pokeSettle_issues_withdraw_call` / `pokeSettle_issues_exactly_two_calls`.
 
 Same verification standard Verity uses for its own typed-interface contracts. The emitted
-`yul/CollateralVaultAave.yul` contains both `call(gas(), pool, …)` instructions, effects-first.
+`yul/CollateralVaultAave.yul` contains all four `call(gas(), pool, …)` instructions, effects-first.
+
+**Selector fidelity:** `repay` (`0x573ade81`) and `withdraw` (`0x69328dec`) **match mainnet Aave
+exactly** — they take no `uint16`. `supply`/`borrow` differ (`0xe9c7359c`/`0xa2b86e7b` vs
+`0x617ba037`/`0xa415bcad`) only because `referralCode`'s `uint16` is modelled as `Uint256`.
 
 **Honest status / caveats:**
 - Real Aave `supply` is `void`; Verity interface methods require a return type, so it's declared

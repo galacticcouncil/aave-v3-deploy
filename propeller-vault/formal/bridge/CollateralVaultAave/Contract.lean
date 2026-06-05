@@ -35,6 +35,10 @@ verity_contract CollateralVaultAave where
     interface IPool where
       function supply(Address, Uint256, Address, Uint256) returns (Bool)
       function borrow(Address, Uint256, Uint256, Uint256, Address) returns (Bool)
+      -- repay / withdraw return uint256 in real Aave too, and take no uint16 → the emitted
+      -- selectors match mainnet exactly (repay 0x573ade81, withdraw 0x69328dec).
+      function repay(Address, Uint256, Uint256, Address) returns (Uint256)
+      function withdraw(Address, Uint256, Address) returns (Uint256)
     end
 
   constructor () := do
@@ -68,6 +72,22 @@ verity_contract CollateralVaultAave where
     setStorage mainDebtSlot newDebt
     let _supplied ← pool.supply asset assets onBehalfOf 0
     let _borrowed ← pool.borrow hollar borrowAmount 2 0 onBehalfOf
+
+  -- unwind/settle (Solidity step 5): repay HOLLAR debt, then withdraw freed collateral from Aave.
+  -- Effects (lower debt + shares + assets) precede both interactions; same CEI annotation as deposit.
+  function allow_post_interaction_writes pokeSettle (pool : IPool, hollar : Address, asset : Address,
+      onBehalfOf : Address, recipient : Address, repayAmount : Uint256, withdrawAmount : Uint256) : Unit := do
+    let currentDebt ← getStorage mainDebtSlot
+    require (currentDebt >= repayAmount) "VAULT: repay exceeds debt"
+    let currentAssets ← getStorage totalAssetsSlot
+    require (currentAssets >= withdrawAmount) "VAULT: withdraw exceeds assets"
+    let currentSupply ← getStorage totalSupplySlot
+    require (currentSupply >= withdrawAmount) "VAULT: withdraw exceeds supply"
+    setStorage mainDebtSlot (sub currentDebt repayAmount)
+    setStorage totalAssetsSlot (sub currentAssets withdrawAmount)
+    setStorage totalSupplySlot (sub currentSupply withdrawAmount)
+    let _repaid ← pool.repay hollar repayAmount 2 onBehalfOf
+    let _withdrawn ← pool.withdraw asset withdrawAmount recipient
 
   function balanceOf (addr : Address) : Uint256 := do
     let s ← getMapping shareBalancesSlot addr

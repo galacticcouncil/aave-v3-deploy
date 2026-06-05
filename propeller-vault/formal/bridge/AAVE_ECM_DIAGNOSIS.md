@@ -84,10 +84,12 @@ if iszero(__ecwr_success) { …revert with bubbled returndata… }
 ```
 
 ## Caveats for real Aave integration
-- **Selector mismatch:** emitted `0xe9c7359c` = `supply(address,uint256,address,uint256)`. Real Aave
-  V3 is `supply(address,uint256,address,uint16)` → `0x617ba037`. Verity lacks `uint16`, so
-  `referralCode` was modelled as `Uint256`. A correct integration needs `uint16` support (or a
-  hand-tuned selector) for ABI compatibility.
+- **Selector fidelity:** functions that take **no `uint16`** are ABI-exact —
+  `repay(address,uint256,uint256,address)` → `0x573ade81` and `withdraw(address,uint256,address)` →
+  `0x69328dec` match mainnet Aave. Functions with a `uint16 referralCode` differ because Verity lacks
+  `uint16` and models it as `Uint256`: emitted `supply` = `0xe9c7359c` (mainnet `0x617ba037`),
+  `borrow` = `0xa2b86e7b` (mainnet `0xa415bcad`). A correct integration of those two needs `uint16`
+  support (or a hand-tuned selector).
 - **Trust boundary:** the call is sound *by assumption* on Aave's spec; `writesState ⇒` the wired
   variant's accounting is conditional (no reentrancy / Aave doesn't mutate our slots). The pure
   `CollateralVault/` keeps its unconditional axiom-clean proof.

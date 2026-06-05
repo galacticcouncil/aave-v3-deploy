@@ -1,10 +1,10 @@
-// CollateralVaultAave.deposit — Aave-wired (supply + borrow), compiler output (Verity → Yul).
+// CollateralVaultAave — Aave-wired Main position, compiler output (Verity → Yul).
+// deposit: effects → supply + borrow (HOLLAR);  pokeSettle: effects → repay + withdraw.
 // Provenance: static-reference codegen (bypasses CLI evalConstCheck, verity#1951) + local
-// relaxation of dotted-external-name validation (verity#1952). CEI-ordered: all storage
-// effects precede both external calls; deposit is annotated allow_post_interaction_writes
-// because Verity's CEI rejects a 2nd writing-ECM after the 1st call (supply→borrow).
-// Selectors: supply 0xe9c7359c (real Aave 0x617ba037), borrow 0xa2b86e7b (real 0xa415bcad)
-// — differ because uint16 referralCode is modelled as Uint256 (Verity lacks uint16).
+// relaxation of dotted-external-name validation (verity#1952). CEI-ordered; both multi-call
+// functions annotated allow_post_interaction_writes (verity#1728 §3b).
+// Selectors: supply 0xe9c7359c, borrow 0xa2b86e7b differ from mainnet (uint16→Uint256);
+// repay 0x573ade81 and withdraw 0x69328dec MATCH mainnet exactly (no uint16).
 
 object "CollateralVaultAave" {
     code {
@@ -99,6 +99,75 @@ object "CollateralVaultAave" {
                     revert(0, 0)
                 }
                 _borrowed := mload(__ecwr_ptr)
+            }
+            stop()
+        }
+        function internal_internal_pokeSettle(pool, hollar, asset, onBehalfOf, recipient, repayAmount, withdrawAmount) {
+            let currentDebt := sload(3)
+            if lt(currentDebt, repayAmount) {
+                mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                mstore(4, 32)
+                mstore(36, 25)
+                mstore(68, 0x5641554c543a2072657061792065786365656473206465627400000000000000)
+                revert(0, 100)
+            }
+            let currentAssets := sload(0)
+            if lt(currentAssets, withdrawAmount) {
+                mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                mstore(4, 32)
+                mstore(36, 30)
+                mstore(68, 0x5641554c543a2077697468647261772065786365656473206173736574730000)
+                revert(0, 100)
+            }
+            let currentSupply := sload(1)
+            if lt(currentSupply, withdrawAmount) {
+                mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                mstore(4, 32)
+                mstore(36, 30)
+                mstore(68, 0x5641554c543a207769746864726177206578636565647320737570706c790000)
+                revert(0, 100)
+            }
+            sstore(3, sub(currentDebt, repayAmount))
+            sstore(0, sub(currentAssets, withdrawAmount))
+            sstore(1, sub(currentSupply, withdrawAmount))
+            let _repaid := 0
+            {
+                let __ecwr_ptr := mload(64)
+                mstore(__ecwr_ptr, shl(224, 0x573ade81))
+                mstore(add(__ecwr_ptr, 4), hollar)
+                mstore(add(__ecwr_ptr, 36), repayAmount)
+                mstore(add(__ecwr_ptr, 68), 2)
+                mstore(add(__ecwr_ptr, 100), onBehalfOf)
+                mstore(64, add(__ecwr_ptr, 160))
+                let __ecwr_success := call(gas(), pool, 0, __ecwr_ptr, 132, __ecwr_ptr, 32)
+                if iszero(__ecwr_success) {
+                    let __ecwr_rds := returndatasize()
+                    returndatacopy(0, 0, __ecwr_rds)
+                    revert(0, __ecwr_rds)
+                }
+                if lt(returndatasize(), 32) {
+                    revert(0, 0)
+                }
+                _repaid := mload(__ecwr_ptr)
+            }
+            let _withdrawn := 0
+            {
+                let __ecwr_ptr := mload(64)
+                mstore(__ecwr_ptr, shl(224, 0x69328dec))
+                mstore(add(__ecwr_ptr, 4), asset)
+                mstore(add(__ecwr_ptr, 36), withdrawAmount)
+                mstore(add(__ecwr_ptr, 68), recipient)
+                mstore(64, add(__ecwr_ptr, 128))
+                let __ecwr_success := call(gas(), pool, 0, __ecwr_ptr, 100, __ecwr_ptr, 32)
+                if iszero(__ecwr_success) {
+                    let __ecwr_rds := returndatasize()
+                    returndatacopy(0, 0, __ecwr_rds)
+                    revert(0, __ecwr_rds)
+                }
+                if lt(returndatasize(), 32) {
+                    revert(0, 0)
+                }
+                _withdrawn := mload(__ecwr_ptr)
             }
             stop()
         }
@@ -217,6 +286,75 @@ object "CollateralVaultAave" {
                         revert(0, 0)
                     }
                     _borrowed := mload(__ecwr_ptr)
+                }
+                stop()
+            }
+            function internal_internal_pokeSettle(pool, hollar, asset, onBehalfOf, recipient, repayAmount, withdrawAmount) {
+                let currentDebt := sload(3)
+                if lt(currentDebt, repayAmount) {
+                    mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                    mstore(4, 32)
+                    mstore(36, 25)
+                    mstore(68, 0x5641554c543a2072657061792065786365656473206465627400000000000000)
+                    revert(0, 100)
+                }
+                let currentAssets := sload(0)
+                if lt(currentAssets, withdrawAmount) {
+                    mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                    mstore(4, 32)
+                    mstore(36, 30)
+                    mstore(68, 0x5641554c543a2077697468647261772065786365656473206173736574730000)
+                    revert(0, 100)
+                }
+                let currentSupply := sload(1)
+                if lt(currentSupply, withdrawAmount) {
+                    mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                    mstore(4, 32)
+                    mstore(36, 30)
+                    mstore(68, 0x5641554c543a207769746864726177206578636565647320737570706c790000)
+                    revert(0, 100)
+                }
+                sstore(3, sub(currentDebt, repayAmount))
+                sstore(0, sub(currentAssets, withdrawAmount))
+                sstore(1, sub(currentSupply, withdrawAmount))
+                let _repaid := 0
+                {
+                    let __ecwr_ptr := mload(64)
+                    mstore(__ecwr_ptr, shl(224, 0x573ade81))
+                    mstore(add(__ecwr_ptr, 4), hollar)
+                    mstore(add(__ecwr_ptr, 36), repayAmount)
+                    mstore(add(__ecwr_ptr, 68), 2)
+                    mstore(add(__ecwr_ptr, 100), onBehalfOf)
+                    mstore(64, add(__ecwr_ptr, 160))
+                    let __ecwr_success := call(gas(), pool, 0, __ecwr_ptr, 132, __ecwr_ptr, 32)
+                    if iszero(__ecwr_success) {
+                        let __ecwr_rds := returndatasize()
+                        returndatacopy(0, 0, __ecwr_rds)
+                        revert(0, __ecwr_rds)
+                    }
+                    if lt(returndatasize(), 32) {
+                        revert(0, 0)
+                    }
+                    _repaid := mload(__ecwr_ptr)
+                }
+                let _withdrawn := 0
+                {
+                    let __ecwr_ptr := mload(64)
+                    mstore(__ecwr_ptr, shl(224, 0x69328dec))
+                    mstore(add(__ecwr_ptr, 4), asset)
+                    mstore(add(__ecwr_ptr, 36), withdrawAmount)
+                    mstore(add(__ecwr_ptr, 68), recipient)
+                    mstore(64, add(__ecwr_ptr, 128))
+                    let __ecwr_success := call(gas(), pool, 0, __ecwr_ptr, 100, __ecwr_ptr, 32)
+                    if iszero(__ecwr_success) {
+                        let __ecwr_rds := returndatasize()
+                        returndatacopy(0, 0, __ecwr_rds)
+                        revert(0, __ecwr_rds)
+                    }
+                    if lt(returndatasize(), 32) {
+                        revert(0, 0)
+                    }
+                    _withdrawn := mload(__ecwr_ptr)
                 }
                 stop()
             }
@@ -346,6 +484,92 @@ object "CollateralVaultAave" {
                                 revert(0, 0)
                             }
                             _borrowed := mload(__ecwr_ptr)
+                        }
+                        stop()
+                    }
+                    case 0xde572de4 {
+                        /* pokeSettle() */
+                        if callvalue() {
+                            revert(0, 0)
+                        }
+                        if lt(calldatasize(), 228) {
+                            revert(0, 0)
+                        }
+                        if lt(calldatasize(), 228) {
+                            revert(0, 0)
+                        }
+                        let pool := and(calldataload(4), 0xffffffffffffffffffffffffffffffffffffffff)
+                        let hollar := and(calldataload(36), 0xffffffffffffffffffffffffffffffffffffffff)
+                        let asset := and(calldataload(68), 0xffffffffffffffffffffffffffffffffffffffff)
+                        let onBehalfOf := and(calldataload(100), 0xffffffffffffffffffffffffffffffffffffffff)
+                        let recipient := and(calldataload(132), 0xffffffffffffffffffffffffffffffffffffffff)
+                        let repayAmount := calldataload(164)
+                        let withdrawAmount := calldataload(196)
+                        let currentDebt := sload(3)
+                        if lt(currentDebt, repayAmount) {
+                            mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                            mstore(4, 32)
+                            mstore(36, 25)
+                            mstore(68, 0x5641554c543a2072657061792065786365656473206465627400000000000000)
+                            revert(0, 100)
+                        }
+                        let currentAssets := sload(0)
+                        if lt(currentAssets, withdrawAmount) {
+                            mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                            mstore(4, 32)
+                            mstore(36, 30)
+                            mstore(68, 0x5641554c543a2077697468647261772065786365656473206173736574730000)
+                            revert(0, 100)
+                        }
+                        let currentSupply := sload(1)
+                        if lt(currentSupply, withdrawAmount) {
+                            mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                            mstore(4, 32)
+                            mstore(36, 30)
+                            mstore(68, 0x5641554c543a207769746864726177206578636565647320737570706c790000)
+                            revert(0, 100)
+                        }
+                        sstore(3, sub(currentDebt, repayAmount))
+                        sstore(0, sub(currentAssets, withdrawAmount))
+                        sstore(1, sub(currentSupply, withdrawAmount))
+                        let _repaid := 0
+                        {
+                            let __ecwr_ptr := mload(64)
+                            mstore(__ecwr_ptr, shl(224, 0x573ade81))
+                            mstore(add(__ecwr_ptr, 4), hollar)
+                            mstore(add(__ecwr_ptr, 36), repayAmount)
+                            mstore(add(__ecwr_ptr, 68), 2)
+                            mstore(add(__ecwr_ptr, 100), onBehalfOf)
+                            mstore(64, add(__ecwr_ptr, 160))
+                            let __ecwr_success := call(gas(), pool, 0, __ecwr_ptr, 132, __ecwr_ptr, 32)
+                            if iszero(__ecwr_success) {
+                                let __ecwr_rds := returndatasize()
+                                returndatacopy(0, 0, __ecwr_rds)
+                                revert(0, __ecwr_rds)
+                            }
+                            if lt(returndatasize(), 32) {
+                                revert(0, 0)
+                            }
+                            _repaid := mload(__ecwr_ptr)
+                        }
+                        let _withdrawn := 0
+                        {
+                            let __ecwr_ptr := mload(64)
+                            mstore(__ecwr_ptr, shl(224, 0x69328dec))
+                            mstore(add(__ecwr_ptr, 4), asset)
+                            mstore(add(__ecwr_ptr, 36), withdrawAmount)
+                            mstore(add(__ecwr_ptr, 68), recipient)
+                            mstore(64, add(__ecwr_ptr, 128))
+                            let __ecwr_success := call(gas(), pool, 0, __ecwr_ptr, 100, __ecwr_ptr, 32)
+                            if iszero(__ecwr_success) {
+                                let __ecwr_rds := returndatasize()
+                                returndatacopy(0, 0, __ecwr_rds)
+                                revert(0, __ecwr_rds)
+                            }
+                            if lt(returndatasize(), 32) {
+                                revert(0, 0)
+                            }
+                            _withdrawn := mload(__ecwr_ptr)
                         }
                         stop()
                     }
