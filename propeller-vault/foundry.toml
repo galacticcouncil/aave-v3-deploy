@@ -1,0 +1,24 @@
+[profile.default]
+src = "src"
+out = "out"
+test = "test"
+script = "script"
+# Reuse the sibling hdcl-vault's already-installed libs (forge-std, OZ, OZ-upgradeable)
+# so this module compiles without a separate `forge install`. Vendor independently
+# before audit if a clean dependency boundary is wanted.
+libs = ["../hdcl-vault/lib"]
+solc_version = "0.8.22"
+optimizer = true
+optimizer_runs = 30
+evm_version = "paris"
+via_ir = true
+
+[invariant]
+runs = 256
+depth = 50
+fail_on_revert = false
+shrink_run_limit = 0
+
+[rpc_endpoints]
+hydration = "${RPC_HYDRATION}"
+lark = "https://2.lark.hydration.cloud"

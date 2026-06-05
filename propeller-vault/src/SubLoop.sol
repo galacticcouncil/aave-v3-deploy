@@ -1,0 +1,417 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.22;
+
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
+import {IAavePool} from "./interfaces/IAavePool.sol";
+import {IDcaScheduler} from "./interfaces/IDcaScheduler.sol";
+import {ISubLoop} from "./interfaces/ISubLoop.sol";
+
+/// @title SubLoop
+/// @notice The single shared leveraged PRIME/HOLLAR loop (Aave isolation mode).
+///         Deploy and unwind are **gradual and async**:
+///
+///         DEPLOY ── unbounded DCA: HOLLAR ─▶ aPRIME (swap+supply folded via the
+///           Aave trade-executor route); keeper `pokeBorrow` borrows HOLLAR up to
+///           a safe margin above target HF and refills the DCA budget. The loop
+///           self-ramps to target HF, then the budget dries up (can't borrow more).
+///
+///         UNWIND ── the deleveraging spiral: unbounded DCA aPRIME ─▶ HOLLAR
+///           (withdraw+swap folded); keeper `pokeRepay` repays loop debt with the
+///           proceeds, raising HF and reopening the next HF-safe sliver. Most of
+///           each tranche repays the loop's own debt; the ~1/leverage equity
+///           portion is credited to the unwinding vault, which pulls it to settle
+///           its own (HDCL-style) redemption queue. de-lever uses the same spiral.
+///
+///         No flash loans. The keeper only ever touches the Aave debt legs
+///         (borrow/repay) — every swap, incl. the Aave supply/withdraw (aTokens
+///         are routable), lives in pallet-DCA for execution efficiency.
+///
+///         STATUS: structured skeleton on the agreed model. State + surface +
+///         flow are in place; precise per-tranche HF math, the deleverage split,
+///         and the DCA order lifecycle (behind IDcaScheduler) are TODO(impl),
+///         best finalized against fork tests.
+contract SubLoop is
+    ISubLoop,
+    AccessControlUpgradeable,
+    UUPSUpgradeable,
+    PausableUpgradeable,
+    ReentrancyGuardUpgradeable
+{
+    using SafeERC20 for IERC20;
+
+    uint256 internal constant WAD = 1e18;
+    uint256 internal constant VARIABLE_RATE = 2;
+
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+    bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
+    /// @notice Registered CollateralVaults — the only callers of deposit/unwind.
+    bytes32 public constant VAULT_ROLE = keccak256("VAULT_ROLE");
+    /// @notice Harvester / keepers — call pokeBorrow / pokeRepay / harvest / deLever.
+    bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
+
+    // ── config ────────────────────────────────────────────────────────────
+    IAavePool public pool;
+    IDcaScheduler public dca;
+    IERC20 public hollar;
+    IERC20 public prime;
+    IERC20 public primeAToken; // collateral receipt (this loop's Aave position)
+    IERC20 public hollarDebtToken; // variable-debt receipt (this loop's debt)
+
+    // ── policy params ─────────────────────────────────────────────────────
+    uint256 public primeLiqThreshold; // PRIME LT, e.g. 0.88e18
+    uint256 public targetHf; // e.g. 1.05e18
+    uint256 public deployHfFloor; // borrow only while HF would stay >= this (≥ target, buffer for DCA lag)
+    uint256 public unwindHfFloor; // withdraw only while HF would stay >= this
+    uint256 public deLeverTrigger; // e.g. 1.10e18
+    uint256 public harvestThreshold; // WAD fraction of equity
+    uint256 public deployTranche; // HOLLAR per deploy-DCA execution
+    uint256 public unwindTranche; // aPRIME per unwind-DCA execution
+
+    // ── equity shares ─────────────────────────────────────────────────────
+    mapping(address => uint256) internal _sharesOf;
+    uint256 internal _totalShares;
+
+    // ── deploy state ──────────────────────────────────────────────────────
+    uint256 public pendingDeployHollar; // HOLLAR queued to be levered in
+    uint256 public deployOrderId;
+
+    // ── unwind state ──────────────────────────────────────────────────────
+    uint256 public unwindTargetEquity; // total equity (HOLLAR, 18dp) being unwound
+    mapping(address => uint256) public unwindRequested; // per-vault equity targeted (18dp)
+    mapping(address => uint256) public freedHollar; // per-vault equity freed, not yet pulled (18dp)
+    uint256 public reservedFreed; // Σ freedHollar (HOLLAR held back for vaults to pull)
+    uint256 public unwindOrderId;
+    address[] internal _unwinders; // vaults with an open unwind request
+    mapping(address => bool) internal _isUnwinding;
+
+    event LoopDeposited(address indexed vault, uint256 hollarIn, uint256 shares);
+    event UnwindRequested(address indexed vault, uint256 shares, uint256 equity, uint256 unwindId);
+    event FreedPulled(address indexed vault, uint256 hollar);
+    event Borrowed(uint256 amount, uint256 hfAfter);
+    event Repaid(uint256 amount, uint256 hfAfter);
+    event Harvested(uint256 surplus);
+    event DeLevered(uint256 hfBefore, uint256 hfAfter);
+
+    error ZeroAmount();
+    error HealthyEnough();
+    error InsufficientShares();
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
+        address _pool,
+        address _dca,
+        address _hollar,
+        address _prime,
+        address _primeAToken,
+        address _hollarDebtToken,
+        uint256 _primeLiqThreshold,
+        uint256 _targetHf,
+        uint256 _deLeverTrigger,
+        address _admin
+    ) external initializer {
+        __AccessControl_init();
+        __UUPSUpgradeable_init();
+        __Pausable_init();
+        __ReentrancyGuard_init();
+
+        pool = IAavePool(_pool);
+        dca = IDcaScheduler(_dca);
+        hollar = IERC20(_hollar);
+        prime = IERC20(_prime);
+        primeAToken = IERC20(_primeAToken);
+        hollarDebtToken = IERC20(_hollarDebtToken);
+
+        primeLiqThreshold = _primeLiqThreshold;
+        targetHf = _targetHf;
+        deLeverTrigger = _deLeverTrigger;
+        deployHfFloor = _targetHf; // borrow down to target; DCA lag keeps actual HF above
+        unwindHfFloor = _deLeverTrigger; // unwind keeps HF in [target, trigger] band
+        harvestThreshold = 1e15; // 0.1%
+
+        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+        _grantRole(ADMIN_ROLE, _admin);
+        _grantRole(UPGRADER_ROLE, _admin);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //                         VAULT-FACING
+    // ══════════════════════════════════════════════════════════════════════
+
+    /// @inheritdoc ISubLoop
+    function deposit(uint256 hollarAmount)
+        external
+        override
+        onlyRole(VAULT_ROLE)
+        nonReentrant
+        whenNotPaused
+        returns (uint256 shares)
+    {
+        if (hollarAmount == 0) revert ZeroAmount();
+        hollar.safeTransferFrom(msg.sender, address(this), hollarAmount);
+
+        // Equity added ≈ the seed (1 HOLLAR in → ~1 unit of equity once levered;
+        // PRIME is value-stable). Share price reconciles via totalEquity() as the
+        // DCA deploys. TODO(impl): credit on realized equity if the ramp is slow.
+        uint256 equityBasis = totalEquity();
+        shares = (_totalShares == 0 || equityBasis == 0)
+            ? hollarAmount
+            : (hollarAmount * _totalShares) / equityBasis;
+        _sharesOf[msg.sender] += shares;
+        _totalShares += shares;
+
+        // FUTURE(matching): before funding the deploy DCA, match against
+        //   outstanding unwindTargetEquity — pay an exiting vault directly from
+        //   this incoming HOLLAR and transfer its loop shares at NAV, skipping
+        //   both DCAs for the matched amount (see README → Future improvements).
+        _fundDeploy(hollarAmount);
+        emit LoopDeposited(msg.sender, hollarAmount, shares);
+    }
+
+    /// @inheritdoc ISubLoop
+    function requestUnwind(uint256 shares)
+        external
+        override
+        onlyRole(VAULT_ROLE)
+        nonReentrant
+        returns (uint256 unwindId)
+    {
+        uint256 held = _sharesOf[msg.sender];
+        if (shares == 0) revert ZeroAmount();
+        if (shares > held) revert InsufficientShares();
+
+        uint256 totalSharesBefore = _totalShares;
+        // Equity (8dp USD) of this slice → HOLLAR (18dp, $1) for payout accounting.
+        uint256 equity8 = totalSharesBefore == 0 ? 0 : (totalEquity() * shares) / totalSharesBefore;
+        uint256 equityHollar = equity8 * 1e10;
+        // Collateral (aPRIME native) to pull to free that slice = proportional share.
+        uint256 collBudget = totalSharesBefore == 0
+            ? 0
+            : (primeAToken.balanceOf(address(this)) * shares) / totalSharesBefore;
+
+        _sharesOf[msg.sender] = held - shares;
+        _totalShares -= shares;
+
+        if (!_isUnwinding[msg.sender]) {
+            _isUnwinding[msg.sender] = true;
+            _unwinders.push(msg.sender);
+        }
+        unwindRequested[msg.sender] += equityHollar;
+        unwindTargetEquity += equityHollar;
+
+        // Schedule / extend the unbounded aPRIME→HOLLAR unwind order. Tranches
+        // are HF-capped at execution (see the DCA adapter), so the spiral never
+        // dips below the floor before pokeRepay catches up.
+        unwindOrderId = dca.scheduleUnwind(address(this), unwindTranche, collBudget);
+        unwindId = unwindOrderId;
+        emit UnwindRequested(msg.sender, shares, equityHollar, unwindId);
+    }
+
+    /// @inheritdoc ISubLoop
+    function pullFreed() external override onlyRole(VAULT_ROLE) nonReentrant returns (uint256 hollarSent) {
+        hollarSent = freedHollar[msg.sender];
+        if (hollarSent == 0) return 0;
+        freedHollar[msg.sender] = 0;
+        reservedFreed -= hollarSent;
+        if (unwindRequested[msg.sender] >= hollarSent) {
+            unwindRequested[msg.sender] -= hollarSent;
+        } else {
+            unwindRequested[msg.sender] = 0;
+        }
+        hollar.safeTransfer(msg.sender, hollarSent);
+        emit FreedPulled(msg.sender, hollarSent);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //                         KEEPER (debt legs only)
+    // ══════════════════════════════════════════════════════════════════════
+
+    /// @inheritdoc ISubLoop
+    function pokeBorrow() external override onlyRole(KEEPER_ROLE) nonReentrant whenNotPaused {
+        // Borrow against CURRENT collateral so the DCA lag never dips HF below
+        // the floor. Aave HF = collWithLT / debt; max debt at the floor is
+        //   maxDebt = collBase·wAvgLT / deployHfFloor.
+        (uint256 collBase8, uint256 debtBase8, , uint256 wAvgLtBps, , ) =
+            pool.getUserAccountData(address(this));
+        uint256 collWithLt8 = (collBase8 * wAvgLtBps) / 1e4; // 8dp USD
+        uint256 maxDebt8 = (collWithLt8 * WAD) / deployHfFloor; // 8dp USD
+        if (maxDebt8 <= debtBase8) {
+            emit Borrowed(0, healthFactor());
+            return;
+        }
+        // HOLLAR is 18dp and $1 ⇒ amount(18dp) = borrowBase(8dp) · 1e10.
+        uint256 borrowHollar = (maxDebt8 - debtBase8) * 1e10;
+        if (borrowHollar == 0) {
+            emit Borrowed(0, healthFactor());
+            return;
+        }
+        pool.borrow(address(hollar), borrowHollar, VARIABLE_RATE, 0, address(this));
+        _fundDeploy(borrowHollar);
+        emit Borrowed(borrowHollar, healthFactor());
+    }
+
+    /// @dev Push HOLLAR into the unbounded deploy DCA (HOLLAR→aPRIME).
+    function _fundDeploy(uint256 amount) internal {
+        pendingDeployHollar += amount;
+        hollar.safeApprove(address(dca), 0);
+        hollar.safeApprove(address(dca), amount);
+        deployOrderId = dca.scheduleDeploy(address(this), deployTranche, amount);
+    }
+
+    /// @inheritdoc ISubLoop
+    function pokeRepay() external override onlyRole(KEEPER_ROLE) nonReentrant {
+        // HOLLAR the unwind DCA delivered (excludes HOLLAR already reserved for
+        // vaults to pull).
+        uint256 bal = hollar.balanceOf(address(this));
+        uint256 avail = bal > reservedFreed ? bal - reservedFreed : 0;
+        if (avail == 0) {
+            emit Repaid(0, healthFactor());
+            return;
+        }
+
+        // The DCA already withdrew the collateral that produced `avail`. Repay
+        // the debt portion of that slice so the position shrinks *proportionally*
+        // (HF preserved), and free the equity remainder:
+        //   preColl = currentColl + avail ; repay = avail · debt/preColl.
+        (uint256 collBase8, uint256 debtBase8, , , , ) = pool.getUserAccountData(address(this));
+        uint256 avail8 = avail / 1e10;
+        uint256 preColl8 = collBase8 + avail8;
+        uint256 repay8 = preColl8 == 0 ? 0 : (avail8 * debtBase8) / preColl8;
+        uint256 repayHollar = repay8 * 1e10;
+        if (repayHollar > avail) repayHollar = avail;
+
+        if (repayHollar > 0) {
+            hollar.safeApprove(address(pool), 0);
+            hollar.safeApprove(address(pool), repayHollar);
+            pool.repay(address(hollar), repayHollar, VARIABLE_RATE, address(this));
+        }
+
+        uint256 freed = avail - repayHollar;
+        if (freed > 0) _creditFreed(freed);
+        emit Repaid(repayHollar, healthFactor());
+    }
+
+    /// @dev Credit freed equity HOLLAR to open unwind requests, pro-rata by
+    ///      outstanding `unwindRequested`, capped per vault at its request.
+    function _creditFreed(uint256 freed) internal {
+        uint256 target = unwindTargetEquity;
+        if (target == 0) return;
+        uint256 n = _unwinders.length;
+        uint256 distributed;
+        for (uint256 i = 0; i < n; i++) {
+            address v = _unwinders[i];
+            uint256 req = unwindRequested[v];
+            if (req == 0) continue;
+            uint256 cut = (freed * req) / target;
+            if (cut > req) cut = req;
+            freedHollar[v] += cut;
+            distributed += cut;
+        }
+        reservedFreed += distributed;
+        // Rounding dust (freed - distributed) stays as idle HOLLAR; folded into
+        // the next pokeRepay's `avail`.
+    }
+
+    /// @inheritdoc ISubLoop
+    function harvest() external override onlyRole(KEEPER_ROLE) nonReentrant returns (uint256 hollarSurplus) {
+        // TODO(impl): skim equity grown above shares' cost basis (PRIME yield),
+        //   route a slice aPRIME→HOLLAR via a bounded DCA, return to msg.sender
+        //   (Harvester) for per-vault in-kind compounding. Guard harvestThreshold.
+        emit Harvested(hollarSurplus);
+    }
+
+    /// @inheritdoc ISubLoop
+    function deLever() external override onlyRole(KEEPER_ROLE) nonReentrant {
+        uint256 hf = healthFactor();
+        if (hf > deLeverTrigger) revert HealthyEnough();
+        // Same spiral as unwind, but freed HOLLAR repays loop debt (no payout).
+        // TODO(impl): schedule/advance an unwind DCA sized to restore targetHf.
+        emit DeLevered(hf, healthFactor());
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //                         VIEWS
+    // ══════════════════════════════════════════════════════════════════════
+
+    /// @inheritdoc ISubLoop
+    function healthFactor() public view override returns (uint256) {
+        (, , , , , uint256 hf) = pool.getUserAccountData(address(this));
+        return hf;
+    }
+
+    /// @inheritdoc ISubLoop
+    function totalEquity() public view override returns (uint256) {
+        (uint256 collBase, uint256 debtBase, , , , ) = pool.getUserAccountData(address(this));
+        return collBase > debtBase ? collBase - debtBase : 0;
+    }
+
+    /// @inheritdoc ISubLoop
+    function equityOf(address vault) external view override returns (uint256) {
+        if (_totalShares == 0) return 0;
+        return (totalEquity() * _sharesOf[vault]) / _totalShares;
+    }
+
+    /// @inheritdoc ISubLoop
+    function sharesOf(address vault) external view override returns (uint256) {
+        return _sharesOf[vault];
+    }
+
+    /// @inheritdoc ISubLoop
+    function totalShares() external view override returns (uint256) {
+        return _totalShares;
+    }
+
+    /// @inheritdoc ISubLoop
+    function freedOf(address vault) external view override returns (uint256) {
+        return freedHollar[vault];
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //                         ADMIN
+    // ══════════════════════════════════════════════════════════════════════
+
+    function registerVault(address vault) external onlyRole(ADMIN_ROLE) {
+        _grantRole(VAULT_ROLE, vault);
+    }
+
+    function setTranches(uint256 _deployTranche, uint256 _unwindTranche) external onlyRole(ADMIN_ROLE) {
+        deployTranche = _deployTranche;
+        unwindTranche = _unwindTranche;
+    }
+
+    function setParams(
+        uint256 _targetHf,
+        uint256 _deployHfFloor,
+        uint256 _unwindHfFloor,
+        uint256 _deLeverTrigger,
+        uint256 _harvestThreshold
+    ) external onlyRole(ADMIN_ROLE) {
+        targetHf = _targetHf;
+        deployHfFloor = _deployHfFloor;
+        unwindHfFloor = _unwindHfFloor;
+        deLeverTrigger = _deLeverTrigger;
+        harvestThreshold = _harvestThreshold;
+    }
+
+    function pause() external onlyRole(GUARDIAN_ROLE) {
+        _pause();
+    }
+
+    function unpause() external onlyRole(GUARDIAN_ROLE) {
+        _unpause();
+    }
+
+    function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
+
+    uint256[36] private __gap;
+}

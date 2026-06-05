@@ -1,0 +1,4 @@
+forge-std/=../hdcl-vault/lib/forge-std/src/
+@openzeppelin/contracts/=../hdcl-vault/lib/openzeppelin-contracts/contracts/
+@openzeppelin/contracts-upgradeable/=../hdcl-vault/lib/openzeppelin-contracts-upgradeable/contracts/
+solmate/=../hdcl-vault/lib/solmate/
