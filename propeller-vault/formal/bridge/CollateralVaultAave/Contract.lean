@@ -33,10 +33,10 @@ verity_contract CollateralVaultAave where
     setStorage totalAssetsSlot 0
     setStorage totalSupplySlot 0
 
-  -- deposit collateral → supply it to Aave (external call) → mint shares 1:1.
+  -- deposit collateral → mint shares 1:1 (effects) → supply to Aave (interaction).
+  -- Effects precede the external call: Checks-Effects-Interactions, enforced by Verity's codegen.
   function deposit (pool : IPool, asset : Address, onBehalfOf : Address, assets : Uint256) : Unit := do
     let sender ← msgSender
-    let _ok ← pool.supply asset assets onBehalfOf 0
     let currentShares ← getMapping shareBalancesSlot sender
     let newShares ← requireSomeUint (safeAdd currentShares assets) "VAULT: share overflow"
     let currentAssets ← getStorage totalAssetsSlot
@@ -46,6 +46,7 @@ verity_contract CollateralVaultAave where
     setMapping shareBalancesSlot sender newShares
     setStorage totalAssetsSlot newAssets
     setStorage totalSupplySlot newSupply
+    let _ok ← pool.supply asset assets onBehalfOf 0
 
   function balanceOf (addr : Address) : Uint256 := do
     let s ← getMapping shareBalancesSlot addr
