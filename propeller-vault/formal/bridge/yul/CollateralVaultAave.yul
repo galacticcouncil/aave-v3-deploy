@@ -1,11 +1,10 @@
-// CollateralVaultAave — Aave-wired Main position, compiler output (Verity → Yul).
-// deposit: effects → supply + borrow (HOLLAR);  pokeSettle: effects → repay + withdraw.
-// Emitted by the STOCK verity-compiler CLI (--manifest), with the verity#1951 + #1952 fixes
-// applied to the local Verity checkout (loadExts:=true, supportInterpreter:=true, dotted-
-// external skip). No static-reference workaround. CEI-ordered; multi-call functions annotated
-// allow_post_interaction_writes (verity#1728 §3b).
-// Selectors: repay 0x573ade81 + withdraw 0x69328dec MATCH mainnet exactly; supply 0xe9c7359c
-// + borrow 0xa2b86e7b differ (uint16 referralCode modelled as Uint256).
+// CollateralVaultAave — full Propeller deposit flow + unwind, compiler output (Verity → Yul).
+// deposit: effects → IPool.supply + IPool.borrow + SyntheticToken.mint + SubLoop.deposit.
+// pokeSettle: effects → IPool.repay + IPool.withdraw.
+// Emitted by the STOCK verity-compiler CLI (verity#1951+#1952 fixes applied to the checkout).
+// Selectors: Aave repay 0x573ade81 / withdraw 0x69328dec match mainnet; supply 0xe9c7359c /
+// borrow 0xa2b86e7b differ (uint16→Uint256). Inter-contract mint 0x40c10f19 = mint(address,
+// uint256) and SubLoop deposit 0xb6b55f25 = deposit(uint256) match our SyntheticToken/SubLoop.
 
 object "CollateralVaultAave" {
     code {
@@ -18,7 +17,7 @@ object "CollateralVaultAave" {
             mstore(32, baseSlot)
             slot := keccak256(0, 64)
         }
-        function internal_internal_deposit(pool, asset, hollar, onBehalfOf, assets, borrowAmount) {
+        function internal_internal_deposit(pool, synth, loop, asset, hollar, onBehalfOf, assets, borrowAmount, synthAmount) {
             let sender := caller()
             let currentShares := sload(mappingSlot(2, sender))
             if lt(add(currentShares, assets), currentShares) {
@@ -56,10 +55,20 @@ object "CollateralVaultAave" {
                 revert(0, 100)
             }
             let newDebt := add(currentDebt, borrowAmount)
+            let currentSynth := sload(4)
+            if lt(add(currentSynth, synthAmount), currentSynth) {
+                mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                mstore(4, 32)
+                mstore(36, 21)
+                mstore(68, 0x5641554c543a2073796e7468206f766572666c6f770000000000000000000000)
+                revert(0, 100)
+            }
+            let newSynth := add(currentSynth, synthAmount)
             sstore(mappingSlot(2, sender), newShares)
             sstore(0, newAssets)
             sstore(1, newSupply)
             sstore(3, newDebt)
+            sstore(4, newSynth)
             let _supplied := 0
             {
                 let __ecwr_ptr := mload(64)
@@ -100,6 +109,41 @@ object "CollateralVaultAave" {
                     revert(0, 0)
                 }
                 _borrowed := mload(__ecwr_ptr)
+            }
+            let _minted := 0
+            {
+                let __ecwr_ptr := mload(64)
+                mstore(__ecwr_ptr, shl(224, 0x40c10f19))
+                mstore(add(__ecwr_ptr, 4), onBehalfOf)
+                mstore(add(__ecwr_ptr, 36), synthAmount)
+                mstore(64, add(__ecwr_ptr, 96))
+                let __ecwr_success := call(gas(), synth, 0, __ecwr_ptr, 68, __ecwr_ptr, 32)
+                if iszero(__ecwr_success) {
+                    let __ecwr_rds := returndatasize()
+                    returndatacopy(0, 0, __ecwr_rds)
+                    revert(0, __ecwr_rds)
+                }
+                if lt(returndatasize(), 32) {
+                    revert(0, 0)
+                }
+                _minted := mload(__ecwr_ptr)
+            }
+            let _seeded := 0
+            {
+                let __ecwr_ptr := mload(64)
+                mstore(__ecwr_ptr, shl(224, 0xb6b55f25))
+                mstore(add(__ecwr_ptr, 4), borrowAmount)
+                mstore(64, add(__ecwr_ptr, 64))
+                let __ecwr_success := call(gas(), loop, 0, __ecwr_ptr, 36, __ecwr_ptr, 32)
+                if iszero(__ecwr_success) {
+                    let __ecwr_rds := returndatasize()
+                    returndatacopy(0, 0, __ecwr_rds)
+                    revert(0, __ecwr_rds)
+                }
+                if lt(returndatasize(), 32) {
+                    revert(0, 0)
+                }
+                _seeded := mload(__ecwr_ptr)
             }
             stop()
         }
@@ -195,6 +239,7 @@ object "CollateralVaultAave" {
         sstore(0, 0)
         sstore(1, 0)
         sstore(3, 0)
+        sstore(4, 0)
         datacopy(0, dataoffset("runtime"), datasize("runtime"))
         return(0, datasize("runtime"))
     }
@@ -204,12 +249,14 @@ object "CollateralVaultAave" {
             /* verity linked external IPool.borrow linkMode=external */
             /* verity linked external IPool.repay linkMode=external */
             /* verity linked external IPool.withdraw linkMode=external */
+            /* verity linked external ISynth.mint linkMode=external */
+            /* verity linked external ISubLoop.deposit linkMode=external */
             function mappingSlot(baseSlot, key) -> slot {
                 mstore(0, key)
                 mstore(32, baseSlot)
                 slot := keccak256(0, 64)
             }
-            function internal_internal_deposit(pool, asset, hollar, onBehalfOf, assets, borrowAmount) {
+            function internal_internal_deposit(pool, synth, loop, asset, hollar, onBehalfOf, assets, borrowAmount, synthAmount) {
                 let sender := caller()
                 let currentShares := sload(mappingSlot(2, sender))
                 if lt(add(currentShares, assets), currentShares) {
@@ -247,10 +294,20 @@ object "CollateralVaultAave" {
                     revert(0, 100)
                 }
                 let newDebt := add(currentDebt, borrowAmount)
+                let currentSynth := sload(4)
+                if lt(add(currentSynth, synthAmount), currentSynth) {
+                    mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                    mstore(4, 32)
+                    mstore(36, 21)
+                    mstore(68, 0x5641554c543a2073796e7468206f766572666c6f770000000000000000000000)
+                    revert(0, 100)
+                }
+                let newSynth := add(currentSynth, synthAmount)
                 sstore(mappingSlot(2, sender), newShares)
                 sstore(0, newAssets)
                 sstore(1, newSupply)
                 sstore(3, newDebt)
+                sstore(4, newSynth)
                 let _supplied := 0
                 {
                     let __ecwr_ptr := mload(64)
@@ -291,6 +348,41 @@ object "CollateralVaultAave" {
                         revert(0, 0)
                     }
                     _borrowed := mload(__ecwr_ptr)
+                }
+                let _minted := 0
+                {
+                    let __ecwr_ptr := mload(64)
+                    mstore(__ecwr_ptr, shl(224, 0x40c10f19))
+                    mstore(add(__ecwr_ptr, 4), onBehalfOf)
+                    mstore(add(__ecwr_ptr, 36), synthAmount)
+                    mstore(64, add(__ecwr_ptr, 96))
+                    let __ecwr_success := call(gas(), synth, 0, __ecwr_ptr, 68, __ecwr_ptr, 32)
+                    if iszero(__ecwr_success) {
+                        let __ecwr_rds := returndatasize()
+                        returndatacopy(0, 0, __ecwr_rds)
+                        revert(0, __ecwr_rds)
+                    }
+                    if lt(returndatasize(), 32) {
+                        revert(0, 0)
+                    }
+                    _minted := mload(__ecwr_ptr)
+                }
+                let _seeded := 0
+                {
+                    let __ecwr_ptr := mload(64)
+                    mstore(__ecwr_ptr, shl(224, 0xb6b55f25))
+                    mstore(add(__ecwr_ptr, 4), borrowAmount)
+                    mstore(64, add(__ecwr_ptr, 64))
+                    let __ecwr_success := call(gas(), loop, 0, __ecwr_ptr, 36, __ecwr_ptr, 32)
+                    if iszero(__ecwr_success) {
+                        let __ecwr_rds := returndatasize()
+                        returndatacopy(0, 0, __ecwr_rds)
+                        revert(0, __ecwr_rds)
+                    }
+                    if lt(returndatasize(), 32) {
+                        revert(0, 0)
+                    }
+                    _seeded := mload(__ecwr_ptr)
                 }
                 stop()
             }
@@ -391,23 +483,26 @@ object "CollateralVaultAave" {
                 }
                 if __has_selector {
                     switch shr(224, calldataload(0))
-                    case 0x43aa5f1b {
+                    case 0x5d75d427 {
                         /* deposit() */
                         if callvalue() {
                             revert(0, 0)
                         }
-                        if lt(calldatasize(), 196) {
+                        if lt(calldatasize(), 292) {
                             revert(0, 0)
                         }
-                        if lt(calldatasize(), 196) {
+                        if lt(calldatasize(), 292) {
                             revert(0, 0)
                         }
                         let pool := and(calldataload(4), 0xffffffffffffffffffffffffffffffffffffffff)
-                        let asset := and(calldataload(36), 0xffffffffffffffffffffffffffffffffffffffff)
-                        let hollar := and(calldataload(68), 0xffffffffffffffffffffffffffffffffffffffff)
-                        let onBehalfOf := and(calldataload(100), 0xffffffffffffffffffffffffffffffffffffffff)
-                        let assets := calldataload(132)
-                        let borrowAmount := calldataload(164)
+                        let synth := and(calldataload(36), 0xffffffffffffffffffffffffffffffffffffffff)
+                        let loop := and(calldataload(68), 0xffffffffffffffffffffffffffffffffffffffff)
+                        let asset := and(calldataload(100), 0xffffffffffffffffffffffffffffffffffffffff)
+                        let hollar := and(calldataload(132), 0xffffffffffffffffffffffffffffffffffffffff)
+                        let onBehalfOf := and(calldataload(164), 0xffffffffffffffffffffffffffffffffffffffff)
+                        let assets := calldataload(196)
+                        let borrowAmount := calldataload(228)
+                        let synthAmount := calldataload(260)
                         let sender := caller()
                         let currentShares := sload(mappingSlot(2, sender))
                         if lt(add(currentShares, assets), currentShares) {
@@ -445,10 +540,20 @@ object "CollateralVaultAave" {
                             revert(0, 100)
                         }
                         let newDebt := add(currentDebt, borrowAmount)
+                        let currentSynth := sload(4)
+                        if lt(add(currentSynth, synthAmount), currentSynth) {
+                            mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
+                            mstore(4, 32)
+                            mstore(36, 21)
+                            mstore(68, 0x5641554c543a2073796e7468206f766572666c6f770000000000000000000000)
+                            revert(0, 100)
+                        }
+                        let newSynth := add(currentSynth, synthAmount)
                         sstore(mappingSlot(2, sender), newShares)
                         sstore(0, newAssets)
                         sstore(1, newSupply)
                         sstore(3, newDebt)
+                        sstore(4, newSynth)
                         let _supplied := 0
                         {
                             let __ecwr_ptr := mload(64)
@@ -489,6 +594,41 @@ object "CollateralVaultAave" {
                                 revert(0, 0)
                             }
                             _borrowed := mload(__ecwr_ptr)
+                        }
+                        let _minted := 0
+                        {
+                            let __ecwr_ptr := mload(64)
+                            mstore(__ecwr_ptr, shl(224, 0x40c10f19))
+                            mstore(add(__ecwr_ptr, 4), onBehalfOf)
+                            mstore(add(__ecwr_ptr, 36), synthAmount)
+                            mstore(64, add(__ecwr_ptr, 96))
+                            let __ecwr_success := call(gas(), synth, 0, __ecwr_ptr, 68, __ecwr_ptr, 32)
+                            if iszero(__ecwr_success) {
+                                let __ecwr_rds := returndatasize()
+                                returndatacopy(0, 0, __ecwr_rds)
+                                revert(0, __ecwr_rds)
+                            }
+                            if lt(returndatasize(), 32) {
+                                revert(0, 0)
+                            }
+                            _minted := mload(__ecwr_ptr)
+                        }
+                        let _seeded := 0
+                        {
+                            let __ecwr_ptr := mload(64)
+                            mstore(__ecwr_ptr, shl(224, 0xb6b55f25))
+                            mstore(add(__ecwr_ptr, 4), borrowAmount)
+                            mstore(64, add(__ecwr_ptr, 64))
+                            let __ecwr_success := call(gas(), loop, 0, __ecwr_ptr, 36, __ecwr_ptr, 32)
+                            if iszero(__ecwr_success) {
+                                let __ecwr_rds := returndatasize()
+                                returndatacopy(0, 0, __ecwr_rds)
+                                revert(0, __ecwr_rds)
+                            }
+                            if lt(returndatasize(), 32) {
+                                revert(0, 0)
+                            }
+                            _seeded := mload(__ecwr_ptr)
                         }
                         stop()
                     }

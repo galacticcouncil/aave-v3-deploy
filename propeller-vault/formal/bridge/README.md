@@ -91,11 +91,12 @@ make setup-solc && solc --strict-assembly --bin yul/CollateralVault.yul
 
 ## Aave wiring (`CollateralVaultAave/`)
 
-Both legs of the Main Aave position are wired through one typed `IPool` interface
-(`supply` · `borrow` · `repay` · `withdraw`):
+`CollateralVaultAave` wires the full deposit flow + unwind across three contracts — Aave's pool
+(`IPool`), our `SyntheticToken` (`ISynth`), and our `SubLoop` (`ISubLoop`):
 
-- **`deposit`** (Solidity step 2): mint shares 1:1 + record HOLLAR debt (effects) → `pool.supply`
-  the collateral, then `pool.borrow` HOLLAR against it (interactions, ≤74% LTV).
+- **`deposit`** (Solidity steps 2–4): mint shares + record debt & synthetic (effects) → `pool.supply`
+  collateral → `pool.borrow` HOLLAR → **`synth.mint`** the synthetic → **`loop.deposit`** seeds the
+  SubLoop (interactions). The last two are the **inter-contract** calls.
 - **`pokeSettle`** (Solidity step 5, unwind): lower debt + shares + assets (effects) → `pool.repay`
   the HOLLAR debt, then `pool.withdraw` the freed collateral (interactions).
 
@@ -104,17 +105,22 @@ Both are multi-call functions annotated `allow_post_interaction_writes` (see §3
 call is the second call to the same trusted pool.
 
 **Machine-checked wiring (`Wiring.lean`, `decide`, no axioms):**
-- `externals_are_the_four_aave_calls` — external set is exactly
-  `["IPool.supply", "IPool.borrow", "IPool.repay", "IPool.withdraw"]`.
-- `deposit_issues_supply_call` / `deposit_issues_borrow_call` / `deposit_issues_exactly_two_calls`.
-- `pokeSettle_issues_repay_call` / `pokeSettle_issues_withdraw_call` / `pokeSettle_issues_exactly_two_calls`.
+- `externals_are_the_six_calls` — external set is exactly the four Aave calls plus
+  `ISynth.mint`, `ISubLoop.deposit`.
+- `deposit_issues_supply_call` / `…_borrow_call` / `…_synth_mint` / `…_subloop_deposit` /
+  `deposit_issues_exactly_four_calls`.
+- `pokeSettle_issues_repay_call` / `…_withdraw_call` / `…_exactly_two_calls`.
 
 Same verification standard Verity uses for its own typed-interface contracts. The emitted
-`yul/CollateralVaultAave.yul` contains all four `call(gas(), pool, …)` instructions, effects-first.
+`yul/CollateralVaultAave.yul` contains all six `call(gas(), …)` instructions, effects-first.
 
-**Selector fidelity:** `repay` (`0x573ade81`) and `withdraw` (`0x69328dec`) **match mainnet Aave
-exactly** — they take no `uint16`. `supply`/`borrow` differ (`0xe9c7359c`/`0xa2b86e7b` vs
-`0x617ba037`/`0xa415bcad`) only because `referralCode`'s `uint16` is modelled as `Uint256`.
+**Selector fidelity:**
+- Aave `repay` (`0x573ade81`) and `withdraw` (`0x69328dec`) **match mainnet exactly** (no `uint16`);
+  `supply`/`borrow` differ (`0xe9c7359c`/`0xa2b86e7b` vs `0x617ba037`/`0xa415bcad`) only from the
+  `uint16 referralCode → Uint256` model.
+- The **inter-contract** selectors are self-consistent: `mint` → `0x40c10f19` (= `mint(address,uint256)`,
+  our `SyntheticToken.mint`) and `deposit` → `0xb6b55f25` (= `deposit(uint256)`, our `SubLoop.deposit`),
+  so the vault dispatches to exactly the right entrypoints on our own contracts.
 
 **Honest status / caveats:**
 - Real Aave `supply`/`borrow` are `void`; Verity interface methods require a return type, so each is

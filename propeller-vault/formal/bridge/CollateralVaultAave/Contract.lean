@@ -30,6 +30,7 @@ verity_contract CollateralVaultAave where
     totalSupplySlot   : Uint256 := slot 1
     shareBalancesSlot : Address → Uint256 := slot 2
     mainDebtSlot      : Uint256 := slot 3   -- HOLLAR borrowed against the supplied collateral
+    synthSupplySlot   : Uint256 := slot 4   -- synthetic minted (= tracks the Main debt floor)
 
   interfaces
     interface IPool where
@@ -40,11 +41,19 @@ verity_contract CollateralVaultAave where
       function repay(Address, Uint256, Uint256, Address) returns (Uint256)
       function withdraw(Address, Uint256, Address) returns (Uint256)
     end
+    -- inter-contract surface: the vault drives its own SyntheticToken and the shared SubLoop.
+    interface ISynth where
+      function mint(Address, Uint256) returns (Bool)
+    end
+    interface ISubLoop where
+      function deposit(Uint256) returns (Bool)
+    end
 
   constructor () := do
     setStorage totalAssetsSlot 0
     setStorage totalSupplySlot 0
     setStorage mainDebtSlot 0
+    setStorage synthSupplySlot 0
 
   -- deposit collateral → mint shares 1:1 + record HOLLAR debt (effects) → supply collateral to
   -- Aave, then borrow HOLLAR against it (interactions). `borrowAmount` (≤ LTV·assets) and the
@@ -55,8 +64,11 @@ verity_contract CollateralVaultAave where
   -- trusted Aave pool, with no storage write following either. Verity's CEI check is conservative
   -- about a second writing-ECM after any external call, so the annotation is required for the
   -- standard supply-then-borrow sequence. Reentrancy w.r.t. our own state is unaffected.
-  function allow_post_interaction_writes deposit (pool : IPool, asset : Address, hollar : Address,
-      onBehalfOf : Address, assets : Uint256, borrowAmount : Uint256) : Unit := do
+  -- full deposit flow (Solidity steps 2–4): mint shares + record debt & synthetic (effects), then
+  -- supply collateral, borrow HOLLAR, mint the synthetic, and seed the SubLoop (interactions).
+  function allow_post_interaction_writes deposit (pool : IPool, synth : ISynth, loop : ISubLoop,
+      asset : Address, hollar : Address, onBehalfOf : Address,
+      assets : Uint256, borrowAmount : Uint256, synthAmount : Uint256) : Unit := do
     let sender ← msgSender
     let currentShares ← getMapping shareBalancesSlot sender
     let newShares ← requireSomeUint (safeAdd currentShares assets) "VAULT: share overflow"
@@ -66,12 +78,17 @@ verity_contract CollateralVaultAave where
     let newSupply ← requireSomeUint (safeAdd currentSupply assets) "VAULT: supply overflow"
     let currentDebt ← getStorage mainDebtSlot
     let newDebt ← requireSomeUint (safeAdd currentDebt borrowAmount) "VAULT: debt overflow"
+    let currentSynth ← getStorage synthSupplySlot
+    let newSynth ← requireSomeUint (safeAdd currentSynth synthAmount) "VAULT: synth overflow"
     setMapping shareBalancesSlot sender newShares
     setStorage totalAssetsSlot newAssets
     setStorage totalSupplySlot newSupply
     setStorage mainDebtSlot newDebt
+    setStorage synthSupplySlot newSynth
     let _supplied ← pool.supply asset assets onBehalfOf 0
     let _borrowed ← pool.borrow hollar borrowAmount 2 0 onBehalfOf
+    let _minted ← synth.mint onBehalfOf synthAmount           -- CollateralVault → SyntheticToken
+    let _seeded ← loop.deposit borrowAmount                   -- CollateralVault → SubLoop
 
   -- unwind/settle (Solidity step 5): repay HOLLAR debt, then withdraw freed collateral from Aave.
   -- Effects (lower debt + shares + assets) precede both interactions; same CEI annotation as deposit.

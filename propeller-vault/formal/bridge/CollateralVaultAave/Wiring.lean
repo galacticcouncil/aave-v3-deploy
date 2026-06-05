@@ -14,11 +14,12 @@ namespace Contracts.CollateralVaultAave.Wiring
 open Contracts
 open Compiler.CompilationModel
 
-/-- The contract declares exactly the four Aave Main-position externals, in order:
-    `supply` · `borrow` (deposit leg) then `repay` · `withdraw` (unwind leg). -/
-theorem externals_are_the_four_aave_calls :
+/-- The contract declares exactly its six externals, in order: the four Aave Main-position calls,
+    then the two inter-contract calls (`SyntheticToken.mint`, `SubLoop.deposit`). -/
+theorem externals_are_the_six_calls :
     (CollateralVaultAave.spec.externals).map (·.name)
-      = ["IPool.supply", "IPool.borrow", "IPool.repay", "IPool.withdraw"] := by decide
+      = ["IPool.supply", "IPool.borrow", "IPool.repay", "IPool.withdraw",
+         "ISynth.mint", "ISubLoop.deposit"] := by decide
 
 /-- `deposit` issues the `supply` call: a state-writing `externalCallWithReturn` ECM with 5 args
     (pool + `asset`, `amount`, `onBehalfOf`, `referralCode`). -/
@@ -44,13 +45,35 @@ theorem deposit_issues_borrow_call :
                 args.length == 6
           | _ => false)) = true := by decide
 
-/-- `deposit` issues exactly two external calls (supply + borrow), no more. -/
-theorem deposit_issues_exactly_two_calls :
+/-- `deposit` issues the **inter-contract** `SyntheticToken.mint` call (3 args: synth + `to`,`amount`). -/
+theorem deposit_issues_synth_mint :
+    (CollateralVaultAave.spec.functions).any (fun fn =>
+      fn.name == "deposit" &&
+        fn.body.any (fun stmt =>
+          match stmt with
+          | Stmt.ecm mod args =>
+              mod.name == "externalCallWithReturn" && mod.numArgs == 3 && mod.writesState &&
+                args.length == 3
+          | _ => false)) = true := by decide
+
+/-- `deposit` issues the **inter-contract** `SubLoop.deposit` call (2 args: loop + `borrowAmount`). -/
+theorem deposit_issues_subloop_deposit :
+    (CollateralVaultAave.spec.functions).any (fun fn =>
+      fn.name == "deposit" &&
+        fn.body.any (fun stmt =>
+          match stmt with
+          | Stmt.ecm mod args =>
+              mod.name == "externalCallWithReturn" && mod.numArgs == 2 && mod.writesState &&
+                args.length == 2
+          | _ => false)) = true := by decide
+
+/-- `deposit` issues exactly four external calls (supply, borrow, synth.mint, subloop.deposit). -/
+theorem deposit_issues_exactly_four_calls :
     ((CollateralVaultAave.spec.functions).filterMap (fun fn =>
       if fn.name == "deposit" then
         some ((fn.body.filter (fun stmt =>
           match stmt with | Stmt.ecm _ _ => true | _ => false)).length)
-      else none)) = [2] := by decide
+      else none)) = [4] := by decide
 
 /-- `pokeSettle` (the unwind leg) issues the `repay` call: an `externalCallWithReturn` ECM with 5 args
     (pool + `asset`, `amount`, `interestRateMode`, `onBehalfOf`). -/
