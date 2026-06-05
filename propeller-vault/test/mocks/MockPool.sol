@@ -125,14 +125,6 @@ contract MockPool is IAavePool {
         return amt > bal ? bal : amt;
     }
 
-    function getReserveData(address) external pure override returns (bytes memory) {
-        return "";
-    }
-
-    function flashLoanSimple(address, address, uint256, bytes calldata, uint16) external pure override {
-        revert("MockPool: flash unused");
-    }
-
     function getUserAccountData(address user)
         external
         view

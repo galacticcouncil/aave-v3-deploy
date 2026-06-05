@@ -32,18 +32,4 @@ interface IAavePool {
         view
         returns (uint256, uint256, uint256, uint256, uint256, uint256);
 
-    /// @notice Aave v3 simple flash loan — borrow `asset`, repay `amount + premium`
-    ///         inside the receiver's `executeOperation`.
-    function flashLoanSimple(
-        address receiverAddress,
-        address asset,
-        uint256 amount,
-        bytes calldata params,
-        uint16 referralCode
-    ) external;
-
-    /// @return the variable-debt token balance helper via getReserveData would
-    ///         be heavier; Propeller reads debt through getUserAccountData and
-    ///         the debt-token directly where it needs per-asset granularity.
-    function getReserveData(address asset) external view returns (bytes memory);
 }
