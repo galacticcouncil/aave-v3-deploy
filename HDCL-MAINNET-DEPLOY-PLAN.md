@@ -205,12 +205,31 @@ The task hoists this automatically (`txs.unshift`).
 13. Substrate: `assetRegistry.register(55, HDCL → DCL aToken proxy)`
 14. Substrate: `multiTransactionPayment.addCurrency` (DCL, HDCL as fee currencies)
 15. Substrate: `evmAccounts.approveContract(Pool-Proxy-HDCL)` (managed-balance — saves users from per-ERC20 approve before `pool.supply` / `repay`)
+16. **Stablepool bootstrap** (via `buildStablepoolTxs` from `hdcl-stablepool-lark.ts`):
+    - Substrate: `assetRegistry.register(10055, 2-Pool-HDCL, StableSwap)`
+    - Substrate: `multiTransactionPayment.addCurrency(10055)` (reuses HOLLAR's price)
+    - Substrate: `stableswap.createPoolWithPegs(10055, [55, 222], A=100, fee=0.10%, peg=[MMOracle(HDCLOracleAdapter), Value(1,1)], maxPegUpdate=2%)`
+    - Substrate: `scheduler.scheduleAfter(1, batchAll([…]))` — Treasury bootstrap, runs 1 block later: borrow 600K HOLLAR from main MM, approve zap, `zap.depositAndSupply(300K HOLLAR)`, `stableswap.addAssetsLiquidity(10055, [HDCL: ~296.7K, HOLLAR: 300K])`. All four inner calls are `dispatcher.dispatchAs(treasury, …)`.
 
 All EVM calls are wrapped via `aaveManagerCall` (`dispatcher.dispatchAsAaveManager`,
 source = aave-manager precompile). The task prints both the **whitelisted-call
 hash** and the **bare batchAll hex** ("Encoded proposal"). Watch the log line
 `reordered: DCL substrate register moved <idx> → 0` — that confirms the hoist
 fired and the ordering bug is avoided.
+
+Step 16 (stablepool) is **idempotent at the proposal level** — if asset 10055 is
+already registered when the task runs, the stablepool helper throws
+`already registered` and `hdcl.ts` catches that and skips Phase E.5 without
+aborting the rest. This lets the proposal be re-built safely after a partial
+landing. For networks where the main launch ran but the stablepool didn't (e.g.
+lark-2 prior to ref #399), use the standalone `hdcl-stablepool-patch` task to
+submit JUST the stablepool delta.
+
+**Pre-flight on the stablepool step**: Treasury needs ≥600K HOLLAR of borrow
+capacity on the **main MM** (i.e. enough existing collateral to back the
+bootstrap loan). On lark-2 Treasury has ~$2.3M available borrows; the task
+warns and continues if mainnet's headroom drops below 600K — verify before
+submitting.
 
 ### Submitting on mainnet
 Per current intent, **not** using the TC-whitelist track. Submit the bare
@@ -337,11 +356,13 @@ substrate balance and revert).
 
 **Status: complete.** HDCL market live on lark-2; governance proposal enacted
 via Root referendum #383 at block 222762, parameter patch (LTV/LT 70/80 →
-80/85) via #384, rate-strategy revert (10% APR → 10% APY) via #385. UI flipped
-on `feat/hdcl` (commit `ab3f64bda`). End-state verified by
-`scripts/verify-hdcl-state.ts`; tight-leverage loop converged to 4.99x at
-HF 1.0628 with theoretical net APR ≈ 51.83% on equity (vault 18% APY, borrow
-9.53% APR).
+80/85) via #384, rate-strategy revert (10% APR → 10% APY) via #385,
+**stablepool bootstrap** (ref #399 at block 298146) — 2-Pool-HDCL stableswap
+created with 296.7K HDCL + 300K HOLLAR initial liquidity from Treasury, fast
+withdrawals now possible. UI flipped on `feat/hdcl` (commit `ab3f64bda`).
+End-state verified by `scripts/verify-hdcl-state.ts`; tight-leverage loop
+converged to 4.99x at HF 1.0628 with theoretical net APR ≈ 51.83% on equity
+(vault 18% APY, borrow 9.53% APR).
 
 | Contract | lark-2 address |
 |---|---|

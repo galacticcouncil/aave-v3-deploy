@@ -18,6 +18,7 @@ import {
   POOL_ADMIN,
   TREASURY_PROXY_ID,
 } from "../../helpers";
+import { buildStablepoolTxs } from "./hdcl-stablepool-lark";
 import ProposalDecoder from "../../helpers/proposal-decoder";
 
 // Known deployed addresses
@@ -454,6 +455,31 @@ task(
     txs.push(evmAccountsTx.approveContract(poolProxyAddress));
   } else {
     console.log(`---------> Pool-Proxy-HDCL already approved — skipping`);
+  }
+
+  // ===================================================================
+  // Phase E.5: Stablepool bootstrap — HDCL/HOLLAR fast-withdrawal path
+  // ===================================================================
+  // Registers the 2-Pool-HDCL LP asset (10055), creates the stableswap
+  // (assets [55, 222], A=100, fee=0.10%, MMOracle peg), and bootstraps
+  // 300K HDCL / 300K HOLLAR from the Treasury (Treasury borrows 600K
+  // HOLLAR from the main MM, zaps half into HDCL, pairs both into the
+  // pool, all scheduled 1 block after pool creation).
+  //
+  // Idempotent: pre-flight throws if asset 10055 already exists. On
+  // re-runs against a network where the stablepool is done, skip with a
+  // warning rather than aborting the whole proposal — the main HDCL
+  // launch piece may still need re-application.
+  try {
+    const stablepoolTxs = await buildStablepoolTxs(hre);
+    txs.push(...stablepoolTxs);
+    console.log(`Phase E.5: appended ${stablepoolTxs.length} stablepool txs`);
+  } catch (e: any) {
+    if (/already registered/i.test(e?.message ?? "")) {
+      console.log(`Phase E.5: stablepool already live — skipping (${e.message})`);
+    } else {
+      throw e;
+    }
   }
 
   // Reorder: the substrate registration of DCL (asset 550 → vault proxy) MUST

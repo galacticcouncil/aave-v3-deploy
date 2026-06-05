@@ -12,17 +12,18 @@ import {
 import { task } from "hardhat/config";
 import ProposalDecoder from "../../helpers/proposal-decoder";
 
+// Standalone task: builds JUST the stablepool delta as its own proposal.
+// Used to patch lark-2 (where the main hdcl.ts proposal already ran without
+// the stablepool component) up to parity with what mainnet's main proposal
+// will produce. Mainnet doesn't run this — it gets the same bootstrap as
+// part of hdcl.ts (`buildStablepoolTxs` is also imported there).
 task(
-  `hdcl-stablepool-lark`,
-  `LARK ONLY: HDCL/HOLLAR stablepool launch proposal. Adds the bits the ` +
-    `original hdcl.ts proposal didn't include — 2-Pool-HDCL asset registration, ` +
-    `the stableswap pool itself, and Treasury liquidity bootstrap (borrow + ` +
-    `deposit + add-liquidity). Run AFTER hdcl.ts has executed and the ` +
-    `HDCLDepositZap is deployed. Mainnet uses a unified single-batch task ` +
-    `(hdcl-mainnet-launch — to be written) and inverts the HDCL/aHDCL asset ` +
-    `ids (see handover doc lesson 10), so this lark task uses asset 550 ` +
-    `(aHDCL = aToken users hold under lark naming), while the mainnet task ` +
-    `will use asset 55 (renamed HDCL = aToken).`
+  `hdcl-stablepool-patch`,
+  `Stablepool delta for HDCL — registers 2-Pool-HDCL (10055), creates the ` +
+    `HDCL/HOLLAR stableswap, and bootstraps 300K/300K liquidity from the ` +
+    `Treasury (via 600K HOLLAR borrow on main MM + zap). Use this when the ` +
+    `main hdcl.ts proposal has already executed on a network and only the ` +
+    `stablepool piece is missing (lark-2).`
 ).setAction(async function (_, hre) {
   const preimage = await buildHdclStablepoolProposal(hre);
   const decoder = new ProposalDecoder(hre);
@@ -42,28 +43,36 @@ task(
  * hardhat task printer.
  */
 export async function buildHdclStablepoolProposal(hre: any) {
+  const txs = await buildStablepoolTxs(hre);
+  return await generateProposalV2(txs, false);
+}
+
+/**
+ * Build the raw tx list for the stablepool bootstrap. Returns
+ * SubmittableExtrinsics in batch-order, ready to be concatenated onto any
+ * larger `utility.batchAll` (e.g. by `hdcl.ts` to fold the bootstrap into
+ * the main launch proposal).
+ *
+ * Idempotent at the proposal level: pre-flight checks throw if the
+ * stablepool is already live (asset 10055 registered), so callers can
+ * catch and skip when running against a network where it's done.
+ */
+export async function buildStablepoolTxs(hre: any) {
   const { utils } = hre.ethers;
 
   // ====================================================================
   // Configuration
   // ====================================================================
 
-  // Asset IDs.
-  //
-  // NB: lark is on the OLD naming convention from the original HDCL launch
-  // (handover doc lesson 10) — asset 55 points at the vault contract and
-  // asset 550 points at the aToken proxy. The mainnet target is the
-  // OPPOSITE (55 = aToken, 550 = vault). Renaming on lark would risk
-  // breaking the live Aave HDCL pool, so we use the current ids as-is and
-  // accept the divergence — the FIRST mainnet rehearsal after this lark
-  // test will need asset-id corrections at build time.
-  //
-  // For the stableswap pool we want to pair "what users actually hold"
-  // (the aToken) with HOLLAR. On lark that's asset 550 (named aHDCL).
-  // On mainnet it'll be asset 55 (named HDCL after the new naming).
-  const AHDCL_LARK = 550; // lark: aToken receipt = "aHDCL" — what users hold
-  const HOLLAR = 222; // unchanged
-  const POOL_LP = 10055; // NEW — 2-Pool-HDCL stableswap LP token
+  // Asset IDs (mainnet-aligned naming, used on lark-2 too as of refs #383+):
+  //   HDCL (asset 55,  precompile 0x…0037) — aToken receipt; what users hold
+  //   DCL  (asset 550, precompile 0x…0226) — vault underlying; the pool's reserve
+  //   2-Pool-HDCL (asset 10055)            — NEW stableswap LP token
+  // The stableswap pair is (HDCL aToken ↔ HOLLAR) so a redeem-without-queue
+  // path means swapping the aToken receipt directly into HOLLAR.
+  const HDCL = 55;     // aToken receipt — what users hold
+  const HOLLAR = 222;
+  const POOL_LP = 10055;
 
   // Treasury substrate address. Same on lark since lark forks mainnet.
   // Reused from heurc-launch / hollar-pools-launch.
@@ -115,11 +124,11 @@ export async function buildHdclStablepoolProposal(hre: any) {
     );
   }
 
-  const aHdclInfo: any = await hydrationApi.query.assetRegistry.assets(AHDCL_LARK);
-  if (!aHdclInfo.isSome) {
+  const hdclInfo: any = await hydrationApi.query.assetRegistry.assets(HDCL);
+  if (!hdclInfo.isSome) {
     throw new Error(
-      `Asset ${AHDCL_LARK} (aHDCL aToken on lark naming) is not registered. ` +
-        `The hdcl.ts proposal must execute first.`
+      `Asset ${HDCL} (HDCL aToken receipt) is not registered. The hdcl.ts ` +
+        `proposal must execute first.`
     );
   }
 
@@ -217,9 +226,9 @@ export async function buildHdclStablepoolProposal(hre: any) {
   const hdclAaveOracleAddr = (
     await hre.deployments.get("AaveOracle-HDCL")
   ).address;
-  // The HDCL pool's DCL reserve is keyed by asset 55 precompile on lark
-  // (per the existing AaveOracle entry — verified via getSourceOfAsset).
-  const HDCL_RESERVE_PRECOMPILE = "0x0000000000000000000000000000000100000037";
+  // The HDCL pool's reserve is DCL (asset 550 → precompile 0x…0226).
+  // setAssetSources is keyed by the reserve underlying address.
+  const DCL_PRECOMPILE = "0x0000000000000000000000000000000100000226";
   console.log("HDCL AaveOracle:      ", hdclAaveOracleAddr);
 
   // ====================================================================
@@ -239,7 +248,7 @@ export async function buildHdclStablepoolProposal(hre: any) {
   // — same admin-EVM pattern hdcl.ts uses for its other Aave Manager calls.
   // Idempotent: setAssetSources is a plain assignment, safe to re-run.
   console.log(
-    `---------> consolidate HDCL AaveOracle source for ${HDCL_RESERVE_PRECOMPILE} → ${oracleAdapter}`
+    `---------> consolidate HDCL AaveOracle source for ${DCL_PRECOMPILE} → ${oracleAdapter}`
   );
   {
     const aaveOracleIface = new utils.Interface([
@@ -247,7 +256,7 @@ export async function buildHdclStablepoolProposal(hre: any) {
     ]);
     const setSourcesData = aaveOracleIface.encodeFunctionData(
       "setAssetSources",
-      [[HDCL_RESERVE_PRECOMPILE], [oracleAdapter]]
+      [[DCL_PRECOMPILE], [oracleAdapter]]
     );
     txs.push(
       await aaveManagerCall({
@@ -285,29 +294,29 @@ export async function buildHdclStablepoolProposal(hre: any) {
     )
   );
 
-  // -------- 3. Create stableswap pool (aHDCL ↔ HOLLAR) --------
-  // Assets sorted ascending: HOLLAR(222) < aHDCL(550). Sort order matters —
+  // -------- 3. Create stableswap pool (HDCL ↔ HOLLAR) --------
+  // Assets sorted ascending: HDCL(55) < HOLLAR(222). Sort order matters —
   // the runtime enforces it and the peg-source array follows the same order.
   // Peg sources:
-  //   HOLLAR (sorted first): fixed 1:1 base reference.
-  //   aHDCL  (sorted second): MMOracle = HDCLOracleAdapter, which reads
+  //   HDCL   (sorted first):  MMOracle = HDCLOracleAdapter, which reads
   //                           vault.exchangeRate() scaled to 8 dec. The
   //                           aToken is 1:1 redeemable for the underlying
   //                           (Aave V3 scaledBalance × liquidityIndex), so
-  //                           1 aHDCL = vault.exchangeRate() HOLLAR. Same
+  //                           1 HDCL = vault.exchangeRate() HOLLAR. Same
   //                           oracle the Aave reserve uses.
+  //   HOLLAR (sorted second): fixed 1:1 base reference.
   // maxPegUpdate=200 follows gigasol's ≥10× APY rule for HDCL's ~18% APY.
-  console.log("---------> create stableswap pool (aHDCL ↔ HOLLAR)");
+  console.log("---------> create stableswap pool (HDCL ↔ HOLLAR)");
   txs.push(
     hydrationTx.stableswap.createPoolWithPegs(
       ...Object.values({
         shareAsset: POOL_LP,
-        assets: [HOLLAR, AHDCL_LARK],
+        assets: [HDCL, HOLLAR],
         amplification: AMPLIFICATION,
         fee: FEE,
         pegSource: [
-          { value: [1, 1] }, // HOLLAR (sorted first) — fixed 1:1 base
-          { MMOracle: oracleAdapter }, // aHDCL (sorted second)
+          { MMOracle: oracleAdapter }, // HDCL (sorted first)
+          { value: [1, 1] }, // HOLLAR (sorted second) — fixed 1:1 base
         ],
         maxPegUpdate: MAX_PEG_UPDATE,
       })
@@ -324,7 +333,7 @@ export async function buildHdclStablepoolProposal(hre: any) {
   //                  Treasury's existing collateral there.
   //   4b. EVM:       HOLLAR.approve(zap, 300K)
   //   4c. EVM:       zap.depositAndSupply(300K HOLLAR) → mints ~300K HDCL aToken atomically
-  //   4d. Substrate: stableswap.addAssetsLiquidity([HOLLAR: 300K, aHDCL: HDCL_SUPPLY_AMOUNT])
+  //   4d. Substrate: stableswap.addAssetsLiquidity([HDCL: HDCL_SUPPLY_AMOUNT, HOLLAR: 300K])
   //
   // Treasury's bound EVM address is derived from its substrate AccountId
   // (default truncation). pallet_evm's source-validation requires the
@@ -417,7 +426,7 @@ export async function buildHdclStablepoolProposal(hre: any) {
   );
 
   // 4d. Treasury adds liquidity to the new pool.
-  // Asset order: ascending (HOLLAR=222 first, aHDCL=550 second on lark).
+  // Asset order: ascending (HDCL=55 first, HOLLAR=222 second).
   // Inverting silently produces wrong pool composition — see handover doc.
   last.push(
     await dispatchAs(
@@ -426,8 +435,8 @@ export async function buildHdclStablepoolProposal(hre: any) {
         ...Object.values({
           poolId: POOL_LP,
           assets: [
+            { assetId: HDCL, amount: HDCL_SUPPLY_AMOUNT },
             { assetId: HOLLAR, amount: HOLLAR_PAIR_AMOUNT },
-            { assetId: AHDCL_LARK, amount: HDCL_SUPPLY_AMOUNT },
           ],
           minShares: 0, // initial liquidity — no slippage protection needed
         })
@@ -445,14 +454,7 @@ export async function buildHdclStablepoolProposal(hre: any) {
     )
   );
 
-  // ====================================================================
-  // Generate proposal preimage — Root track only
-  // ====================================================================
-  // Lark uses the Root track for non-urgent proposals (most of them).
-  // WhitelistedCaller is reserved for time-urgent submissions; the
-  // stablepool launch isn't urgent, so we generate the Root form only.
-  const preimage = await generateProposalV2(txs, false);
-  return preimage;
+  return txs;
 }
 
 /** Read the vault proxy address from HDCLOracleAdapter. */

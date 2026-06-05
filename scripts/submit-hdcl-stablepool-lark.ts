@@ -31,6 +31,15 @@ async function devNewBlock(api: ApiPromise, count = 1) {
   }
 }
 
+// Flip chopsticks to Instant block-build so each tx auto-seals a block.
+// Default (Manual) makes signAndWait deadlock on isInBlock; --build-block-mode=Instant
+// fails at startup ("Failed to apply inherents"); flipping it at runtime via RPC works.
+async function setInstantBlockModeOnChopsticks(api: ApiPromise) {
+  if (!IS_CHOPSTICKS) return;
+  await (api as any)._rpcCore.provider.send("dev_setBlockBuildMode", ["Instant"]);
+  console.log("chopsticks: block-build mode → Instant");
+}
+
 // On chopsticks: Alice's mainnet-forked state has all her HDX locked behind
 // an unrelated conviction-voting lock. Unfreeze her so she can submit +
 // deposit + vote on this referendum.
@@ -45,13 +54,18 @@ async function unfreezeAliceOnChopsticks(
   const freezesKey = api.query.balances.freezes.key(alice.address);
   const acc = await api.query.system.account(alice.address);
   const nonce = (acc as any).nonce.toNumber();
+  // Take max(current, 5B HDX) — gc chopsticks' hydradx.yml import-storage
+  // clobbers Alice to ~1000 HDX, but we need 4B+ for the Root-track vote.
+  const HDX_MIN_FREE = 5_000_000_000n * 10n ** 12n;
+  const currentFree = (acc as any).data.free.toBigInt() as bigint;
+  const targetFree = currentFree > HDX_MIN_FREE ? currentFree : HDX_MIN_FREE;
   const newAccountInfo = api.registry.createType("AccountInfo", {
     nonce,
     consumers: 0,
     providers: 1,
     sufficients: 0,
     data: {
-      free: (acc as any).data.free.toBigInt().toString(),
+      free: targetFree.toString(),
       reserved: "0",
       frozen: "0",
       flags: "0",
@@ -145,6 +159,7 @@ async function main() {
   console.log(`proposal hash:   ${proposalHash}`);
   console.log(`proposal length: ${proposalLen}`);
 
+  await setInstantBlockModeOnChopsticks(api);
   await unfreezeAliceOnChopsticks(api, alice);
 
   // -------- 1. Note proposal preimage --------
