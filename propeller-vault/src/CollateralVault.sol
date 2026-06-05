@@ -78,6 +78,9 @@ contract CollateralVault is
     uint256 public syntheticSupplied;
     /// @notice HOLLAR pulled from the loop, not yet applied to settle requests.
     uint256 public availableHollar;
+    /// @notice Main HOLLAR debt still to repay from a down-rebalance de-lever
+    ///         (settled ahead of the redemption queue as the loop frees HOLLAR).
+    uint256 public deleverTarget;
 
     // ── async redemption queue (HDCL pattern; minimal inline form) ───────────
     /// @dev Production: swap for the audited HDCL QueueLib. Inline here to keep
@@ -322,6 +325,24 @@ contract CollateralVault is
     function pokeSettle() external onlyRole(KEEPER_ROLE) nonReentrant {
         availableHollar += subLoop.pullFreed();
 
+        // De-lever repayments (down-rebalance) settle first: repay Main debt and
+        // burn synthetic proportionally (ratio — hence the buffer — preserved).
+        if (deleverTarget > 0 && availableHollar > 0) {
+            uint256 r = availableHollar < deleverTarget ? availableHollar : deleverTarget;
+            uint256 debtNow = hollarDebtToken.balanceOf(address(this));
+            uint256 synthBurn = debtNow == 0 ? 0 : (syntheticSupplied * r) / debtNow;
+            availableHollar -= r;
+            deleverTarget -= r;
+            hollar.safeApprove(address(pool), 0);
+            hollar.safeApprove(address(pool), r);
+            pool.repay(address(hollar), r, VARIABLE_RATE, address(this));
+            if (synthBurn > 0) {
+                pool.withdraw(address(synthetic), synthBurn, address(this));
+                synthetic.burn(address(this), synthBurn);
+                syntheticSupplied -= synthBurn;
+            }
+        }
+
         uint256 head = queueHead;
         while (head < queueTail && availableHollar > 0) {
             Redemption storage r = redemptions[head];
@@ -438,11 +459,21 @@ contract CollateralVault is
             hollar.safeApprove(address(subLoop), addHollar);
             loopShares += subLoop.deposit(addHollar);
         } else if (ltvBefore > ltvBandHighBps) {
-            // Collateral fell → over-levered on the real ETH. De-lever is a loop
-            // unwind that frees HOLLAR to repay Main debt — same machinery as a
-            // withdrawal. TODO(impl): partial requestUnwind + pokeSettle-style
-            // repay. NOT safety-critical: the synthetic still floors Main HF ≥ 1;
-            // this only restores capital efficiency / reduces yield-side exposure.
+            // Collateral fell → over-levered on the real ETH. De-lever: unwind the
+            // loop slice that frees the excess debt's worth of equity; `pokeSettle`
+            // repays Main debt + burns synth from it (ahead of the redeem queue).
+            // NOT safety-critical — the synthetic still floors Main HF ≥ 1; this
+            // restores the real-collateral backing ratio (and trims yield-side risk).
+            uint256 targetDebt8 = (ethValue8 * targetLtvBps) / BPS;
+            uint256 repay8 = debtBase8 - targetDebt8;
+            uint256 loopEq8 = subLoop.equityOf(address(this));
+            uint256 sliceShares = loopEq8 == 0 ? 0 : (loopShares * repay8) / loopEq8;
+            if (sliceShares > loopShares) sliceShares = loopShares;
+            if (sliceShares > 0) {
+                loopShares -= sliceShares;
+                subLoop.requestUnwind(sliceShares);
+                deleverTarget += repay8 * 1e10;
+            }
         }
         (uint256 c2, uint256 d2, , , , ) = pool.getUserAccountData(address(this));
         uint256 ev2 = c2 > syntheticSupplied / 1e10 ? c2 - syntheticSupplied / 1e10 : 0;

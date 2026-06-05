@@ -52,6 +52,45 @@ contract KeeperOpsTest is Test {
         vault.deposit(1e18, address(this));
     }
 
+    function _ramp() internal {
+        for (uint256 i = 0; i < 40; i++) {
+            uint256 oid = loop.deployOrderId();
+            if (dca.remaining(oid) > 0) dca.executeDeployFully(oid);
+            loop.pokeBorrow();
+        }
+        if (dca.remaining(loop.deployOrderId()) > 0) dca.executeDeployFully(loop.deployOrderId());
+    }
+
+    function test_rebalanceDownOnDrop() public {
+        _ramp();
+        uint256 debtBefore = hollarDebt.balanceOf(address(vault)); // ~2220
+        uint256 loopBefore = vault.loopShares();
+
+        // ETH −50% → LTV blows past the band → de-lever to target
+        pool.setPrice(address(eth), 1_500e18);
+        vault.rebalance();
+        assertGt(vault.deleverTarget(), 0, "de-lever scheduled");
+        assertLt(vault.loopShares(), loopBefore, "loop slice queued to unwind");
+
+        // run the unwind spiral, then settle the de-lever repay
+        uint256 uid = loop.unwindOrderId();
+        for (uint256 i = 0; i < 400; i++) {
+            if (dca.remaining(uid) == 0) break; // de-lever slice fully unwound
+            if (aPrime.balanceOf(address(loop)) == 0) break;
+            if (pool.maxWithdrawable(address(loop), address(prime)) == 0) break;
+            dca.executeUnwind(uid);
+            loop.pokeRepay();
+        }
+        vault.pokeSettle();
+
+        // Main debt repaid toward target (ethValue 1500 × 74% ≈ 1110)
+        uint256 debtAfter = hollarDebt.balanceOf(address(vault));
+        assertLt(debtAfter, debtBefore, "debt reduced");
+        assertApproxEqRel(debtAfter, 1_110e18, 0.05e18, "debt ~ target LTV after de-lever");
+        // INV-1 still holds
+        assertGe(aSynth.balanceOf(address(vault)) * SYNTH_LT / 1e4, debtAfter, "synth still covers debt");
+    }
+
     function test_rebalanceUpOnAppreciation() public {
         uint256 debtBefore = hollarDebt.balanceOf(address(vault));
         uint256 loopBefore = vault.loopShares();
