@@ -1,5 +1,9 @@
 # Emitting Yul for the Aave-wired CollateralVault — diagnosis
 
+> Upstream issues filed: blocker 1 → [lfglabs-dev/verity#1951](https://github.com/lfglabs-dev/verity/issues/1951),
+> blocker 2 → [lfglabs-dev/verity#1952](https://github.com/lfglabs-dev/verity/issues/1952). Blocker 3 (CEI) is
+> Verity working as intended ([#1728](https://github.com/lfglabs-dev/verity/issues/1728)).
+
 Wiring `IPool.supply` into `CollateralVault.deposit` (a typed-interface ECM) and compiling it to Yul
 hits **three stacked blockers** in Verity v0.1.0. All three are now understood; the wired `deposit`
 does emit a real cross-contract `call` once they're addressed. This is why Verity's own suite never
