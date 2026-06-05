@@ -117,17 +117,18 @@ exactly** — they take no `uint16`. `supply`/`borrow` differ (`0xe9c7359c`/`0xa
 `0x617ba037`/`0xa415bcad`) only because `referralCode`'s `uint16` is modelled as `Uint256`.
 
 **Honest status / caveats:**
-- Real Aave `supply` is `void`; Verity interface methods require a return type, so it's declared
-  `returns (Bool)` and the value ignored (`_ok`) — a one-line change when a void external-call ECM
+- Real Aave `supply`/`borrow` are `void`; Verity interface methods require a return type, so each is
+  declared `returns (Bool)` and the value ignored — a one-line change when a void external-call ECM
   lands; the emitted `call` is identical.
-- **Yul emission for ECM specs** hits a native-eval limitation in this Verity build (`evalConstCheck`
-  on the ECM `compile` closure) — the spec evaluates fine in-interpreter (`#eval`), so this is
-  compiler plumbing, not a modelling gap. Emission is gated on Verity's ECM/linking flow.
-- The external call is `writesState` (conservative), so the clean axiom-clean `assets == supply`
-  accounting proof of the pure `CollateralVault/` no longer holds *unconditionally* on the wired
-  variant — it now sits on the **external-call trust assumption** (Aave `supply` doesn't reenter or
-  mutate this contract's slots). That is exactly the documented boundary; the pure `CollateralVault/`
-  retains the unconditional proof.
+- **Yul emission now works through the stock `verity-compiler` CLI** — the two compiler bugs that
+  blocked it ([verity#1951](https://github.com/lfglabs-dev/verity/issues/1951) `loadExts`/`supportInterpreter`,
+  [verity#1952](https://github.com/lfglabs-dev/verity/issues/1952) dotted external name) are fixed in
+  the Verity checkout. The committed `yul/CollateralVaultAave.yul` is stock-CLI output; the earlier
+  static-reference workaround is obsolete. (Those fixes are upstream-Verity source, to be PR'd.)
+- The external calls are `writesState`, so the clean axiom-clean `assets == supply` accounting proof
+  of the pure `CollateralVault/` no longer holds *unconditionally* on the wired variant — it sits on
+  the **external-call trust assumption** (Aave doesn't reenter or mutate this contract's slots). The
+  pure `CollateralVault/` retains the unconditional proof.
 
 ## Next
 

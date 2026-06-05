@@ -1,10 +1,11 @@
 // CollateralVaultAave — Aave-wired Main position, compiler output (Verity → Yul).
 // deposit: effects → supply + borrow (HOLLAR);  pokeSettle: effects → repay + withdraw.
-// Provenance: static-reference codegen (bypasses CLI evalConstCheck, verity#1951) + local
-// relaxation of dotted-external-name validation (verity#1952). CEI-ordered; both multi-call
-// functions annotated allow_post_interaction_writes (verity#1728 §3b).
-// Selectors: supply 0xe9c7359c, borrow 0xa2b86e7b differ from mainnet (uint16→Uint256);
-// repay 0x573ade81 and withdraw 0x69328dec MATCH mainnet exactly (no uint16).
+// Emitted by the STOCK verity-compiler CLI (--manifest), with the verity#1951 + #1952 fixes
+// applied to the local Verity checkout (loadExts:=true, supportInterpreter:=true, dotted-
+// external skip). No static-reference workaround. CEI-ordered; multi-call functions annotated
+// allow_post_interaction_writes (verity#1728 §3b).
+// Selectors: repay 0x573ade81 + withdraw 0x69328dec MATCH mainnet exactly; supply 0xe9c7359c
+// + borrow 0xa2b86e7b differ (uint16 referralCode modelled as Uint256).
 
 object "CollateralVaultAave" {
     code {
@@ -199,6 +200,10 @@ object "CollateralVaultAave" {
     }
     object "runtime" {
         code {
+            /* verity linked external IPool.supply linkMode=external */
+            /* verity linked external IPool.borrow linkMode=external */
+            /* verity linked external IPool.repay linkMode=external */
+            /* verity linked external IPool.withdraw linkMode=external */
             function mappingSlot(baseSlot, key) -> slot {
                 mstore(0, key)
                 mstore(32, baseSlot)

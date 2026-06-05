@@ -1,101 +1,72 @@
-# Emitting Yul for the Aave-wired CollateralVault — diagnosis
+# Compiling the Aave-wired CollateralVault to Yul — diagnosis (RESOLVED)
 
-> Upstream issues filed: blocker 1 → [lfglabs-dev/verity#1951](https://github.com/lfglabs-dev/verity/issues/1951),
-> blocker 2 → [lfglabs-dev/verity#1952](https://github.com/lfglabs-dev/verity/issues/1952). Blocker 3 (CEI) is
-> Verity working as intended ([#1728](https://github.com/lfglabs-dev/verity/issues/1728)).
+Wiring `IPool.supply/borrow/repay/withdraw` into `CollateralVaultAave` (typed-interface ECMs) and
+compiling it to Yul surfaced **three stacked blockers** in stock Verity v0.1.0. **Two were real
+compiler bugs (now fixed and verified); the third is Verity working as intended.** With the two fixes
+applied to the Verity checkout, the **stock `verity-compiler` CLI compiles the contract directly** —
+639 lines of Yul, all four `call(gas(), pool, …)` sites, no workaround.
 
-Wiring `IPool.supply` into `CollateralVault.deposit` (a typed-interface ECM) and compiling it to Yul
-hits **three stacked blockers** in Verity v0.1.0. All three are now understood; the wired `deposit`
-does emit a real cross-contract `call` once they're addressed. This is why Verity's own suite never
-compiles interface/ECM contracts to Yul (its canonical `contracts.manifest` contains only ECM-free
-contracts — interface contracts are verified by `decide` only).
+> Upstream issues: [verity#1951](https://github.com/lfglabs-dev/verity/issues/1951) (ECM→Yul) and
+> [verity#1952](https://github.com/lfglabs-dev/verity/issues/1952) (dotted external name). Both fixed
+> in a local Verity checkout (changes are upstream-Verity source — to be PR'd, not in this repo).
+> Blocker 3 (CEI) is Verity working as intended ([verity#1728](https://github.com/lfglabs-dev/verity/issues/1728)).
 
-## 1. `evalConstCheck` — the CLI can't materialize the inlined ECM closure
-`verity-compiler` (both the raw binary and `lake exe`) reads the manifest module at runtime and does
-`unsafe env.evalConstCheck CompilationModel … spec` (`Compiler/ModuleInput.lean:69`). For an ECM
-contract this throws *"Unable to evaluate '…spec' as CompilationModel"*.
+## 1. CLI couldn't evaluate the ECM spec — `loadExts` + `supportInterpreter`  *(verity#1951, FIXED)*
+`verity-compiler` aborted with *"Unable to evaluate '<Module>.spec' as CompilationModel"* on any
+contract whose `spec` contains an `externalCallWithReturn` ECM. **Two root causes**, both fixed:
 
-- The `verity_contract` macro **inlines** the ECM (`externalCallWithReturn` builds an
-  `ExternalCallModule` whose `compile` field is a closure capturing the selector) directly into the
-  `spec` constant — `externalCallWithReturn` isn't even in the imported environment.
-- The spec **is valid**: `evalConstCheck` on it returns `.ok` during Lean *elaboration*
-  (`lake env lean` `run_cmd`), and `#eval` reads its fields fine. Only the standalone binary's
-  *dynamic* runtime eval fails to materialize the embedded closure.
-- **Bypass:** reference `spec` *statically* in a tiny emit program and call the codegen directly —
-  no dynamic `evalConstCheck`:
-  ```
-  let spec := Contracts.CollateralVaultAave.spec
-  let sel  ← Compiler.Selector.computeSelectors spec
-  let ir   ← Compiler.CompilationModel.compile spec sel      -- Except String IRContract
-  IO.FS.writeFile "out.yul" (Compiler.Yul.render (Compiler.CodegenCommon.emitYul ir))
-  ```
+1. `Compiler/ModuleInput.lean` — `importModules … {}` ran with `loadExts` defaulting to **false**, so
+   environment extensions (incl. the compiler-IR extension) weren't populated, and `evalConstCheck`
+   couldn't materialize a spec that *applies a function* (`withReturnModule`). Non-ECM specs use only
+   inductive constructors, so they reduced fine. **Fix:** `importModules … (loadExts := true)`.
+2. `lakefile.lean` — `lean_exe «verity-compiler»` lacked `supportInterpreter := true`; once extensions
+   load, ECM spec-eval forces `Init`/`Std` decls (`UInt64.ofNatLT`) the interpreter needs. **Fix:** add it.
 
-## 2. External name validated as a Yul identifier — dotted ABI names rejected
+> Correction: an earlier draft of this doc (and of verity#1951) hypothesized the macro *inlined* the
+> ECM `compile` closure and that the binary couldn't materialize it. **That was wrong** — the spec
+> references `withReturnModule` *by name*. The two flags above are the actual fix. The
+> static-reference emit script previously documented here is **obsolete**; the stock CLI now works.
+
+## 2. External name validated as a Yul identifier — dotted ABI names rejected  *(verity#1952, FIXED)*
 Next: *"external declaration name must be a valid identifier: IPool.supply"*.
-`Compiler/CompilationModel/ValidationCalls.lean:843` runs `ensureContractIdentifier "external
-declaration" ext.name` over **every** external. A typed-interface ABI external's name is the dotted
-label `IPool.supply`, which `Compiler.isValidIdentifier` rejects.
+`Compiler/CompilationModel/ValidationCalls.lean` validated every external's name as a Yul identifier,
+but a typed-interface ABI external carries a dotted `Interface.method` audit label that is **never
+emitted as a Yul identifier** (the ECM lowers by selector). **Fix:** skip the check for dotted names
+(`unless ext.name.contains '.'`), keeping it for object-linked externals (e.g. `PoseidonT3_hash`).
 
-- This label is only an **audit identifier** — the `externalCallWithReturn` ECM emits the call by
-  *selector* (`shl(224, 0x…)` + `call(...)`), never using the name as a Yul identifier. So the check
-  is over-strict for ABI-boundary externals (it's correct for object-linked Yul libs like
-  `PoseidonT3_hash`).
-- **Upstream fix (one line):** skip / relax `ensureContractIdentifier` for externals whose name
-  contains `.` (ABI-interface externals). Confirmed locally with that change (a throwaway patch, **not
-  committed** — Verity is an external dep). Worth an upstream issue.
+## 3. CEI enforcement — state writes after an external call  *(verity#1728, working as intended)*
+*"function 'deposit' violates CEI ordering: state write after external call."* A real security guard;
+it caught a genuine reentrancy hazard in the first draft (which supplied before writing shares).
+**Resolved correctly** by ordering effects before interactions.
 
-## 3. CEI enforcement — state writes after an external call are rejected
-Then: *"function 'deposit' violates CEI (Checks-Effects-Interactions) ordering: state write after
-external call"* (Verity issue #1728). This is a **real security guard**, and it caught a genuine
-reentrancy hazard in the first draft (which called `pool.supply` before the share writes).
-
-- **Fix (correct, committed):** order **effects before the interaction** — do the share/asset/supply
-  storage writes, then `pool.supply` last. `CollateralVaultAave/Contract.lean` is CEI-compliant.
-
-### 3b. Multiple external calls (supply → borrow) — `allow_post_interaction_writes`
-Wiring a **second** Aave call (`IPool.borrow`, the HOLLAR borrow leg) after `supply` re-triggers CEI:
-`externalCallWithReturn` is `writesState`, so Verity treats the *second* external call as a
-"writing ECM after an external call" (`CEIEcmWriteAfterCallRejected`), even though no *storage* write
-follows either call. The standard supply-then-borrow sequence therefore needs the
-`allow_post_interaction_writes` function annotation (the escape hatch the error names).
-
-- **Justified here:** every storage write (`shares`, `totalAssets`, `totalSupply`, `mainDebt`)
-  precedes **both** calls; the only operation after the first call is the second call to the **same
-  trusted pool**, with no storage write after either. Reentrancy w.r.t. our own state is unaffected.
-- Arguably the CEI rule is over-conservative when the post-call "write" is itself another external
-  call (a ubiquitous pattern), but a sound escape hatch exists, so this is *not* filed as a bug.
+### 3b. Multiple external calls (supply→borrow, repay→withdraw) — `allow_post_interaction_writes`
+A **second** writing-ECM after the first call re-triggers CEI (`CEIEcmWriteAfterCallRejected`) because
+`externalCallWithReturn` is `writesState`. Both multi-call functions (`deposit`, `pokeSettle`) carry
+the `allow_post_interaction_writes` annotation. **Justified:** every storage write precedes all calls;
+the only thing after the first call is the next call to the same trusted pool, with no storage write
+after either. Arguably over-conservative when the post-call "write" is itself a call, but a sound
+escape hatch exists, so *not* filed as a bug.
 
 ## Result
-With (1) the static emit path, (2) the external-identifier relaxation, and (3) CEI-correct ordering,
-`deposit` compiles to `yul/CollateralVaultAave.yul`, whose runtime body is:
+Stock `verity-compiler --manifest contracts.manifest` emits `yul/CollateralVaultAave.yul`:
+`deposit` = effects → `supply` → `borrow`; `pokeSettle` = effects → `repay` → `withdraw`. Each is a
+real `call(gas(), pool, 0, ptr, len, ptr, 32)` with selector-encoded calldata and bubbled-returndata
+revert handling.
 
-```
-sstore(mappingSlot(2, sender), newShares)      // effects
-sstore(0, newAssets)
-sstore(1, newSupply)
-…
-mstore(__ecwr_ptr, shl(224, 0xe9c7359c))       // supply selector
-mstore(add(__ecwr_ptr, 4),   asset)
-mstore(add(__ecwr_ptr, 36),  assets)
-mstore(add(__ecwr_ptr, 68),  onBehalfOf)
-mstore(add(__ecwr_ptr, 100), 0)                // referralCode
-let __ecwr_success := call(gas(), pool, 0, __ecwr_ptr, 132, __ecwr_ptr, 32)   // interaction
-if iszero(__ecwr_success) { …revert with bubbled returndata… }
-```
+## Selector fidelity
+- **ABI-exact** (no `uint16`): `repay(address,uint256,uint256,address)` → `0x573ade81`,
+  `withdraw(address,uint256,address)` → `0x69328dec` — match mainnet Aave V3.
+- **Differ** (model `uint16 referralCode` as `Uint256`, Verity lacks `uint16`): `supply` → `0xe9c7359c`
+  (mainnet `0x617ba037`), `borrow` → `0xa2b86e7b` (mainnet `0xa415bcad`). Needs `uint16` support (or a
+  hand-tuned selector) for those two.
 
-## Caveats for real Aave integration
-- **Selector fidelity:** functions that take **no `uint16`** are ABI-exact —
-  `repay(address,uint256,uint256,address)` → `0x573ade81` and `withdraw(address,uint256,address)` →
-  `0x69328dec` match mainnet Aave. Functions with a `uint16 referralCode` differ because Verity lacks
-  `uint16` and models it as `Uint256`: emitted `supply` = `0xe9c7359c` (mainnet `0x617ba037`),
-  `borrow` = `0xa2b86e7b` (mainnet `0xa415bcad`). A correct integration of those two needs `uint16`
-  support (or a hand-tuned selector).
-- **Trust boundary:** the call is sound *by assumption* on Aave's spec; `writesState ⇒` the wired
-  variant's accounting is conditional (no reentrancy / Aave doesn't mutate our slots). The pure
-  `CollateralVault/` keeps its unconditional axiom-clean proof.
+## Trust boundary
+Each call is sound *by assumption* on Aave's spec; `writesState ⇒` the wired variant's accounting is
+conditional (no reentrancy / Aave doesn't mutate our slots). The pure `CollateralVault/` keeps its
+unconditional axiom-clean proof. Compile with `--deny-low-level-mechanics` + `--trust-report`.
 
 ## What's committed vs not
-- **Committed:** the CEI-correct `CollateralVaultAave/Contract.lean`, the `decide`-checked
-  `Wiring.lean`, and `yul/CollateralVaultAave.yul` (with provenance header).
-- **Not committed:** the throwaway one-line relaxation of `ValidationCalls.lean` (lives only in the
-  local Verity checkout) and the emit script — both reproducible from this doc.
+- **Committed (this repo):** `CollateralVaultAave/Contract.lean`, the `decide`-checked `Wiring.lean`,
+  and `yul/CollateralVaultAave.yul` (emitted by the **stock** CLI with the fixes applied).
+- **Not committed (upstream Verity source):** the verity#1951 / #1952 fixes live in the local Verity
+  checkout — to be submitted upstream as PRs against those issues.
