@@ -86,7 +86,7 @@ contract Deploy is Script {
             CollateralVault(address(new ERC1967Proxy(address(vaultImpl), vaultInit)));
 
         // 4. Harvester
-        Harvester harvester = new Harvester(address(subLoop), admin);
+        Harvester harvester = new Harvester(address(subLoop), PRIME, admin);
 
         vm.stopBroadcast();
 

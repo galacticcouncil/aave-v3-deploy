@@ -43,12 +43,17 @@ thresholds, WAD HF; `MockDcaScheduler` simulates the DCA tranches):
 - **full withdraw** → `requestRedeem` → unwind → `pokeSettle` (repay Main debt,
   burn synth, withdraw collateral) → `claim` returns ~the full ETH principal
 
-9 tests passing (`forge test`).
+- **harvest** → skim loop carry (surplus PRIME above cost basis) → compound into
+  each vault's collateral → pETH share price rises; loop returns to basis
+- **rebalance** → ETH appreciates → borrow more to target LTV → deploy the slack
+  (yield notional tracks collateral value); INV-1 preserved
+- **maintainPeg** → Main debt accrues interest → re-top synthetic so `synth·LT ≥ debt`
 
-**Still skeleton (`// TODO(impl)`), distinct next slices** — each needs a bit of
-new scaffolding: `harvest` (in-kind yield compounding; needs a bounded harvest
-swap + yield simulation in the mock), `rebalance` (LTV-band re-lever; needs an
-oracle/price path in the vault), `maintainPeg` (needs debt-interest simulation).
+18 tests passing (`forge test`), incl. 6 invariants under fuzzing.
+
+**Remaining:** `rebalance` *down*-case (de-lever on collateral drop — a loop
+unwind; not safety-critical, the synthetic still floors HF); then the real
+REQ-SWAP / REQ-DCA adapters, the governance proposal, and fork tests.
 
 Design note surfaced by TDD: the synthetic is minted so **`synth·LT` slightly
 exceeds debt** (≈ `debt/0.98 ×1.005`), not `synth = debt` — that's what floors

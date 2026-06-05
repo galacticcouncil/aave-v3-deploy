@@ -77,6 +77,9 @@ contract SubLoop is
     // ── equity shares ─────────────────────────────────────────────────────
     mapping(address => uint256) internal _sharesOf;
     uint256 internal _totalShares;
+    /// @notice Principal (cost-basis) equity, HOLLAR 18dp — the seed deposited,
+    ///         net of unwinds. Equity above this is harvestable carry (yield).
+    uint256 public principalEquity;
 
     // ── deploy state ──────────────────────────────────────────────────────
     uint256 public pendingDeployHollar; // HOLLAR queued to be levered in
@@ -160,15 +163,16 @@ contract SubLoop is
         if (hollarAmount == 0) revert ZeroAmount();
         hollar.safeTransferFrom(msg.sender, address(this), hollarAmount);
 
-        // Equity added ≈ the seed (1 HOLLAR in → ~1 unit of equity once levered;
-        // PRIME is value-stable). Share price reconciles via totalEquity() as the
-        // DCA deploys. TODO(impl): credit on realized equity if the ramp is slow.
-        uint256 equityBasis = totalEquity();
-        shares = (_totalShares == 0 || equityBasis == 0)
+        // Shares price off current NAV. Work in HOLLAR 18dp throughout: equity
+        // from getUserAccountData is 8dp USD → ×1e10. First deposit ⇒ 1 share
+        // per HOLLAR of seed; later deposits dilute against accrued NAV.
+        uint256 equityBasis18 = totalEquity() * 1e10;
+        shares = (_totalShares == 0 || equityBasis18 == 0)
             ? hollarAmount
-            : (hollarAmount * _totalShares) / equityBasis;
+            : (hollarAmount * _totalShares) / equityBasis18;
         _sharesOf[msg.sender] += shares;
         _totalShares += shares;
+        principalEquity += hollarAmount; // cost basis (seed)
 
         // FUTURE(matching): before funding the deploy DCA, match against
         //   outstanding unwindTargetEquity — pay an exiting vault directly from
@@ -199,6 +203,7 @@ contract SubLoop is
             ? 0
             : (primeAToken.balanceOf(address(this)) * shares) / totalSharesBefore;
 
+        principalEquity -= (principalEquity * shares) / totalSharesBefore; // shrink cost basis
         _sharesOf[msg.sender] = held - shares;
         _totalShares -= shares;
 
@@ -323,11 +328,31 @@ contract SubLoop is
     }
 
     /// @inheritdoc ISubLoop
-    function harvest() external override onlyRole(KEEPER_ROLE) nonReentrant returns (uint256 hollarSurplus) {
-        // TODO(impl): skim equity grown above shares' cost basis (PRIME yield),
-        //   route a slice aPRIME→HOLLAR via a bounded DCA, return to msg.sender
-        //   (Harvester) for per-vault in-kind compounding. Guard harvestThreshold.
-        emit Harvested(hollarSurplus);
+    /// @dev Returns PRIME (not HOLLAR): the surplus collateral skimmed above the
+    ///      cost basis. The Harvester swaps it into each vault's collateral. This
+    ///      keeps SubLoop swap-free — withdrawing the surplus leaves HF at target
+    ///      (removed collateral was the cushion the yield created).
+    function harvest() external override onlyRole(KEEPER_ROLE) nonReentrant returns (uint256 surplusPrime) {
+        uint256 equity18 = totalEquity() * 1e10;
+        if (equity18 <= principalEquity) {
+            emit Harvested(0);
+            return 0;
+        }
+        uint256 surplus18 = equity18 - principalEquity;
+        // guard: only harvest once carry exceeds the threshold fraction of basis
+        if (principalEquity != 0 && surplus18 * WAD < principalEquity * harvestThreshold) {
+            emit Harvested(0);
+            return 0;
+        }
+        // surplus (HOLLAR 18dp, $1) → PRIME native (6dp, $1)
+        surplusPrime = surplus18 / 1e12;
+        if (surplusPrime == 0) {
+            emit Harvested(0);
+            return 0;
+        }
+        pool.withdraw(address(prime), surplusPrime, address(this)); // HF stays ≥ target
+        IERC20(address(prime)).safeTransfer(msg.sender, surplusPrime);
+        emit Harvested(surplusPrime);
     }
 
     /// @inheritdoc ISubLoop

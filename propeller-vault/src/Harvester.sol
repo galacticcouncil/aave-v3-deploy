@@ -2,30 +2,37 @@
 pragma solidity ^0.8.22;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ISubLoop} from "./interfaces/ISubLoop.sol";
 
+interface ICompoundable {
+    function compound(address tokenIn, uint256 amountIn, uint256 minOut, bytes calldata route) external;
+}
+
 /// @title Harvester
-/// @notice Keeper entrypoint that orchestrates harvest / de-lever across the
-///         shared SubLoop and the registered CollateralVaults. Each action
-///         re-checks on-chain state (HF, carry) so keepers cannot trigger
-///         unsafe operations — mirroring the on-chain-guarded keeper pattern of
-///         pallet-hsm `execute_arbitrage` / pallet-liquidation `liquidate`.
-///
-/// @dev    STATUS: skeleton. Orchestration sequencing is marked TODO(impl).
+/// @notice Keeper entrypoint orchestrating harvest / de-lever across the shared
+///         SubLoop and the registered CollateralVaults. `harvest` skims the loop
+///         carry (surplus PRIME), splits it pro-rata by each vault's loop shares,
+///         and compounds each cut into that vault's collateral (in-kind yield).
 contract Harvester is AccessControl {
+    using SafeERC20 for IERC20;
+
     bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
 
     ISubLoop public immutable subLoop;
+    IERC20 public immutable prime; // the token SubLoop.harvest returns
     address[] public vaults;
 
-    event HarvestRun(uint256 surplus);
+    event HarvestRun(uint256 surplusPrime);
     event DeLeverRun();
 
     error ZeroAddress();
 
-    constructor(address _subLoop, address admin) {
-        if (_subLoop == address(0) || admin == address(0)) revert ZeroAddress();
+    constructor(address _subLoop, address _prime, address admin) {
+        if (_subLoop == address(0) || _prime == address(0) || admin == address(0)) revert ZeroAddress();
         subLoop = ISubLoop(_subLoop);
+        prime = IERC20(_prime);
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
     }
 
@@ -34,13 +41,25 @@ contract Harvester is AccessControl {
         vaults.push(vault);
     }
 
-    /// @notice Realize loop carry, then distribute each vault's pro-rata cut and
-    ///         compound it back into that vault's collateral.
-    function harvest(bytes[] calldata routes) external onlyRole(KEEPER_ROLE) {
-        uint256 surplus = subLoop.harvest();
-        // TODO(impl): split `surplus` by each vault's subLoop.sharesOf, then
-        //   call CollateralVault.compound(cut, minOut, routes[i]) per vault.
-        routes;
+    /// @notice Skim loop carry → distribute PRIME pro-rata by loop shares →
+    ///         compound each vault's cut into its collateral.
+    /// @param minOuts per-vault min collateral out (slippage bound); pass 0s in tests.
+    function harvest(uint256[] calldata minOuts) external onlyRole(KEEPER_ROLE) {
+        uint256 surplus = subLoop.harvest(); // PRIME, sent to this Harvester
+        if (surplus == 0) {
+            emit HarvestRun(0);
+            return;
+        }
+        uint256 total = subLoop.totalShares();
+        uint256 n = vaults.length;
+        for (uint256 i = 0; i < n; i++) {
+            address v = vaults[i];
+            uint256 cut = total == 0 ? 0 : (surplus * subLoop.sharesOf(v)) / total;
+            if (cut == 0) continue;
+            prime.safeApprove(v, 0);
+            prime.safeApprove(v, cut);
+            ICompoundable(v).compound(address(prime), cut, i < minOuts.length ? minOuts[i] : 0, "");
+        }
         emit HarvestRun(surplus);
     }
 

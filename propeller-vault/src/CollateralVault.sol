@@ -379,35 +379,93 @@ contract CollateralVault is
     //                         KEEPER OPERATIONS
     // ══════════════════════════════════════════════════════════════════════
 
-    /// @notice Compound this vault's share of harvested loop carry back into the
-    ///         collateral (lifts the share price). Called by the Harvester with
-    ///         the vault's HOLLAR cut already pulled from the loop.
-    function compound(uint256 hollarAmount, uint256 minCollateralOut, bytes calldata route)
+    /// @notice Compound this vault's share of harvested loop carry into the
+    ///         collateral, lifting the share price ("deposit X, earn X"). The
+    ///         Harvester pulls the vault's cut from the loop and calls this with
+    ///         the harvested token (PRIME) to swap into collateral and supply.
+    function compound(address tokenIn, uint256 amountIn, uint256 minCollateralOut, bytes calldata route)
         external
         onlyRole(KEEPER_ROLE)
         nonReentrant
     {
-        // TODO(impl): swap HOLLAR->collateral via swapper, pool.supply(collateral)
-        hollarAmount; minCollateralOut; route;
-        emit Harvested(0);
+        if (amountIn == 0) revert ZeroAmount();
+        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        IERC20(tokenIn).safeApprove(address(swapper), 0);
+        IERC20(tokenIn).safeApprove(address(swapper), amountIn);
+        uint256 out = swapper.sell(tokenIn, address(collateral), amountIn, minCollateralOut, route);
+        collateral.safeApprove(address(pool), 0);
+        collateral.safeApprove(address(pool), out);
+        pool.supply(address(collateral), out, address(this), 0); // → aToken grows → share price ↑
+        emit Harvested(out);
     }
 
     /// @notice Rebalance the Main position back into the target-LTV band after a
     ///         collateral price move: borrow more (price up) or repay (price down),
     ///         growing/shrinking the loop and the synthetic in lockstep.
     function rebalance() external onlyRole(KEEPER_ROLE) nonReentrant {
-        // TODO(impl): read current LTV from pool.getUserAccountData; if outside
-        //   [ltvBandLow, ltvBandHigh], borrow/repay HOLLAR to retarget, adjust
-        //   the loop deposit/withdraw and mint/burn synthetic to keep peg.
-        emit Rebalanced(0, 0);
+        // Isolate the collateral leg's LTV: collBase8 = ETH value + synth value,
+        // and synth value = syntheticSupplied (both $1), so ETH value backs out
+        // without a separate oracle ref.
+        (uint256 collBase8, uint256 debtBase8, , , , ) = pool.getUserAccountData(address(this));
+        uint256 synthValue8 = syntheticSupplied / 1e10;
+        uint256 ethValue8 = collBase8 > synthValue8 ? collBase8 - synthValue8 : 0;
+        if (ethValue8 == 0) {
+            emit Rebalanced(0, 0);
+            return;
+        }
+        uint256 ltvBefore = (debtBase8 * BPS) / ethValue8;
+
+        if (ltvBefore < ltvBandLowBps) {
+            // Collateral appreciated → borrow up to target and deploy the slack,
+            // so the yield notional tracks the collateral value.
+            uint256 targetDebt8 = (ethValue8 * targetLtvBps) / BPS;
+            uint256 addHollar = (targetDebt8 - debtBase8) * 1e10;
+            if (addHollar == 0) {
+                emit Rebalanced(ltvBefore, ltvBefore);
+                return;
+            }
+            pool.borrow(address(hollar), addHollar, VARIABLE_RATE, 0, address(this));
+
+            uint256 addSynth = (addHollar * BPS + synthLtBps - 1) / synthLtBps;
+            addSynth += addSynth / 200;
+            syntheticSupplied += addSynth;
+            synthetic.mint(address(this), addSynth);
+            IERC20(address(synthetic)).safeApprove(address(pool), 0);
+            IERC20(address(synthetic)).safeApprove(address(pool), addSynth);
+            pool.supply(address(synthetic), addSynth, address(this), 0);
+
+            hollar.safeApprove(address(subLoop), 0);
+            hollar.safeApprove(address(subLoop), addHollar);
+            loopShares += subLoop.deposit(addHollar);
+        } else if (ltvBefore > ltvBandHighBps) {
+            // Collateral fell → over-levered on the real ETH. De-lever is a loop
+            // unwind that frees HOLLAR to repay Main debt — same machinery as a
+            // withdrawal. TODO(impl): partial requestUnwind + pokeSettle-style
+            // repay. NOT safety-critical: the synthetic still floors Main HF ≥ 1;
+            // this only restores capital efficiency / reduces yield-side exposure.
+        }
+        (uint256 c2, uint256 d2, , , , ) = pool.getUserAccountData(address(this));
+        uint256 ev2 = c2 > syntheticSupplied / 1e10 ? c2 - syntheticSupplied / 1e10 : 0;
+        emit Rebalanced(ltvBefore, ev2 == 0 ? 0 : (d2 * BPS) / ev2);
     }
 
-    /// @notice Keep the synthetic supply equal to the accrued HOLLAR debt so the
-    ///         Main HF stays floored as interest accrues.
+    /// @notice Keep `synth·LT ≥ Main debt` as the HOLLAR debt accrues interest —
+    ///         re-tops the synthetic so the principal stays un-liquidatable.
     function maintainPeg() external onlyRole(KEEPER_ROLE) nonReentrant {
-        // TODO(impl): read variable-debt balance; mint/burn synthetic by the delta
-        //   and supply/withdraw it. emit SyntheticPegMaintained(delta).
-        emit SyntheticPegMaintained(0);
+        uint256 debt = hollarDebtToken.balanceOf(address(this));
+        uint256 required = (debt * BPS + synthLtBps - 1) / synthLtBps;
+        required += required / 200; // +0.5% buffer (matches deposit)
+        if (syntheticSupplied >= required) {
+            emit SyntheticPegMaintained(0);
+            return;
+        }
+        uint256 add = required - syntheticSupplied;
+        syntheticSupplied += add;
+        synthetic.mint(address(this), add);
+        IERC20(address(synthetic)).safeApprove(address(pool), 0);
+        IERC20(address(synthetic)).safeApprove(address(pool), add);
+        pool.supply(address(synthetic), add, address(this), 0);
+        emit SyntheticPegMaintained(int256(add));
     }
 
     // ══════════════════════════════════════════════════════════════════════

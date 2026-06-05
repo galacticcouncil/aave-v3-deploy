@@ -49,6 +49,13 @@ contract MockPool is IAavePool {
         reserves[asset].priceWad = priceWad;
     }
 
+    /// @notice Price ($1 = 1e18) and decimals for a reserve — used by MockSwapper
+    ///         to price cross-asset swaps the way an oracle-fed router would.
+    function assetPrice(address asset) external view returns (uint256 priceWad, uint8 dec) {
+        Reserve storage r = reserves[asset];
+        return (r.priceWad, r.decimals);
+    }
+
     // ── value helpers (native units → 8-dp USD) ───────────────────────────
     function _usd8(address asset, uint256 amt) internal view returns (uint256) {
         Reserve storage r = reserves[asset];
