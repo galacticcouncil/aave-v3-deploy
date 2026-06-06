@@ -89,5 +89,50 @@ theorem deLever_collateral_out_ge_in (s : State) (a : ℝ) (h : s.freedBacked) :
   rw [deLever_collateralReturned]
   exact collateral_out_ge_in s h
 
+/-! ### `subLoopHealthy` preservation
+
+`subLoopHealthy s t := t ≤ s.subHF` (the loop stays at/above the de-lever trigger). The Main-position
+maintenance ops (`accrueInterest`/`maintainPeg`/`tick`/`repay`) only touch `mainDebt`/`synth`, never
+the loop fields `primeAmt·primePrice·ltPrime/subDebt`, so `subHF` is **invariant** under them and the
+trigger is trivially held. The loop's own `deLever` step *raises* `subHF` on a solvent loop
+(`deLever_raises_subHF`), so it preserves the trigger too. Hence every transition in the ℝ-spec keeps
+the loop healthy. -/
+
+theorem accrueInterest_subHF (s : State) (δ : ℝ) : (s.accrueInterest δ).subHF = s.subHF := by
+  simp only [subHF, accrueInterest]
+
+theorem maintainPeg_subHF (s : State) : s.maintainPeg.subHF = s.subHF := by
+  simp only [subHF, maintainPeg, mintSynthToPeg]
+
+theorem tick_subHF (s : State) (δ : ℝ) : (s.tick δ).subHF = s.subHF := by
+  unfold tick
+  rw [maintainPeg_subHF, accrueInterest_subHF]
+
+theorem repay_subHF (s : State) (r : ℝ) : (s.repay r).subHF = s.subHF := by
+  unfold repay
+  rw [maintainPeg_subHF]
+  simp only [subHF]
+
+/-- The maintenance tick (accrue interest + re-peg) leaves the loop health untouched. -/
+theorem tick_subLoopHealthy (s : State) (δ t : ℝ) (h : s.subLoopHealthy t) :
+    (s.tick δ).subLoopHealthy t := by
+  unfold subLoopHealthy at *; rwa [tick_subHF]
+
+/-- Repaying Main debt + re-peg leaves the loop health untouched. -/
+theorem repay_subLoopHealthy (s : State) (r t : ℝ) (h : s.subLoopHealthy t) :
+    (s.repay r).subLoopHealthy t := by
+  unfold subLoopHealthy at *; rwa [repay_subHF]
+
+/-- **De-lever keeps the loop healthy.** On a solvent loop a de-lever step only raises `subHF`
+(`deLever_raises_subHF`), so a state at/above the trigger stays at/above it. -/
+theorem deLever_subLoopHealthy (s : State) (a t : ℝ)
+    (hlt : 0 ≤ s.ltPrime) (hD : 0 < s.subDebt)
+    (hδpos : 0 < a * s.primePrice) (hδlt : a * s.primePrice < s.subDebt)
+    (hsolvent : s.subDebt ≤ s.primeAmt * s.primePrice)
+    (h : s.subLoopHealthy t) :
+    (s.deLever a).subLoopHealthy t := by
+  unfold subLoopHealthy at *
+  exact le_trans h (deLever_raises_subHF s a hlt hD hδpos hδlt hsolvent)
+
 end State
 end Propeller
