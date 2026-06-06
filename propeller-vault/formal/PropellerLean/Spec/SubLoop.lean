@@ -54,5 +54,40 @@ theorem deLever_raises_subHF (s : State) (a : ℝ)
   rw [le_div_iff₀ hDδ, div_mul_eq_mul_div, div_le_iff₀ hD]
   nlinarith [mul_nonneg (mul_nonneg hlt hδpos.le) (sub_nonneg.mpr hsolvent)]
 
+/-! ### De-lever and the redemption solvency guarantee
+
+The headline user-facing theorem is `Redemption.collateral_out_ge_in`: under `freedBacked` (the loop's
+value-stable equity covers the Main HOLLAR debt), a full unwind returns at least the deposited
+collateral. Propeller unwinds *gradually* — a DCA sequence of `deLever` steps — so the guarantee is
+only meaningful if it survives each step. It does: `deLever` leaves Main debt, collateral, and price
+untouched and holds `loopEquity` invariant, so `freedBacked` and `collateralReturned` are preserved
+unchanged by every step. The depositor stays made-whole throughout the unwind, not just at the end. -/
+
+/-- **`freedBacked` is preserved by de-lever.** Main debt is untouched and `loopEquity` is invariant
+(`deLever_loopEquity`), so the loop keeps backing the Main HOLLAR debt through each unwind step. -/
+theorem deLever_freedBacked (s : State) (a : ℝ) (h : s.freedBacked) :
+    (s.deLever a).freedBacked := by
+  unfold freedBacked at *
+  rw [deLever_loopEquity]
+  exact h
+
+/-- **Collateral returned is invariant under de-lever.** `collateralReturned = coll − collSold`, and
+`collSold = max(mainDebt − loopEquity, 0)/price` depends only on quantities de-lever leaves fixed
+(`coll`, `mainDebt`, `price`) plus the invariant `loopEquity`. -/
+theorem deLever_collateralReturned (s : State) (a : ℝ) :
+    (s.deLever a).collateralReturned = s.collateralReturned := by
+  have he := deLever_loopEquity s a
+  simp only [collateralReturned, collSold]
+  rw [he]
+  simp only [deLever]
+
+/-- **De-lever preserves `collateral_out_ge_in`.** After any de-lever step on a `freedBacked` loop,
+settlement still returns at least the deposited collateral — the gradual DCA unwind never erodes the
+principal-back guarantee. -/
+theorem deLever_collateral_out_ge_in (s : State) (a : ℝ) (h : s.freedBacked) :
+    s.coll ≤ (s.deLever a).collateralReturned := by
+  rw [deLever_collateralReturned]
+  exact collateral_out_ge_in s h
+
 end State
 end Propeller
