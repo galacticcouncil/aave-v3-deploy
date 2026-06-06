@@ -236,8 +236,8 @@ contract CollateralVault is
 
         // 1. Supply the collateral to the Main Aave position.
         collateral.safeTransferFrom(msg.sender, address(this), assets);
-        collateral.safeApprove(address(pool), 0);
-        collateral.safeApprove(address(pool), assets);
+        collateral.forceApprove(address(pool), 0);
+        collateral.forceApprove(address(pool), assets);
         pool.supply(address(collateral), assets, address(this), 0);
 
         // 2. Borrow HOLLAR at target LTV against the collateral just supplied
@@ -256,13 +256,13 @@ contract CollateralVault is
         synthAmt += synthAmt / 200; // +0.5% buffer
         syntheticSupplied += synthAmt;
         synthetic.mint(address(this), synthAmt);
-        IERC20(address(synthetic)).safeApprove(address(pool), 0);
-        IERC20(address(synthetic)).safeApprove(address(pool), synthAmt);
+        IERC20(address(synthetic)).forceApprove(address(pool), 0);
+        IERC20(address(synthetic)).forceApprove(address(pool), synthAmt);
         pool.supply(address(synthetic), synthAmt, address(this), 0);
 
         // 4. Route the borrowed HOLLAR into the shared loop.
-        hollar.safeApprove(address(subLoop), 0);
-        hollar.safeApprove(address(subLoop), borrowHollar);
+        hollar.forceApprove(address(subLoop), 0);
+        hollar.forceApprove(address(subLoop), borrowHollar);
         loopShares += subLoop.deposit(borrowHollar);
 
         // INV-1 (on-chain guard): the synthetic alone must cover the Main debt,
@@ -333,8 +333,8 @@ contract CollateralVault is
             uint256 synthBurn = debtNow == 0 ? 0 : (syntheticSupplied * r) / debtNow;
             availableHollar -= r;
             deleverTarget -= r;
-            hollar.safeApprove(address(pool), 0);
-            hollar.safeApprove(address(pool), r);
+            hollar.forceApprove(address(pool), 0);
+            hollar.forceApprove(address(pool), r);
             pool.repay(address(hollar), r, VARIABLE_RATE, address(this));
             if (synthBurn > 0) {
                 pool.withdraw(address(synthetic), synthBurn, address(this));
@@ -357,8 +357,8 @@ contract CollateralVault is
             // the debt it backed, the synthetic still floors the remainder.
             uint256 repayNow = availableHollar < remainingDebt ? availableHollar : remainingDebt;
             availableHollar -= repayNow;
-            hollar.safeApprove(address(pool), 0);
-            hollar.safeApprove(address(pool), repayNow);
+            hollar.forceApprove(address(pool), 0);
+            hollar.forceApprove(address(pool), repayNow);
             pool.repay(address(hollar), repayNow, VARIABLE_RATE, address(this));
 
             uint256 synthRel = (r.synthShare * repayNow) / r.debtShare;
@@ -411,11 +411,11 @@ contract CollateralVault is
     {
         if (amountIn == 0) revert ZeroAmount();
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
-        IERC20(tokenIn).safeApprove(address(swapper), 0);
-        IERC20(tokenIn).safeApprove(address(swapper), amountIn);
+        IERC20(tokenIn).forceApprove(address(swapper), 0);
+        IERC20(tokenIn).forceApprove(address(swapper), amountIn);
         uint256 out = swapper.sell(tokenIn, address(collateral), amountIn, minCollateralOut, route);
-        collateral.safeApprove(address(pool), 0);
-        collateral.safeApprove(address(pool), out);
+        collateral.forceApprove(address(pool), 0);
+        collateral.forceApprove(address(pool), out);
         pool.supply(address(collateral), out, address(this), 0); // → aToken grows → share price ↑
         emit Harvested(out);
     }
@@ -451,12 +451,12 @@ contract CollateralVault is
             addSynth += addSynth / 200;
             syntheticSupplied += addSynth;
             synthetic.mint(address(this), addSynth);
-            IERC20(address(synthetic)).safeApprove(address(pool), 0);
-            IERC20(address(synthetic)).safeApprove(address(pool), addSynth);
+            IERC20(address(synthetic)).forceApprove(address(pool), 0);
+            IERC20(address(synthetic)).forceApprove(address(pool), addSynth);
             pool.supply(address(synthetic), addSynth, address(this), 0);
 
-            hollar.safeApprove(address(subLoop), 0);
-            hollar.safeApprove(address(subLoop), addHollar);
+            hollar.forceApprove(address(subLoop), 0);
+            hollar.forceApprove(address(subLoop), addHollar);
             loopShares += subLoop.deposit(addHollar);
         } else if (ltvBefore > ltvBandHighBps) {
             // Collateral fell → over-levered on the real ETH. De-lever: unwind the
@@ -493,8 +493,8 @@ contract CollateralVault is
         uint256 add = required - syntheticSupplied;
         syntheticSupplied += add;
         synthetic.mint(address(this), add);
-        IERC20(address(synthetic)).safeApprove(address(pool), 0);
-        IERC20(address(synthetic)).safeApprove(address(pool), add);
+        IERC20(address(synthetic)).forceApprove(address(pool), 0);
+        IERC20(address(synthetic)).forceApprove(address(pool), add);
         pool.supply(address(synthetic), add, address(this), 0);
         emit SyntheticPegMaintained(int256(add));
     }

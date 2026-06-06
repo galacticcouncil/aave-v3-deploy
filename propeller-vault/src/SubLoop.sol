@@ -260,6 +260,12 @@ contract SubLoop is
 
     /// @inheritdoc ISubLoop
     function pokeBorrow() external override onlyRole(KEEPER_ROLE) nonReentrant whenNotPaused {
+        // The DCA's Aave hop mints aPRIME to this loop but does not flip the
+        // use-as-collateral flag, so without this the loop's borrow power stays 0.
+        // Enable PRIME as collateral once it holds aPRIME (Aave no-ops if already on).
+        if (primeAToken.balanceOf(address(this)) > 0) {
+            pool.setUserUseReserveAsCollateral(address(prime), true);
+        }
         // Borrow against CURRENT collateral so the DCA lag never dips HF below
         // the floor. Aave HF = collWithLT / debt; max debt at the floor is
         //   maxDebt = collBase·wAvgLT / deployHfFloor.
@@ -288,8 +294,8 @@ contract SubLoop is
         if (address(dca) != address(0)) {
             // mock (tests) / future DCA precompile — SubLoop calls it directly,
             // so the order's origin is this contract's account.
-            hollar.safeApprove(address(dca), 0);
-            hollar.safeApprove(address(dca), amount);
+            hollar.forceApprove(address(dca), 0);
+            hollar.forceApprove(address(dca), amount);
             deployOrderId = dca.scheduleDeploy(address(this), deployTranche, amount);
         } else {
             // production: unbounded HOLLAR→aPRIME DCA, scheduled as THIS account
@@ -339,8 +345,8 @@ contract SubLoop is
         if (repayHollar > avail) repayHollar = avail;
 
         if (repayHollar > 0) {
-            hollar.safeApprove(address(pool), 0);
-            hollar.safeApprove(address(pool), repayHollar);
+            hollar.forceApprove(address(pool), 0);
+            hollar.forceApprove(address(pool), repayHollar);
             pool.repay(address(hollar), repayHollar, VARIABLE_RATE, address(this));
         }
 

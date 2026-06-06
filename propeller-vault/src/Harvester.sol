@@ -56,8 +56,8 @@ contract Harvester is AccessControl {
             address v = vaults[i];
             uint256 cut = total == 0 ? 0 : (surplus * subLoop.sharesOf(v)) / total;
             if (cut == 0) continue;
-            prime.safeApprove(v, 0);
-            prime.safeApprove(v, cut);
+            prime.forceApprove(v, 0);
+            prime.forceApprove(v, cut);
             ICompoundable(v).compound(address(prime), cut, i < minOuts.length ? minOuts[i] : 0, "");
         }
         emit HarvestRun(surplus);

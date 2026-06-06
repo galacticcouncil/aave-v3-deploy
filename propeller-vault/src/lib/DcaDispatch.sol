@@ -108,7 +108,9 @@ library DcaDispatch {
     /// @notice EVM-derived Substrate AccountId32 for an address:
     ///         [20-byte addr][b"ETH\0"][8x00] (pallet-evm-accounts mapping).
     function ownerOf(address a) internal pure returns (bytes32) {
-        return bytes32(abi.encodePacked(a, bytes4(0x45544800), bytes8(0)));
+        // Hydration truncated AccountId: b"ETH\0" ++ 20-byte addr ++ 8x00
+        // (pallet-evm-accounts truncated_account_id; prefix is FIRST).
+        return bytes32(abi.encodePacked(bytes4(0x45544800), a, bytes8(0)));
     }
 
     // ── SCALE helpers ─────────────────────────────────────────────────────
