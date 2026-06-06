@@ -1,0 +1,16 @@
+{
+  "name": "propeller-rebalancer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "pool-143 (HOLLAR/PRIME) peg keeper for the Propeller subloop on lark2",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@polkadot/api": "^15.0.2",
+    "@polkadot/util": "^13.0.0",
+    "@polkadot/util-crypto": "^13.0.0"
+  }
+}
