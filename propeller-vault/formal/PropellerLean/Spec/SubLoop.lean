@@ -296,6 +296,12 @@ theorem LoopSafe_synthConserved (s : State) (t : ℝ) (h : s.LoopSafe t) :
     s.synth * s.ltSynth ≤ s.mainDebt * (1 + 0.005) :=
   h.2.1.2
 
+/-- **noSynthBorrow** follows from the bundle: the `WellFormed` conjunct carries `ltvSynth = 0`, so
+borrow capacity is exactly the real collateral's — the synthetic unlocks no borrowing. -/
+theorem LoopSafe_noSynthBorrow (s : State) (t : ℝ) (h : s.LoopSafe t) :
+    s.borrowCapacity = s.coll * s.price * s.ltvColl :=
+  synth_adds_no_borrow_power s h.1
+
 /-- The bundle implies the headline never-liquidated guarantee. -/
 theorem LoopSafe_mainHF (s : State) (t : ℝ) (h : s.LoopSafe t) : 1 ≤ s.mainHF :=
   floor_main_hf s h.1 h.2.1.1
@@ -328,4 +334,69 @@ theorem deLever_LoopSafe (s : State) (a t : ℝ)
    deLever_subLoopHealthy s a t hlt hD hδpos hδlt hsolvent h.2.2⟩
 
 end State
+
+/-! ### Reachability — `LoopSafe` is closed under any valid operation sequence
+
+Single-step preservation is not the whole story: we want *every reachable state* safe. Model the
+protocol's state-changing actions as an `Op`, with a per-op `valid` precondition (the side-conditions
+each transition needs *at the current state*), and `run` them in sequence. `run_LoopSafe` then proves:
+from any `LoopSafe` start, executing **any** valid trace lands in a `LoopSafe` state — so with
+`LoopSafe_mainHF`, every reachable state is never-liquidated. -/
+
+/-- The state-changing protocol actions in the ℝ-spec. -/
+inductive Op
+  | tick (δ : ℝ)
+  | repay (r : ℝ)
+  | deLever (a : ℝ)
+
+/-- Apply one operation. -/
+noncomputable def Op.apply (s : State) : Op → State
+  | .tick δ   => s.tick δ
+  | .repay r  => s.repay r
+  | .deLever a => s.deLever a
+
+/-- The precondition for an operation to be a legitimate transition *at `s`* (mirrors the on-chain
+guards): a non-negative interest accrual, a strictly-partial repay, or a positive value-stable
+de-lever slice on a solvent loop. -/
+def Op.valid (s : State) : Op → Prop
+  | .tick δ   => 0 ≤ δ
+  | .repay r  => r < s.mainDebt
+  | .deLever a =>
+      0 ≤ s.ltPrime ∧ 0 < s.subDebt ∧ 0 < a * s.primePrice ∧
+        a * s.primePrice < s.subDebt ∧ s.subDebt ≤ s.primeAmt * s.primePrice
+
+/-- One valid operation preserves the safety bundle (case split onto the per-op theorems). -/
+theorem Op.apply_LoopSafe (s : State) (t : ℝ) (op : Op)
+    (hv : op.valid s) (h : s.LoopSafe t) : (op.apply s).LoopSafe t := by
+  cases op with
+  | tick δ => exact State.tick_LoopSafe s δ t hv h
+  | repay r => exact State.repay_LoopSafe s r t hv h
+  | deLever a =>
+      obtain ⟨h1, h2, h3, h4, h5⟩ := hv
+      exact State.deLever_LoopSafe s a t h1 h2 h3 h4 h5 h
+
+/-- Run a sequence of operations in order. -/
+noncomputable def run (s : State) : List Op → State
+  | [] => s
+  | op :: ops => run (op.apply s) ops
+
+/-- A trace is valid when each op satisfies its precondition *at the state it executes on*. -/
+def runValid (s : State) : List Op → Prop
+  | [] => True
+  | op :: ops => op.valid s ∧ runValid (op.apply s) ops
+
+/-- **Reachability / transition-system safety.** From any `LoopSafe` state, executing any valid
+operation trace lands in a `LoopSafe` state — every reachable state is well-formed, peg-banded,
+loop-healthy, and (with `LoopSafe_mainHF`) never liquidated. -/
+theorem run_LoopSafe (s : State) (t : ℝ) (ops : List Op)
+    (hv : runValid s ops) (h : s.LoopSafe t) : (run s ops).LoopSafe t := by
+  induction ops generalizing s with
+  | nil => exact h
+  | cons op ops ih => exact ih (op.apply s) hv.2 (Op.apply_LoopSafe s t op hv.1 h)
+
+/-- Every reachable state is never liquidated: `mainHF ≥ 1` after any valid trace. -/
+theorem run_mainHF (s : State) (t : ℝ) (ops : List Op)
+    (hv : runValid s ops) (h : s.LoopSafe t) : 1 ≤ (run s ops).mainHF :=
+  State.LoopSafe_mainHF _ t (run_LoopSafe s t ops hv h)
+
 end Propeller
