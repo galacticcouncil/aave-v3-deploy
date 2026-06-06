@@ -333,6 +333,56 @@ theorem deLever_LoopSafe (s : State) (a t : ℝ)
    deLever_pegBand s a 0.005 h.2.1,
    deLever_subLoopHealthy s a t hlt hD hδpos hδlt hsolvent h.2.2⟩
 
+/-! ### Cross-preservation: redemption ↔ loop
+
+The redemption ops (`requestRedeem`/`claimShares`) touch only `shares`/`escrowShares`, so they leave
+every `LoopSafe` field fixed; the maintenance/unwind ops touch only Main/loop fields, so they leave
+`escrowOk` fixed. These trivial-invariance lemmas let the two safety properties travel together. -/
+
+theorem deLever_escrowOk (s : State) (a : ℝ) (h : s.escrowOk) : (s.deLever a).escrowOk := by
+  simpa [escrowOk, deLever] using h
+
+theorem tick_escrowOk (s : State) (δ : ℝ) (h : s.escrowOk) : (s.tick δ).escrowOk := by
+  simpa [escrowOk, tick, maintainPeg, mintSynthToPeg, accrueInterest] using h
+
+theorem repay_escrowOk (s : State) (r : ℝ) (h : s.escrowOk) : (s.repay r).escrowOk := by
+  simpa [escrowOk, repay, maintainPeg, mintSynthToPeg] using h
+
+theorem requestRedeem_wellFormed (s : State) (x : ℝ) (wf : WellFormed s) :
+    WellFormed (s.requestRedeem x) :=
+  { coll_nonneg   := wf.coll_nonneg,   price_nonneg  := wf.price_nonneg
+    ltColl_nonneg := wf.ltColl_nonneg, ltColl_le_one := wf.ltColl_le_one
+    ltSynth_pos   := wf.ltSynth_pos,   synth_nonneg  := wf.synth_nonneg
+    mainDebt_pos  := wf.mainDebt_pos,  ltvSynth_zero := wf.ltvSynth_zero }
+
+theorem claimShares_wellFormed (s : State) (x : ℝ) (wf : WellFormed s) :
+    WellFormed (s.claimShares x) :=
+  { coll_nonneg   := wf.coll_nonneg,   price_nonneg  := wf.price_nonneg
+    ltColl_nonneg := wf.ltColl_nonneg, ltColl_le_one := wf.ltColl_le_one
+    ltSynth_pos   := wf.ltSynth_pos,   synth_nonneg  := wf.synth_nonneg
+    mainDebt_pos  := wf.mainDebt_pos,  ltvSynth_zero := wf.ltvSynth_zero }
+
+/-- Requesting a redemption (escrowing shares) preserves the loop safety bundle. -/
+theorem requestRedeem_LoopSafe (s : State) (t x : ℝ) (h : s.LoopSafe t) :
+    (s.requestRedeem x).LoopSafe t := by
+  obtain ⟨wf, pb, sh⟩ := h
+  refine ⟨requestRedeem_wellFormed s x wf, ?_, ?_⟩
+  · simpa [pegBand, requestRedeem] using pb
+  · simpa [subLoopHealthy, subHF, requestRedeem] using sh
+
+/-- Claiming (burning escrowed shares) preserves the loop safety bundle. -/
+theorem claimShares_LoopSafe (s : State) (t x : ℝ) (h : s.LoopSafe t) :
+    (s.claimShares x).LoopSafe t := by
+  obtain ⟨wf, pb, sh⟩ := h
+  refine ⟨claimShares_wellFormed s x wf, ?_, ?_⟩
+  · simpa [pegBand, claimShares] using pb
+  · simpa [subLoopHealthy, subHF, claimShares] using sh
+
+/-- **Full safety bundle:** loop safety *and* escrow well-formedness — all six §8 invariants in one
+predicate (`WellFormed`, `pegBand` [floor + over-mint cap], `subLoopHealthy` via `LoopSafe`; plus
+`escrowOk` [escrow] and `0 ≤ shares` [shareConservation]). -/
+def Safe (s : State) (t : ℝ) : Prop := s.LoopSafe t ∧ s.escrowOk
+
 end State
 
 /-! ### Reachability — `LoopSafe` is closed under any valid operation sequence
@@ -343,29 +393,37 @@ each transition needs *at the current state*), and `run` them in sequence. `run_
 from any `LoopSafe` start, executing **any** valid trace lands in a `LoopSafe` state — so with
 `LoopSafe_mainHF`, every reachable state is never-liquidated. -/
 
-/-- The state-changing protocol actions in the ℝ-spec. -/
+/-- The state-changing protocol actions in the ℝ-spec — the maintenance/unwind ops plus the two
+redemption ops, i.e. the full §6 entrypoint surface. -/
 inductive Op
   | tick (δ : ℝ)
   | repay (r : ℝ)
   | deLever (a : ℝ)
+  | requestRedeem (x : ℝ)
+  | claim (x : ℝ)
 
 /-- Apply one operation. -/
 noncomputable def Op.apply (s : State) : Op → State
-  | .tick δ   => s.tick δ
-  | .repay r  => s.repay r
-  | .deLever a => s.deLever a
+  | .tick δ         => s.tick δ
+  | .repay r        => s.repay r
+  | .deLever a      => s.deLever a
+  | .requestRedeem x => s.requestRedeem x
+  | .claim x        => s.claimShares x
 
 /-- The precondition for an operation to be a legitimate transition *at `s`* (mirrors the on-chain
-guards): a non-negative interest accrual, a strictly-partial repay, or a positive value-stable
-de-lever slice on a solvent loop. -/
+guards): non-negative interest accrual; strictly-partial repay; a positive value-stable de-lever
+slice on a solvent loop; a redemption request within free shares; a claim within escrowed shares. -/
 def Op.valid (s : State) : Op → Prop
   | .tick δ   => 0 ≤ δ
   | .repay r  => r < s.mainDebt
   | .deLever a =>
       0 ≤ s.ltPrime ∧ 0 < s.subDebt ∧ 0 < a * s.primePrice ∧
         a * s.primePrice < s.subDebt ∧ s.subDebt ≤ s.primeAmt * s.primePrice
+  | .requestRedeem x => 0 ≤ x ∧ s.escrowShares + x ≤ s.shares
+  | .claim x => x ≤ s.escrowShares
 
-/-- One valid operation preserves the safety bundle (case split onto the per-op theorems). -/
+/-- One valid operation preserves the loop safety bundle (redemption ops preserve it unconditionally,
+since they touch no `LoopSafe` field). -/
 theorem Op.apply_LoopSafe (s : State) (t : ℝ) (op : Op)
     (hv : op.valid s) (h : s.LoopSafe t) : (op.apply s).LoopSafe t := by
   cases op with
@@ -374,6 +432,26 @@ theorem Op.apply_LoopSafe (s : State) (t : ℝ) (op : Op)
   | deLever a =>
       obtain ⟨h1, h2, h3, h4, h5⟩ := hv
       exact State.deLever_LoopSafe s a t h1 h2 h3 h4 h5 h
+  | requestRedeem x => exact State.requestRedeem_LoopSafe s t x h
+  | claim x => exact State.claimShares_LoopSafe s t x h
+
+/-- One valid operation preserves `escrowOk` (maintenance/unwind ops touch no escrow field; the
+redemption ops carry their own escrow-preservation guards). -/
+theorem Op.apply_escrowOk (s : State) (op : Op)
+    (hv : op.valid s) (h : s.escrowOk) : (op.apply s).escrowOk := by
+  cases op with
+  | tick δ => exact State.tick_escrowOk s δ h
+  | repay r => exact State.repay_escrowOk s r h
+  | deLever a => exact State.deLever_escrowOk s a h
+  | requestRedeem x =>
+      obtain ⟨hx, hcap⟩ := hv
+      exact State.requestRedeem_escrowOk s x hx hcap h
+  | claim x => exact State.claimShares_escrowOk s x hv h
+
+/-- One valid operation preserves the **full** safety bundle. -/
+theorem Op.apply_Safe (s : State) (t : ℝ) (op : Op)
+    (hv : op.valid s) (h : s.Safe t) : (op.apply s).Safe t :=
+  ⟨Op.apply_LoopSafe s t op hv h.1, Op.apply_escrowOk s op hv h.2⟩
 
 /-- Run a sequence of operations in order. -/
 noncomputable def run (s : State) : List Op → State
@@ -386,17 +464,25 @@ def runValid (s : State) : List Op → Prop
   | op :: ops => op.valid s ∧ runValid (op.apply s) ops
 
 /-- **Reachability / transition-system safety.** From any `LoopSafe` state, executing any valid
-operation trace lands in a `LoopSafe` state — every reachable state is well-formed, peg-banded,
-loop-healthy, and (with `LoopSafe_mainHF`) never liquidated. -/
+operation trace lands in a `LoopSafe` state. -/
 theorem run_LoopSafe (s : State) (t : ℝ) (ops : List Op)
     (hv : runValid s ops) (h : s.LoopSafe t) : (run s ops).LoopSafe t := by
   induction ops generalizing s with
   | nil => exact h
   | cons op ops ih => exact ih (op.apply s) hv.2 (Op.apply_LoopSafe s t op hv.1 h)
 
+/-- **Whole-protocol safety.** From any `Safe` state, executing any valid trace over the full action
+set (maintenance, unwind, **and** redemption) lands in a `Safe` state — all six §8 invariants hold at
+every reachable state. -/
+theorem run_Safe (s : State) (t : ℝ) (ops : List Op)
+    (hv : runValid s ops) (h : s.Safe t) : (run s ops).Safe t := by
+  induction ops generalizing s with
+  | nil => exact h
+  | cons op ops ih => exact ih (op.apply s) hv.2 (Op.apply_Safe s t op hv.1 h)
+
 /-- Every reachable state is never liquidated: `mainHF ≥ 1` after any valid trace. -/
 theorem run_mainHF (s : State) (t : ℝ) (ops : List Op)
-    (hv : runValid s ops) (h : s.LoopSafe t) : 1 ≤ (run s ops).mainHF :=
-  State.LoopSafe_mainHF _ t (run_LoopSafe s t ops hv h)
+    (hv : runValid s ops) (h : s.Safe t) : 1 ≤ (run s ops).mainHF :=
+  State.LoopSafe_mainHF _ t (run_Safe s t ops hv h).1
 
 end Propeller
