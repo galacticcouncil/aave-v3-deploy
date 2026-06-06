@@ -1,4 +1,5 @@
 import PropellerLean.Spec.Redemption
+import PropellerLean.Spec.Preservation
 
 /-!
 # Propeller — SubLoop de-lever / unwind step (ℝ-spec)
@@ -180,6 +181,47 @@ theorem deLeverSeq_collateral_out_ge_in (s : State) (as : List ℝ) (h : s.freed
     s.coll ≤ (deLeverSeq s as).collateralReturned := by
   rw [deLeverSeq_collateralReturned]
   exact collateral_out_ge_in s h
+
+/-- `principalFloored` is preserved by the whole unwind: `deLever` touches no Main-position field, so
+the floor is literally invariant under it (no solvency hypothesis needed). -/
+theorem deLeverSeq_principalFloored (s : State) (as : List ℝ) (h : s.principalFloored) :
+    (deLeverSeq s as).principalFloored := by
+  induction as generalizing s with
+  | nil => exact h
+  | cons a as ih => exact ih (s.deLever a) (deLever_principalFloored s a h)
+
+/-! ### Capstone — the per-step safety bundle
+
+`LoopSafe s t` bundles the two invariants the loop maintains at every step: the principal is floored
+and the sub-loop sits at/above the de-lever trigger. Each transition (`tick`/`repay`/`deLever`)
+preserves it, composing the per-invariant proofs above. (Note: `freedBacked` is deliberately *not* in
+`LoopSafe` — interest accrual raises `mainDebt` while loop equity is fixed, so it erodes between
+harvests; it is the redemption-time precondition for `collateral_out_ge_in`, proven separately.) -/
+
+/-- The core per-step safety bundle: principal floored **and** loop at/above the trigger. -/
+def LoopSafe (s : State) (t : ℝ) : Prop := s.principalFloored ∧ s.subLoopHealthy t
+
+/-- A full maintenance tick preserves the safety bundle (the re-peg re-establishes the floor; the
+loop fields are untouched so the trigger holds). -/
+theorem tick_LoopSafe (s : State) (δ t : ℝ)
+    (hδ : 0 ≤ δ) (hd : 0 < s.mainDebt) (hlt : 0 < s.ltSynth) (h : s.LoopSafe t) :
+    (s.tick δ).LoopSafe t :=
+  ⟨tick_preserves_floor s δ hδ hd hlt, tick_subLoopHealthy s δ t h.2⟩
+
+/-- Repay-then-repeg preserves the safety bundle. -/
+theorem repay_LoopSafe (s : State) (r t : ℝ)
+    (hr0 : 0 ≤ r) (hr : r ≤ s.mainDebt) (hlt : 0 < s.ltSynth) (h : s.LoopSafe t) :
+    (s.repay r).LoopSafe t :=
+  ⟨repay_preserves_floor s r hr0 hr hlt, repay_subLoopHealthy s r t h.2⟩
+
+/-- A de-lever step on a solvent loop preserves the safety bundle (floor invariant, trigger raised). -/
+theorem deLever_LoopSafe (s : State) (a t : ℝ)
+    (hlt : 0 ≤ s.ltPrime) (hD : 0 < s.subDebt)
+    (hδpos : 0 < a * s.primePrice) (hδlt : a * s.primePrice < s.subDebt)
+    (hsolvent : s.subDebt ≤ s.primeAmt * s.primePrice) (h : s.LoopSafe t) :
+    (s.deLever a).LoopSafe t :=
+  ⟨deLever_principalFloored s a h.1,
+   deLever_subLoopHealthy s a t hlt hD hδpos hδlt hsolvent h.2⟩
 
 end State
 end Propeller
