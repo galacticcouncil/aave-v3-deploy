@@ -289,6 +289,13 @@ def LoopSafe (s : State) (t : ℝ) : Prop :=
 theorem LoopSafe_principalFloored (s : State) (t : ℝ) (h : s.LoopSafe t) : s.principalFloored :=
   h.2.1.1
 
+/-- **synthConserved** (over-mint cap) is the upper edge of the bundled peg band: the synthetic's
+risk-weighted value never exceeds the Main debt by more than the spec buffer (`synth·ltSynth ≤
+mainDebt·1.005`). So the bundle covers both directions of §8 `synthConserved`. -/
+theorem LoopSafe_synthConserved (s : State) (t : ℝ) (h : s.LoopSafe t) :
+    s.synth * s.ltSynth ≤ s.mainDebt * (1 + 0.005) :=
+  h.2.1.2
+
 /-- The bundle implies the headline never-liquidated guarantee. -/
 theorem LoopSafe_mainHF (s : State) (t : ℝ) (h : s.LoopSafe t) : 1 ≤ s.mainHF :=
   floor_main_hf s h.1 h.2.1.1
