@@ -190,38 +190,88 @@ theorem deLeverSeq_principalFloored (s : State) (as : List ℝ) (h : s.principal
   | nil => exact h
   | cons a as ih => exact ih (s.deLever a) (deLever_principalFloored s a h)
 
+/-! ### WellFormed preservation
+
+The three transitions keep the state `WellFormed`. `deLever` touches only loop fields, so it's
+immediate; `tick`/`repay` end in a re-peg, so they reduce to `maintainPeg_wellFormed` once the
+interim `mainDebt` is shown positive (`tick` raises it by `δ ≥ 0`; `repay` needs the **partial**
+condition `r < mainDebt`, since a fully-repaid debt would violate `mainDebt_pos`). -/
+
+/-- `deLever` preserves `WellFormed` — it changes only `primeAmt`/`subDebt`, no Main-position field. -/
+theorem deLever_wellFormed (s : State) (a : ℝ) (wf : WellFormed s) : WellFormed (s.deLever a) :=
+  { coll_nonneg   := wf.coll_nonneg,   price_nonneg  := wf.price_nonneg
+    ltColl_nonneg := wf.ltColl_nonneg, ltColl_le_one := wf.ltColl_le_one
+    ltSynth_pos   := wf.ltSynth_pos,   synth_nonneg  := wf.synth_nonneg
+    mainDebt_pos  := wf.mainDebt_pos,  ltvSynth_zero := wf.ltvSynth_zero }
+
+/-- A full maintenance tick (accrue `δ ≥ 0`, then re-peg) preserves `WellFormed`. -/
+theorem tick_wellFormed (s : State) (δ : ℝ) (wf : WellFormed s) (hδ : 0 ≤ δ) :
+    WellFormed (s.tick δ) := by
+  unfold tick
+  apply maintainPeg_wellFormed
+  exact
+    { coll_nonneg   := wf.coll_nonneg,   price_nonneg  := wf.price_nonneg
+      ltColl_nonneg := wf.ltColl_nonneg, ltColl_le_one := wf.ltColl_le_one
+      ltSynth_pos   := wf.ltSynth_pos,   synth_nonneg  := wf.synth_nonneg
+      mainDebt_pos  := by simp only [accrueInterest]; linarith [wf.mainDebt_pos]
+      ltvSynth_zero := wf.ltvSynth_zero }
+
+/-- A **partial** repay (`r < mainDebt`) then re-peg preserves `WellFormed`. -/
+theorem repay_wellFormed (s : State) (r : ℝ) (wf : WellFormed s) (hr : r < s.mainDebt) :
+    WellFormed (s.repay r) := by
+  unfold repay
+  apply maintainPeg_wellFormed
+  exact
+    { coll_nonneg   := wf.coll_nonneg,   price_nonneg  := wf.price_nonneg
+      ltColl_nonneg := wf.ltColl_nonneg, ltColl_le_one := wf.ltColl_le_one
+      ltSynth_pos   := wf.ltSynth_pos,   synth_nonneg  := wf.synth_nonneg
+      mainDebt_pos  := by simp only; linarith
+      ltvSynth_zero := wf.ltvSynth_zero }
+
 /-! ### Capstone — the per-step safety bundle
 
-`LoopSafe s t` bundles the two invariants the loop maintains at every step: the principal is floored
-and the sub-loop sits at/above the de-lever trigger. Each transition (`tick`/`repay`/`deLever`)
-preserves it, composing the per-invariant proofs above. (Note: `freedBacked` is deliberately *not* in
-`LoopSafe` — interest accrual raises `mainDebt` while loop equity is fixed, so it erodes between
-harvests; it is the redemption-time precondition for `collateral_out_ge_in`, proven separately.) -/
+`LoopSafe s t` bundles the invariants the loop maintains at every step: the state is `WellFormed`, the
+principal is floored, and the sub-loop sits at/above the de-lever trigger. Each transition
+(`tick`/`repay`/`deLever`) preserves it, composing the proofs above — and because `WellFormed` is
+now in the bundle, `LoopSafe` directly implies the never-liquidated guarantee `mainHF ≥ 1`
+(`LoopSafe_mainHF`). (Note: `freedBacked` is deliberately *not* in `LoopSafe` — interest accrual
+raises `mainDebt` while loop equity is fixed, so it erodes between harvests; it is the redemption-time
+precondition for `collateral_out_ge_in`, proven separately.) -/
 
-/-- The core per-step safety bundle: principal floored **and** loop at/above the trigger. -/
-def LoopSafe (s : State) (t : ℝ) : Prop := s.principalFloored ∧ s.subLoopHealthy t
+/-- The per-step safety bundle: state `WellFormed`, principal floored, loop at/above the trigger. -/
+def LoopSafe (s : State) (t : ℝ) : Prop :=
+  WellFormed s ∧ s.principalFloored ∧ s.subLoopHealthy t
 
-/-- A full maintenance tick preserves the safety bundle (the re-peg re-establishes the floor; the
-loop fields are untouched so the trigger holds). -/
-theorem tick_LoopSafe (s : State) (δ t : ℝ)
-    (hδ : 0 ≤ δ) (hd : 0 < s.mainDebt) (hlt : 0 < s.ltSynth) (h : s.LoopSafe t) :
+/-- The bundle implies the headline never-liquidated guarantee. -/
+theorem LoopSafe_mainHF (s : State) (t : ℝ) (h : s.LoopSafe t) : 1 ≤ s.mainHF :=
+  floor_main_hf s h.1 h.2.1
+
+/-- A full maintenance tick preserves the safety bundle (positivity of `mainDebt`/`ltSynth` comes
+from the `WellFormed` conjunct, so no extra hypotheses beyond `δ ≥ 0`). -/
+theorem tick_LoopSafe (s : State) (δ t : ℝ) (hδ : 0 ≤ δ) (h : s.LoopSafe t) :
     (s.tick δ).LoopSafe t :=
-  ⟨tick_preserves_floor s δ hδ hd hlt, tick_subLoopHealthy s δ t h.2⟩
+  ⟨tick_wellFormed s δ h.1 hδ,
+   tick_preserves_floor s δ hδ h.1.mainDebt_pos h.1.ltSynth_pos,
+   tick_subLoopHealthy s δ t h.2.2⟩
 
-/-- Repay-then-repeg preserves the safety bundle. -/
+/-- A partial repay-then-repeg (`r < mainDebt`) preserves the safety bundle. -/
 theorem repay_LoopSafe (s : State) (r t : ℝ)
-    (hr0 : 0 ≤ r) (hr : r ≤ s.mainDebt) (hlt : 0 < s.ltSynth) (h : s.LoopSafe t) :
+    (hr0 : 0 ≤ r) (hr : r < s.mainDebt) (h : s.LoopSafe t) :
     (s.repay r).LoopSafe t :=
-  ⟨repay_preserves_floor s r hr0 hr hlt, repay_subLoopHealthy s r t h.2⟩
+  ⟨repay_wellFormed s r h.1 hr,
+   repay_preserves_floor s r hr0 (le_of_lt hr) h.1.ltSynth_pos,
+   repay_subLoopHealthy s r t h.2.2⟩
 
-/-- A de-lever step on a solvent loop preserves the safety bundle (floor invariant, trigger raised). -/
+/-- A de-lever step on a solvent loop preserves the safety bundle (WellFormed + floor invariant,
+trigger raised). -/
 theorem deLever_LoopSafe (s : State) (a t : ℝ)
     (hlt : 0 ≤ s.ltPrime) (hD : 0 < s.subDebt)
     (hδpos : 0 < a * s.primePrice) (hδlt : a * s.primePrice < s.subDebt)
     (hsolvent : s.subDebt ≤ s.primeAmt * s.primePrice) (h : s.LoopSafe t) :
     (s.deLever a).LoopSafe t :=
-  ⟨deLever_principalFloored s a h.1,
-   deLever_subLoopHealthy s a t hlt hD hδpos hδlt hsolvent h.2⟩
+  ⟨deLever_wellFormed s a h.1,
+   deLever_principalFloored s a h.2.1,
+   deLever_subLoopHealthy s a t hlt hD hδpos hδlt hsolvent h.2.2⟩
 
 end State
 end Propeller
