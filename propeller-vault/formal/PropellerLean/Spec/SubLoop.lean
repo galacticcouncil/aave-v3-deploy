@@ -228,41 +228,88 @@ theorem repay_wellFormed (s : State) (r : ℝ) (wf : WellFormed s) (hr : r < s.m
       mainDebt_pos  := by simp only; linarith
       ltvSynth_zero := wf.ltvSynth_zero }
 
+/-! ### pegBand preservation
+
+`pegBand s ε := mainDebt ≤ synth·ltSynth ≤ mainDebt·(1+ε)` — the synthetic tracks the Main debt
+within the spec buffer. Its **lower** bound is exactly `principalFloored`; the **upper** bound caps
+over-minting. The maintenance re-peg sets `synth·ltSynth = mainDebt·1.005`, so `tick`/`repay`
+re-establish `pegBand … 0.005`; `deLever` touches neither `synth` nor `mainDebt`, so it preserves any
+band. -/
+
+/-- The maintenance re-peg lands the synthetic in the spec peg band (`ε = 0.005`). -/
+theorem maintainPeg_pegBand (s : State) (hd : 0 ≤ s.mainDebt) (hlt : 0 < s.ltSynth) :
+    s.maintainPeg.pegBand 0.005 := by
+  simp only [pegBand, maintainPeg, mintSynthToPeg]
+  have hcancel : s.mainDebt * 1.005 / s.ltSynth * s.ltSynth = s.mainDebt * 1.005 :=
+    div_mul_cancel₀ (s.mainDebt * 1.005) (ne_of_gt hlt)
+  rw [hcancel]
+  have h15 : (1 : ℝ) + 0.005 = 1.005 := by norm_num
+  rw [h15]
+  exact ⟨by nlinarith [hd], le_refl _⟩
+
+/-- A full maintenance tick re-establishes the peg band. -/
+theorem tick_pegBand (s : State) (δ : ℝ)
+    (hδ : 0 ≤ δ) (hd : 0 < s.mainDebt) (hlt : 0 < s.ltSynth) :
+    (s.tick δ).pegBand 0.005 := by
+  unfold tick
+  apply maintainPeg_pegBand
+  · simp only [accrueInterest]; linarith
+  · simpa [accrueInterest] using hlt
+
+/-- A repay-then-repeg re-establishes the peg band (`r ≤ mainDebt` suffices for the band). -/
+theorem repay_pegBand (s : State) (r : ℝ)
+    (hr : r ≤ s.mainDebt) (hlt : 0 < s.ltSynth) :
+    (s.repay r).pegBand 0.005 := by
+  unfold repay
+  apply maintainPeg_pegBand
+  · simp only; linarith
+  · simpa using hlt
+
+/-- `deLever` preserves any peg band — it touches neither `synth`, `mainDebt`, nor `ltSynth`. -/
+theorem deLever_pegBand (s : State) (a ε : ℝ) (h : s.pegBand ε) :
+    (s.deLever a).pegBand ε := by
+  simpa [pegBand, deLever] using h
+
 /-! ### Capstone — the per-step safety bundle
 
 `LoopSafe s t` bundles the invariants the loop maintains at every step: the state is `WellFormed`, the
-principal is floored, and the sub-loop sits at/above the de-lever trigger. Each transition
-(`tick`/`repay`/`deLever`) preserves it, composing the proofs above — and because `WellFormed` is
-now in the bundle, `LoopSafe` directly implies the never-liquidated guarantee `mainHF ≥ 1`
-(`LoopSafe_mainHF`). (Note: `freedBacked` is deliberately *not* in `LoopSafe` — interest accrual
-raises `mainDebt` while loop equity is fixed, so it erodes between harvests; it is the redemption-time
-precondition for `collateral_out_ge_in`, proven separately.) -/
+synthetic sits in the spec peg band (`pegBand … 0.005`, whose lower bound *is* `principalFloored`),
+and the sub-loop sits at/above the de-lever trigger. Each transition (`tick`/`repay`/`deLever`)
+preserves it, composing the proofs above — and because `WellFormed` is in the bundle, `LoopSafe`
+directly implies the never-liquidated guarantee `mainHF ≥ 1` (`LoopSafe_mainHF`). (Note: `freedBacked`
+is deliberately *not* in `LoopSafe` — interest accrual raises `mainDebt` while loop equity is fixed, so
+it erodes between harvests; it is the redemption-time precondition for `collateral_out_ge_in`, proven
+separately.) -/
 
-/-- The per-step safety bundle: state `WellFormed`, principal floored, loop at/above the trigger. -/
+/-- The per-step safety bundle: `WellFormed`, synthetic in the peg band, loop at/above the trigger. -/
 def LoopSafe (s : State) (t : ℝ) : Prop :=
-  WellFormed s ∧ s.principalFloored ∧ s.subLoopHealthy t
+  WellFormed s ∧ s.pegBand 0.005 ∧ s.subLoopHealthy t
+
+/-- `principalFloored` is the lower edge of the bundled peg band. -/
+theorem LoopSafe_principalFloored (s : State) (t : ℝ) (h : s.LoopSafe t) : s.principalFloored :=
+  h.2.1.1
 
 /-- The bundle implies the headline never-liquidated guarantee. -/
 theorem LoopSafe_mainHF (s : State) (t : ℝ) (h : s.LoopSafe t) : 1 ≤ s.mainHF :=
-  floor_main_hf s h.1 h.2.1
+  floor_main_hf s h.1 h.2.1.1
 
 /-- A full maintenance tick preserves the safety bundle (positivity of `mainDebt`/`ltSynth` comes
 from the `WellFormed` conjunct, so no extra hypotheses beyond `δ ≥ 0`). -/
 theorem tick_LoopSafe (s : State) (δ t : ℝ) (hδ : 0 ≤ δ) (h : s.LoopSafe t) :
     (s.tick δ).LoopSafe t :=
   ⟨tick_wellFormed s δ h.1 hδ,
-   tick_preserves_floor s δ hδ h.1.mainDebt_pos h.1.ltSynth_pos,
+   tick_pegBand s δ hδ h.1.mainDebt_pos h.1.ltSynth_pos,
    tick_subLoopHealthy s δ t h.2.2⟩
 
 /-- A partial repay-then-repeg (`r < mainDebt`) preserves the safety bundle. -/
 theorem repay_LoopSafe (s : State) (r t : ℝ)
-    (hr0 : 0 ≤ r) (hr : r < s.mainDebt) (h : s.LoopSafe t) :
+    (hr : r < s.mainDebt) (h : s.LoopSafe t) :
     (s.repay r).LoopSafe t :=
   ⟨repay_wellFormed s r h.1 hr,
-   repay_preserves_floor s r hr0 (le_of_lt hr) h.1.ltSynth_pos,
+   repay_pegBand s r (le_of_lt hr) h.1.ltSynth_pos,
    repay_subLoopHealthy s r t h.2.2⟩
 
-/-- A de-lever step on a solvent loop preserves the safety bundle (WellFormed + floor invariant,
+/-- A de-lever step on a solvent loop preserves the safety bundle (WellFormed + peg band invariant,
 trigger raised). -/
 theorem deLever_LoopSafe (s : State) (a t : ℝ)
     (hlt : 0 ≤ s.ltPrime) (hD : 0 < s.subDebt)
@@ -270,7 +317,7 @@ theorem deLever_LoopSafe (s : State) (a t : ℝ)
     (hsolvent : s.subDebt ≤ s.primeAmt * s.primePrice) (h : s.LoopSafe t) :
     (s.deLever a).LoopSafe t :=
   ⟨deLever_wellFormed s a h.1,
-   deLever_principalFloored s a h.2.1,
+   deLever_pegBand s a 0.005 h.2.1,
    deLever_subLoopHealthy s a t hlt hD hδpos hδlt hsolvent h.2.2⟩
 
 end State
