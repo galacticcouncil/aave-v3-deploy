@@ -134,5 +134,52 @@ theorem deLever_subLoopHealthy (s : State) (a t : ℝ)
   unfold subLoopHealthy at *
   exact le_trans h (deLever_raises_subHF s a hlt hD hδpos hδlt hsolvent)
 
+/-! ### Iterated (gradual) unwind
+
+Propeller unwinds across many transactions — a *sequence* of `deLever` slices, not one big step.
+`deLeverSeq s as` applies the per-step transition once per slice size in `as`. The per-step lemmas
+lift to the whole sequence by induction: loop equity stays invariant, `freedBacked` is preserved, and
+`collateralReturned` is unchanged — so **`collateral_out_ge_in` holds after an arbitrary finite
+unwind**, making the "gradual DCA" guarantee explicit rather than only per-step. -/
+
+/-- Apply `deLever` once per slice in `as`, in order. -/
+noncomputable def deLeverSeq : State → List ℝ → State
+  | s, [] => s
+  | s, a :: as => deLeverSeq (s.deLever a) as
+
+@[simp] theorem deLeverSeq_nil (s : State) : deLeverSeq s [] = s := rfl
+
+theorem deLeverSeq_cons (s : State) (a : ℝ) (as : List ℝ) :
+    deLeverSeq s (a :: as) = deLeverSeq (s.deLever a) as := rfl
+
+/-- Loop equity is invariant under the whole unwind. -/
+theorem deLeverSeq_loopEquity (s : State) (as : List ℝ) :
+    (deLeverSeq s as).loopEquity = s.loopEquity := by
+  induction as generalizing s with
+  | nil => rfl
+  | cons a as ih => rw [deLeverSeq_cons, ih (s.deLever a), deLever_loopEquity]
+
+/-- `freedBacked` is preserved by the whole unwind. -/
+theorem deLeverSeq_freedBacked (s : State) (as : List ℝ) (h : s.freedBacked) :
+    (deLeverSeq s as).freedBacked := by
+  induction as generalizing s with
+  | nil => exact h
+  | cons a as ih => exact ih (s.deLever a) (deLever_freedBacked s a h)
+
+/-- Collateral returned is invariant under the whole unwind. -/
+theorem deLeverSeq_collateralReturned (s : State) (as : List ℝ) :
+    (deLeverSeq s as).collateralReturned = s.collateralReturned := by
+  induction as generalizing s with
+  | nil => rfl
+  | cons a as ih => rw [deLeverSeq_cons, ih (s.deLever a), deLever_collateralReturned]
+
+/-- **Iterated principal-back guarantee.** After *any* finite sequence of de-lever steps on a
+`freedBacked` loop, settlement returns at least the originally deposited collateral — the gradual
+DCA unwind keeps the depositor made whole at every point along the way. -/
+theorem deLeverSeq_collateral_out_ge_in (s : State) (as : List ℝ) (h : s.freedBacked) :
+    s.coll ≤ (deLeverSeq s as).collateralReturned := by
+  rw [deLeverSeq_collateralReturned]
+  exact collateral_out_ge_in s h
+
 end State
 end Propeller
