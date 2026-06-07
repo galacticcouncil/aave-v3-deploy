@@ -9,7 +9,7 @@ import { ethers } from "ethers";
 const WS = "wss://2.lark.hydration.cloud";
 const LIVE = process.argv.includes("--live");
 const GOV = "0xAa7e0000000000000000000000000000000Aa7e0";
-const SUBLOOP = "0xF23F4baFB4560DFb3234ad7f441Da6260b4218E8";
+const SUBLOOP = process.env.PROXY || "0xF23F4baFB4560DFb3234ad7f441Da6260b4218E8"; // upgrade target (proxy)
 const NEW_IMPL = process.argv.find((a) => a.startsWith("0x")) || "0x74ef3Dc474e430221046eD27745C8fCB3aB62e08";
 const ALICE_EVM = "0xd43593c715fdd31c61141abd04a99fd6822c8558";
 const VAULT = "0x305EE427b94187c5abC68fCCc194E77D82F39921";

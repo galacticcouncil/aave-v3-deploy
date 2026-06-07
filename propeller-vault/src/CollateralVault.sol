@@ -235,15 +235,19 @@ contract CollateralVault is
         _mint(receiver, shares);
 
         // 1. Supply the collateral to the Main Aave position.
+        (uint256 collBefore8, , , , , ) = pool.getUserAccountData(address(this));
         collateral.safeTransferFrom(msg.sender, address(this), assets);
         collateral.forceApprove(address(pool), 0);
         collateral.forceApprove(address(pool), assets);
         pool.supply(address(collateral), assets, address(this), 0);
 
-        // 2. Borrow HOLLAR at target LTV against the collateral just supplied
-        //    (collateral USD value, 8dp base → HOLLAR 18dp @ $1).
-        (uint256 collBase8, , , , , ) = pool.getUserAccountData(address(this));
-        uint256 borrowHollar = (collBase8 * targetLtvBps) / BPS * 1e10;
+        // 2. Borrow HOLLAR at target LTV against the collateral JUST supplied —
+        //    the DELTA in account collateral value, not the total. Sizing off the
+        //    total over-borrows on incremental deposits (the existing position,
+        //    incl. the LTV-0 synthetic, inflates collBase8) → Aave error 36
+        //    COLLATERAL_CANNOT_COVER_NEW_BORROW. (collateral USD 8dp → HOLLAR 18dp @ $1.)
+        (uint256 collAfter8, , , , , ) = pool.getUserAccountData(address(this));
+        uint256 borrowHollar = ((collAfter8 - collBefore8) * targetLtvBps) / BPS * 1e10;
 
         pool.borrow(address(hollar), borrowHollar, VARIABLE_RATE, 0, address(this));
 
