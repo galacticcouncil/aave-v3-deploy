@@ -44,6 +44,13 @@ def IState.freedBacked (s : IState) : Prop := s.mainDebtWad + s.subDebtWad ≤ s
 def IState.accrueLoop (s : IState) (gWad : ℕ) : IState :=
   { s with primeAmtWad := s.primeAmtWad + gWad }
 
+/-- On-chain re-peg: mint the synthetic to the buffered target via a **flooring** mul-div,
+`synth := mainDebt · kBps / ltSynthBps`, where `kBps` is the mint buffer in bps
+(the spec's `1.005` ⇒ `kBps = 10050`). The mint floors *down*, and the floor guard
+(`synthValueWad`) floors *again* — so soundness is the double-flooring question. -/
+def IState.repegSynth (s : IState) (kBps : ℕ) : IState :=
+  { s with synthWad := s.mainDebtWad * kBps / s.ltSynthBps }
+
 /-- Embed the integer state into the real spec state, dividing out the scales.
 Fields irrelevant to the modelled guards take harmless defaults. -/
 noncomputable def IState.toReal (s : IState) : Propeller.State where

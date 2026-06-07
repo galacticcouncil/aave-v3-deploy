@@ -97,5 +97,49 @@ theorem accrueLoop_freedBacked_refines (s : IState) (gWad : ℕ)
   rw [← accrueLoop_toReal]
   exact freedBacked_refines _ h
 
+/-! ## Re-peg mint rounding soundness
+
+The on-chain re-peg both **mints** the synthetic with a flooring mul-div *and* the floor guard
+re-floors `synth·ltSynth/Bps`. Two floors lose up to ~2 wei together; the spec's `1.005` buffer
+(`kBps − Bps = 50` bps) absorbs them — **but only above a dust threshold**. The honest result is
+*conditional*: the double-floored re-peg satisfies the on-chain floor guard provided
+
+  `ltSynthBps ≤ mainDebtWad · (kBps − Bps) + 1`.
+
+With the spec params (`kBps = 10050`, `Bps = 10000`, `ltSynthBps = 9800`) this is
+`9800 ≤ 50·mainDebtWad + 1`, i.e. `mainDebtWad ≥ 196` wei — negligible (sub-attowei of a token), so it
+holds for any real position. **Below it** (a debt of ≤ ~195 wei) the two floors can undershoot the
+floor: a genuine — if economically irrelevant — dust edge, now made explicit rather than assumed away. -/
+
+/-- **Re-peg soundness (conditional on being above the dust threshold).** The double-flooring
+on-chain re-peg `mainDebt·kBps/ltSynthBps` satisfies the integer floor guard
+`mainDebt ≤ synth·ltSynth/Bps` whenever the buffer covers the rounding loss
+(`ltSynthBps ≤ mainDebtWad·(kBps − Bps) + 1`). -/
+theorem repeg_principalFloored (s : IState) (kBps : ℕ)
+    (hL : 0 < s.ltSynthBps) (hk : Bps ≤ kBps)
+    (hdust : s.ltSynthBps ≤ s.mainDebtWad * (kBps - Bps) + 1) :
+    (s.repegSynth kBps).principalFloored := by
+  have hB0 : 0 < Bps := by norm_num [Bps]
+  simp only [IState.principalFloored, IState.synthValueWad, IState.repegSynth]
+  rw [Nat.le_div_iff_mul_le hB0, Nat.mul_comm (s.mainDebtWad * kBps / s.ltSynthBps) s.ltSynthBps]
+  have hdm := Nat.div_add_mod (s.mainDebtWad * kBps) s.ltSynthBps
+  have hrL := Nat.mod_lt (s.mainDebtWad * kBps) hL
+  have hkid : s.mainDebtWad * kBps
+      = s.mainDebtWad * Bps + s.mainDebtWad * (kBps - Bps) := by
+    rw [← Nat.mul_add, Nat.add_sub_cancel' hk]
+  -- abstract the variable div/mod so `omega` sees pure linear nat arithmetic
+  set q := s.mainDebtWad * kBps / s.ltSynthBps
+  set r := s.mainDebtWad * kBps % s.ltSynthBps
+  omega
+
+/-- **Re-peg, end to end.** Above the dust threshold, the on-chain re-peg lands in a state whose
+*real* principal floor holds — the integer mint soundness composed with the conservative-rounding
+refinement. -/
+theorem repeg_floor_refines (s : IState) (kBps : ℕ)
+    (hL : 0 < s.ltSynthBps) (hk : Bps ≤ kBps)
+    (hdust : s.ltSynthBps ≤ s.mainDebtWad * (kBps - Bps) + 1) :
+    ((s.repegSynth kBps).toReal).principalFloored :=
+  principalFloored_refines _ (repeg_principalFloored s kBps hL hk hdust)
+
 end FixedPoint
 end Propeller
