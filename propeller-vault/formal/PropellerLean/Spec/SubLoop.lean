@@ -395,6 +395,58 @@ theorem maintainPeg_Safe (s : State) (t : ℝ)
   · unfold subLoopHealthy at *; rwa [maintainPeg_subHF]
   · simpa [escrowOk, maintainPeg, mintSynthToPeg] using hesc
 
+/-! ### `freedBacked` preservation
+
+`freedBacked s := mainDebt ≤ loopEquity` — the loop's value-stable equity covers the Main HOLLAR debt
+(the redemption-time precondition for `collateral_out_ge_in`). Unlike the other invariants it is *not*
+unconditionally preserved: `tick` accrues interest (raises `mainDebt`) while loop equity is fixed, so it
+holds only while the accrued debt stays covered (`mainDebt + δ ≤ loopEquity` — the keeper's backing
+obligation). `repay` with `0 ≤ r` only lowers the debt, so it helps; `deLever` keeps equity invariant
+(`deLever_freedBacked`); the redemption ops touch neither side. -/
+
+theorem tick_freedBacked (s : State) (δ : ℝ) (hbk : s.mainDebt + δ ≤ s.loopEquity) :
+    (s.tick δ).freedBacked := by
+  unfold freedBacked
+  have hd : (s.tick δ).mainDebt = s.mainDebt + δ := by
+    simp [tick, maintainPeg, mintSynthToPeg, accrueInterest]
+  have he : (s.tick δ).loopEquity = s.loopEquity := by
+    simp [loopEquity, tick, maintainPeg, mintSynthToPeg, accrueInterest]
+  rw [hd, he]; exact hbk
+
+theorem repay_freedBacked (s : State) (r : ℝ) (hr0 : 0 ≤ r) (h : s.freedBacked) :
+    (s.repay r).freedBacked := by
+  unfold freedBacked at *
+  have hd : (s.repay r).mainDebt = s.mainDebt - r := by
+    simp [repay, maintainPeg, mintSynthToPeg]
+  have he : (s.repay r).loopEquity = s.loopEquity := by
+    simp [loopEquity, repay, maintainPeg, mintSynthToPeg]
+  rw [hd, he]; linarith
+
+theorem requestRedeem_freedBacked (s : State) (x : ℝ) (h : s.freedBacked) :
+    (s.requestRedeem x).freedBacked := by
+  simpa [freedBacked, loopEquity, requestRedeem] using h
+
+theorem claimShares_freedBacked (s : State) (x : ℝ) (h : s.freedBacked) :
+    (s.claimShares x).freedBacked := by
+  simpa [freedBacked, loopEquity, claimShares] using h
+
+theorem maintainPeg_freedBacked (s : State) (h : s.freedBacked) : s.maintainPeg.freedBacked := by
+  unfold freedBacked at *
+  have hd : s.maintainPeg.mainDebt = s.mainDebt := by simp [maintainPeg, mintSynthToPeg]
+  have he : s.maintainPeg.loopEquity = s.loopEquity := by
+    simp [loopEquity, maintainPeg, mintSynthToPeg]
+  rw [hd, he]; exact h
+
+/-- The full safety bundle **plus** the redemption-backing invariant `freedBacked`. -/
+def SafeBacked (s : State) (t : ℝ) : Prop := s.Safe t ∧ s.freedBacked
+
+/-- Genesis with backing: a freshly-pegged position that is additionally `freedBacked` is
+`SafeBacked` (the peg step preserves the backing). -/
+theorem maintainPeg_SafeBacked (s : State) (t : ℝ)
+    (wf : WellFormed s) (hhealthy : s.subLoopHealthy t) (hesc : s.escrowOk) (hbk : s.freedBacked) :
+    s.maintainPeg.SafeBacked t :=
+  ⟨maintainPeg_Safe s t wf hhealthy hesc, maintainPeg_freedBacked s hbk⟩
+
 end State
 
 /-! ### Reachability — `LoopSafe` is closed under any valid operation sequence
@@ -506,5 +558,70 @@ theorem genesis_run_mainHF (s : State) (t : ℝ) (ops : List Op)
     (hv : runValid s.maintainPeg ops) :
     1 ≤ (run s.maintainPeg ops).mainHF :=
   run_mainHF s.maintainPeg t ops hv (State.maintainPeg_Safe s t wf hhealthy hesc)
+
+/-! ### Threading `freedBacked` through the transition system
+
+`freedBacked` needs a stronger per-op precondition than `Safe` (only `tick` can break it). `validBacked`
+strengthens `valid`: `tick` must keep the accrued debt backed (`mainDebt + δ ≤ loopEquity`), and `repay`
+must be non-negative; all other ops are unchanged. Every `validBacked` trace is a `valid` trace, so
+`SafeBacked := Safe ∧ freedBacked` is closed under `validBacked` traces — and at every such reachable
+state the redemption solvency `collateral_out_ge_in` holds. -/
+
+/-- The backing-aware precondition: as `valid`, but `tick` must keep the debt covered and `repay` is
+non-negative. -/
+def Op.validBacked (s : State) : Op → Prop
+  | .tick δ   => 0 ≤ δ ∧ s.mainDebt + δ ≤ s.loopEquity
+  | .repay r  => 0 ≤ r ∧ r < s.mainDebt
+  | .deLever a =>
+      0 ≤ s.ltPrime ∧ 0 < s.subDebt ∧ 0 < a * s.primePrice ∧
+        a * s.primePrice < s.subDebt ∧ s.subDebt ≤ s.primeAmt * s.primePrice
+  | .requestRedeem x => 0 ≤ x ∧ s.escrowShares + x ≤ s.shares
+  | .claim x => x ≤ s.escrowShares
+
+/-- A backing-valid op is in particular `valid`. -/
+theorem Op.validBacked_valid (s : State) (op : Op) (h : op.validBacked s) : op.valid s := by
+  cases op with
+  | tick δ => exact h.1
+  | repay r => exact h.2
+  | deLever a => exact h
+  | requestRedeem x => exact h
+  | claim x => exact h
+
+/-- One backing-valid op preserves `freedBacked`. -/
+theorem Op.apply_freedBacked (s : State) (op : Op)
+    (hv : op.validBacked s) (h : s.freedBacked) : (op.apply s).freedBacked := by
+  cases op with
+  | tick δ => exact State.tick_freedBacked s δ hv.2
+  | repay r => exact State.repay_freedBacked s r hv.1 h
+  | deLever a => exact State.deLever_freedBacked s a h
+  | requestRedeem x => exact State.requestRedeem_freedBacked s x h
+  | claim x => exact State.claimShares_freedBacked s x h
+
+/-- One backing-valid op preserves the full `SafeBacked` bundle. -/
+theorem Op.apply_SafeBacked (s : State) (t : ℝ) (op : Op)
+    (hv : op.validBacked s) (h : s.SafeBacked t) : (op.apply s).SafeBacked t :=
+  ⟨Op.apply_Safe s t op (Op.validBacked_valid s op hv) h.1,
+   Op.apply_freedBacked s op hv h.2⟩
+
+/-- A trace is backing-valid when each op meets its backing-aware precondition at its state. -/
+def runValidBacked (s : State) : List Op → Prop
+  | [] => True
+  | op :: ops => op.validBacked s ∧ runValidBacked (op.apply s) ops
+
+/-- **Whole-protocol safety with backing.** From any `SafeBacked` state, any backing-valid trace lands
+in a `SafeBacked` state — all six §8 invariants *and* `freedBacked` hold at every reachable state. -/
+theorem run_SafeBacked (s : State) (t : ℝ) (ops : List Op)
+    (hv : runValidBacked s ops) (h : s.SafeBacked t) : (run s ops).SafeBacked t := by
+  induction ops generalizing s with
+  | nil => exact h
+  | cons op ops ih => exact ih (op.apply s) hv.2 (Op.apply_SafeBacked s t op hv.1 h)
+
+/-- **Redemption solvency everywhere.** At every state reachable by a backing-valid trace, a full
+unwind returns at least the deposited collateral (`collateral_out_ge_in`) — the principal-back
+guarantee holds throughout the protocol's life, not just at the seed. -/
+theorem run_collateral_out_ge_in (s : State) (t : ℝ) (ops : List Op)
+    (hv : runValidBacked s ops) (h : s.SafeBacked t) :
+    (run s ops).coll ≤ (run s ops).collateralReturned :=
+  State.collateral_out_ge_in _ (run_SafeBacked s t ops hv h).2
 
 end Propeller
