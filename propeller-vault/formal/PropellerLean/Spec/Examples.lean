@@ -86,5 +86,54 @@ double-flooring can undershoot the floor. -/
 theorem dust_threshold_fails_at_195 :
     ¬ ((9800 : ℕ) ≤ 195 * (10050 - Bps) + 1) := by norm_num [Bps]
 
+/-! ### Solidity test-suite scenarios (cross-check)
+
+The Solidity fuzz/unit tests exercise specific states; these examples confirm the Lean theorems cover
+them one-to-one — `−99% ETH`, `deploy → subHF = 1.05`, and `full unwind returns principal`. -/
+
+/-- "−99% ETH" crash test: at 1% of the deposit price the principal is still floored. -/
+theorem ethPosition_safe_at_minus99 :
+    1 ≤ ({ethPosition with price := 20} : State).mainHF :=
+  never_liquidated_at_any_price ethPosition ethPosition_wf ethPosition_floored 20 (by norm_num)
+
+/-- A concrete PRIME-loop position deployed at the target health factor `subHF = 1.05`
+(`primeAmt·primePrice·ltPrime / subDebt = 1050·1·1 / 1000`). -/
+noncomputable def loopPosition : State where
+  coll := 1
+  price := 2000
+  ltColl := 0.8
+  ltvColl := 0.75
+  synth := 1005
+  ltSynth := 0.98
+  ltvSynth := 0
+  mainDebt := 500
+  primeAmt := 1050
+  primePrice := 1
+  ltPrime := 1
+  subDebt := 1000
+  shares := 0
+  escrowShares := 0
+
+/-- "deploy → HF 1.05": the loop sits exactly at the 1.05 deploy target. -/
+theorem loopPosition_subHF : loopPosition.subHF = 1.05 := by
+  norm_num [State.subHF, loopPosition]
+
+theorem loopPosition_healthy : loopPosition.subLoopHealthy 1.05 := by
+  unfold State.subLoopHealthy
+  exact le_of_eq loopPosition_subHF.symm
+
+/-- A matured loop (debt paid down to 200) whose value-stable equity now covers the Main debt:
+`loopEquity = 1050·1 − 200 = 850 ≥ 500 = mainDebt`. -/
+noncomputable def maturePosition : State := { loopPosition with subDebt := 200 }
+
+theorem maturePosition_freedBacked : maturePosition.freedBacked := by
+  simp only [State.freedBacked, State.loopEquity, maturePosition, loopPosition]
+  norm_num
+
+/-- "full unwind returns principal": on the matured, freed-backed position a full unwind returns at
+least the deposited collateral. -/
+theorem maturePosition_unwind : maturePosition.coll ≤ maturePosition.collateralReturned :=
+  collateral_out_ge_in maturePosition maturePosition_freedBacked
+
 end Examples
 end Propeller
