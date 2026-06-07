@@ -1,4 +1,5 @@
 import PropellerLean.Spec.Invariants
+import PropellerLean.Spec.Redemption
 
 /-!
 # Propeller — portfolio-aggregate invariants
@@ -57,6 +58,28 @@ theorem agg_synthConserved : ∀ (ps : List State) (ε : ℝ), (∀ s ∈ ps, s.
 theorem agg_pegBand (ps : List State) (ε : ℝ) (h : ∀ s ∈ ps, s.pegBand ε) :
     aggMainDebt ps ≤ aggSynthValue ps ∧ aggSynthValue ps ≤ aggMainDebt ps * (1 + ε) :=
   ⟨agg_principalFloored ps (fun s hs => (h s hs).1), agg_synthConserved ps ε h⟩
+
+/-- Aggregate collateral deposited across the book. -/
+def aggColl (ps : List State) : ℝ := (ps.map State.coll).sum
+
+/-- Aggregate collateral returned on a full unwind across the book. -/
+noncomputable def aggCollReturned (ps : List State) : ℝ := (ps.map State.collateralReturned).sum
+
+/-- **Portfolio redemption solvency.** If every position is `freedBacked`, the whole book returns at
+least the collateral deposited into it — the principal-back guarantee at portfolio scale, not just
+per position. The redemption-side mirror of `agg_synthConserved`. -/
+theorem agg_collateral_out_ge_in : ∀ (ps : List State), (∀ s ∈ ps, s.freedBacked) →
+    aggColl ps ≤ aggCollReturned ps := by
+  intro ps
+  induction ps with
+  | nil => intro _; simp [aggColl, aggCollReturned]
+  | cons p ps ih =>
+      intro h
+      simp only [aggColl, aggCollReturned, List.map_cons, List.sum_cons]
+      have hp := collateral_out_ge_in p (h p (List.mem_cons_self))
+      have hrest := ih (fun s hs => h s (List.mem_cons_of_mem _ hs))
+      simp only [aggColl, aggCollReturned] at hrest
+      linarith
 
 end State
 end Propeller
