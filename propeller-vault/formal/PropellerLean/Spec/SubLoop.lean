@@ -447,6 +447,79 @@ theorem maintainPeg_SafeBacked (s : State) (t : ℝ)
     s.maintainPeg.SafeBacked t :=
   ⟨maintainPeg_Safe s t wf hhealthy hesc, maintainPeg_freedBacked s hbk⟩
 
+/-! ### Loop yield — `freedBacked` is restored by carry
+
+The loop runs a positive carry (aPRIME yield − HOLLAR borrow rate), crediting earned aPRIME to the
+position. `accrueLoop g` adds `g ≥ 0` aPRIME — the economic dual of `deLever`. It touches no Main field
+and no escrow, so it preserves `WellFormed`/`pegBand`/`escrowOk`; it *raises* `subHF` (more collateral,
+same debt); and it raises `loopEquity` by `g·primePrice`, so it preserves `freedBacked` and — given
+enough cumulative yield — **restores** it after interest accrual has eroded it. This is what makes the
+`validBacked` backing precondition sustainable: the keeper harvests carry to keep the loop covering the
+debt. -/
+
+/-- Credit `g` earned aPRIME to the loop (positive-carry yield). -/
+noncomputable def accrueLoop (s : State) (g : ℝ) : State :=
+  { s with primeAmt := s.primeAmt + g }
+
+/-- Yield raises loop equity by exactly `g·primePrice`. -/
+theorem accrueLoop_loopEquity (s : State) (g : ℝ) :
+    (s.accrueLoop g).loopEquity = s.loopEquity + g * s.primePrice := by
+  simp only [loopEquity, accrueLoop]; ring
+
+theorem accrueLoop_wellFormed (s : State) (g : ℝ) (wf : WellFormed s) :
+    WellFormed (s.accrueLoop g) :=
+  { coll_nonneg   := wf.coll_nonneg,   price_nonneg  := wf.price_nonneg
+    ltColl_nonneg := wf.ltColl_nonneg, ltColl_le_one := wf.ltColl_le_one
+    ltSynth_pos   := wf.ltSynth_pos,   synth_nonneg  := wf.synth_nonneg
+    mainDebt_pos  := wf.mainDebt_pos,  ltvSynth_zero := wf.ltvSynth_zero }
+
+theorem accrueLoop_pegBand (s : State) (g ε : ℝ) (h : s.pegBand ε) : (s.accrueLoop g).pegBand ε := by
+  simpa [pegBand, accrueLoop] using h
+
+theorem accrueLoop_escrowOk (s : State) (g : ℝ) (h : s.escrowOk) : (s.accrueLoop g).escrowOk := by
+  simpa [escrowOk, accrueLoop] using h
+
+/-- Yield raises the sub-loop health factor (more collateral against the same debt). -/
+theorem accrueLoop_raises_subHF (s : State) (g : ℝ)
+    (hg : 0 ≤ g) (hp : 0 ≤ s.primePrice) (hlt : 0 ≤ s.ltPrime) (hD : 0 < s.subDebt) :
+    s.subHF ≤ (s.accrueLoop g).subHF := by
+  simp only [subHF, accrueLoop]
+  gcongr
+  nlinarith [mul_nonneg (mul_nonneg hg hp) hlt]
+
+/-- Yield keeps the loop at/above the trigger (it only raises `subHF`). -/
+theorem accrueLoop_subLoopHealthy (s : State) (g t : ℝ)
+    (hg : 0 ≤ g) (hp : 0 ≤ s.primePrice) (hlt : 0 ≤ s.ltPrime) (hD : 0 < s.subDebt)
+    (h : s.subLoopHealthy t) : (s.accrueLoop g).subLoopHealthy t := by
+  unfold subLoopHealthy at *
+  exact le_trans h (accrueLoop_raises_subHF s g hg hp hlt hD)
+
+/-- Yield preserves the loop safety bundle. -/
+theorem accrueLoop_LoopSafe (s : State) (g t : ℝ)
+    (hg : 0 ≤ g) (hp : 0 ≤ s.primePrice) (hlt : 0 ≤ s.ltPrime) (hD : 0 < s.subDebt)
+    (h : s.LoopSafe t) : (s.accrueLoop g).LoopSafe t :=
+  ⟨accrueLoop_wellFormed s g h.1,
+   accrueLoop_pegBand s g 0.005 h.2.1,
+   accrueLoop_subLoopHealthy s g t hg hp hlt hD h.2.2⟩
+
+/-- Yield preserves `freedBacked` (it only grows the loop equity backing the debt). -/
+theorem accrueLoop_freedBacked (s : State) (g : ℝ)
+    (hg : 0 ≤ g) (hp : 0 ≤ s.primePrice) (h : s.freedBacked) : (s.accrueLoop g).freedBacked := by
+  unfold freedBacked at *
+  rw [accrueLoop_loopEquity]
+  simp only [accrueLoop]
+  nlinarith [h, mul_nonneg hg hp]
+
+/-- **`freedBacked` restored by yield.** Even from a state whose backing was eroded (by interest
+accrual), once cumulative yield brings the loop equity back up to the Main debt
+(`mainDebt ≤ loopEquity + g·primePrice`), the position is `freedBacked` again. -/
+theorem accrueLoop_restores_freedBacked (s : State) (g : ℝ)
+    (hcover : s.mainDebt ≤ s.loopEquity + g * s.primePrice) :
+    (s.accrueLoop g).freedBacked := by
+  unfold freedBacked
+  rw [accrueLoop_loopEquity]
+  simpa only [accrueLoop] using hcover
+
 end State
 
 /-! ### Reachability — `LoopSafe` is closed under any valid operation sequence
@@ -465,6 +538,7 @@ inductive Op
   | deLever (a : ℝ)
   | requestRedeem (x : ℝ)
   | claim (x : ℝ)
+  | accrueLoop (g : ℝ)
 
 /-- Apply one operation. -/
 noncomputable def Op.apply (s : State) : Op → State
@@ -473,6 +547,7 @@ noncomputable def Op.apply (s : State) : Op → State
   | .deLever a      => s.deLever a
   | .requestRedeem x => s.requestRedeem x
   | .claim x        => s.claimShares x
+  | .accrueLoop g   => s.accrueLoop g
 
 /-- The precondition for an operation to be a legitimate transition *at `s`* (mirrors the on-chain
 guards): non-negative interest accrual; strictly-partial repay; a positive value-stable de-lever
@@ -485,6 +560,7 @@ def Op.valid (s : State) : Op → Prop
         a * s.primePrice < s.subDebt ∧ s.subDebt ≤ s.primeAmt * s.primePrice
   | .requestRedeem x => 0 ≤ x ∧ s.escrowShares + x ≤ s.shares
   | .claim x => x ≤ s.escrowShares
+  | .accrueLoop g => 0 ≤ g ∧ 0 ≤ s.primePrice ∧ 0 ≤ s.ltPrime ∧ 0 < s.subDebt
 
 /-- One valid operation preserves the loop safety bundle (redemption ops preserve it unconditionally,
 since they touch no `LoopSafe` field). -/
@@ -498,6 +574,9 @@ theorem Op.apply_LoopSafe (s : State) (t : ℝ) (op : Op)
       exact State.deLever_LoopSafe s a t h1 h2 h3 h4 h5 h
   | requestRedeem x => exact State.requestRedeem_LoopSafe s t x h
   | claim x => exact State.claimShares_LoopSafe s t x h
+  | accrueLoop g =>
+      obtain ⟨hg, hp, hlt, hD⟩ := hv
+      exact State.accrueLoop_LoopSafe s g t hg hp hlt hD h
 
 /-- One valid operation preserves `escrowOk` (maintenance/unwind ops touch no escrow field; the
 redemption ops carry their own escrow-preservation guards). -/
@@ -511,6 +590,7 @@ theorem Op.apply_escrowOk (s : State) (op : Op)
       obtain ⟨hx, hcap⟩ := hv
       exact State.requestRedeem_escrowOk s x hx hcap h
   | claim x => exact State.claimShares_escrowOk s x hv h
+  | accrueLoop g => exact State.accrueLoop_escrowOk s g h
 
 /-- One valid operation preserves the **full** safety bundle. -/
 theorem Op.apply_Safe (s : State) (t : ℝ) (op : Op)
@@ -577,6 +657,7 @@ def Op.validBacked (s : State) : Op → Prop
         a * s.primePrice < s.subDebt ∧ s.subDebt ≤ s.primeAmt * s.primePrice
   | .requestRedeem x => 0 ≤ x ∧ s.escrowShares + x ≤ s.shares
   | .claim x => x ≤ s.escrowShares
+  | .accrueLoop g => 0 ≤ g ∧ 0 ≤ s.primePrice ∧ 0 ≤ s.ltPrime ∧ 0 < s.subDebt
 
 /-- A backing-valid op is in particular `valid`. -/
 theorem Op.validBacked_valid (s : State) (op : Op) (h : op.validBacked s) : op.valid s := by
@@ -586,6 +667,7 @@ theorem Op.validBacked_valid (s : State) (op : Op) (h : op.validBacked s) : op.v
   | deLever a => exact h
   | requestRedeem x => exact h
   | claim x => exact h
+  | accrueLoop g => exact h
 
 /-- One backing-valid op preserves `freedBacked`. -/
 theorem Op.apply_freedBacked (s : State) (op : Op)
@@ -596,6 +678,9 @@ theorem Op.apply_freedBacked (s : State) (op : Op)
   | deLever a => exact State.deLever_freedBacked s a h
   | requestRedeem x => exact State.requestRedeem_freedBacked s x h
   | claim x => exact State.claimShares_freedBacked s x h
+  | accrueLoop g =>
+      obtain ⟨hg, hp, _, _⟩ := hv
+      exact State.accrueLoop_freedBacked s g hg hp h
 
 /-- One backing-valid op preserves the full `SafeBacked` bundle. -/
 theorem Op.apply_SafeBacked (s : State) (t : ℝ) (op : Op)
