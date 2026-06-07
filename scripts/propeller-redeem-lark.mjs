@@ -17,7 +17,9 @@ import { ethers } from "ethers";
 
 const WS = process.env.PROPOSAL_WS || "wss://2.lark.hydration.cloud";
 const LIVE = process.argv.includes("--live");
-const REDEEM = BigInt(process.argv.find((a) => /^\d+$/.test(a)) || 10) * 10n ** 18n; // pETH (18dp)
+// pETH amount (18dp) — supports decimals, e.g. "0.297"
+const _ra = process.argv.find((a) => /^\d*\.?\d+$/.test(a)) || "10";
+const REDEEM = BigInt(Math.round(parseFloat(_ra) * 1e6)) * 10n ** 12n;
 const ALICE_EVM = "0xd43593c715fdd31c61141abd04a99fd6822c8558";
 const ALICE_SS58 = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
 const GOV = "0xAa7e0000000000000000000000000000000Aa7e0";
