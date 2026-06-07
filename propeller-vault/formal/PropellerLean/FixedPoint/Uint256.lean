@@ -16,11 +16,15 @@ def Bps : ℕ := 10000
 /-- WAD fixed-point scale (1e18). -/
 def Wad : ℕ := 10 ^ 18
 
-/-- On-chain integer state: WAD amounts, bps thresholds — what Solidity stores. -/
+/-- On-chain integer state: WAD amounts, bps thresholds — what Solidity stores. The loop fields
+(`primeAmtWad`/`primePriceWad`/`subDebtWad`) carry the PRIME-loop position. -/
 structure IState where
-  synthWad    : ℕ
-  ltSynthBps  : ℕ
-  mainDebtWad : ℕ
+  synthWad      : ℕ
+  ltSynthBps    : ℕ
+  mainDebtWad   : ℕ
+  primeAmtWad   : ℕ := 0
+  primePriceWad : ℕ := 0
+  subDebtWad    : ℕ := 0
 
 /-- Synthetic risk-weighted value as Aave computes it: a **flooring** mul-div. -/
 def IState.synthValueWad (s : IState) : ℕ := s.synthWad * s.ltSynthBps / Bps
@@ -28,8 +32,20 @@ def IState.synthValueWad (s : IState) : ℕ := s.synthWad * s.ltSynthBps / Bps
 /-- Integer `principalFloored`, exactly as the on-chain guard checks it. -/
 def IState.principalFloored (s : IState) : Prop := s.mainDebtWad ≤ s.synthValueWad
 
+/-- Loop collateral value as the chain computes it: `primeAmt·primePrice` via a **flooring** WAD
+mul-div (`a·b/Wad`). The floor *underestimates* the collateral. -/
+def IState.loopCollWad (s : IState) : ℕ := s.primeAmtWad * s.primePriceWad / Wad
+
+/-- Integer `freedBacked`, as the on-chain guard checks it: floored loop collateral covers the Main
+debt plus the loop debt (`mainDebt ≤ loopColl − subDebt ⟺ mainDebt + subDebt ≤ loopColl`). -/
+def IState.freedBacked (s : IState) : Prop := s.mainDebtWad + s.subDebtWad ≤ s.loopCollWad
+
+/-- On-chain loop yield: credit `gWad` earned aPRIME to the loop. -/
+def IState.accrueLoop (s : IState) (gWad : ℕ) : IState :=
+  { s with primeAmtWad := s.primeAmtWad + gWad }
+
 /-- Embed the integer state into the real spec state, dividing out the scales.
-Fields irrelevant to the floor take harmless defaults. -/
+Fields irrelevant to the modelled guards take harmless defaults. -/
 noncomputable def IState.toReal (s : IState) : Propeller.State where
   coll := 0
   price := 0
@@ -39,10 +55,10 @@ noncomputable def IState.toReal (s : IState) : Propeller.State where
   ltSynth := (s.ltSynthBps : ℝ) / Bps
   ltvSynth := 0
   mainDebt := (s.mainDebtWad : ℝ) / Wad
-  primeAmt := 0
-  primePrice := 0
+  primeAmt := (s.primeAmtWad : ℝ) / Wad
+  primePrice := (s.primePriceWad : ℝ) / Wad
   ltPrime := 0
-  subDebt := 0
+  subDebt := (s.subDebtWad : ℝ) / Wad
   shares := 0
   escrowShares := 0
 

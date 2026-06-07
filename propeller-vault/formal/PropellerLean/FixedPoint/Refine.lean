@@ -1,5 +1,6 @@
 import PropellerLean.FixedPoint.Uint256
 import PropellerLean.Spec.Floor
+import PropellerLean.Spec.SubLoop
 
 /-!
 # Propeller — fixed-point refinement (Phase 3)
@@ -52,6 +53,49 @@ theorem refined_floor_hf (s : IState) (wf : WellFormed s.toReal)
     (h : s.principalFloored) :
     1 ≤ (s.toReal).mainHF :=
   floor_main_hf _ wf (principalFloored_refines s h)
+
+/-! ## Loop-side refinement (`freedBacked`, `accrueLoop`)
+
+The same conservative-rounding bridge for the loop: the on-chain loop-collateral value uses a
+**flooring** WAD mul-div, which *underestimates* the true `primeAmt·primePrice`, so passing the
+integer `freedBacked` guard is strictly stronger than the real inequality. And the on-chain
+`accrueLoop` (integer add to `primeAmtWad`) **refines** the spec's `State.accrueLoop` exactly: the
+embedding commutes, `(s.accrueLoop g).toReal = (s.toReal).accrueLoop (g/Wad)`. -/
+
+theorem freedBacked_refines (s : IState) (h : s.freedBacked) : (s.toReal).freedBacked := by
+  have hWad : (0 : ℝ) < (Wad : ℝ) := by norm_num [Wad]
+  unfold IState.freedBacked IState.loopCollWad at h
+  -- cast the floored product up, conservatively: floor ≤ real quotient
+  have H : (s.mainDebtWad : ℝ) + (s.subDebtWad : ℝ)
+      ≤ (s.primeAmtWad : ℝ) * (s.primePriceWad : ℝ) / Wad := by
+    calc (s.mainDebtWad : ℝ) + (s.subDebtWad : ℝ)
+        = ((s.mainDebtWad + s.subDebtWad : ℕ) : ℝ) := by push_cast; ring
+      _ ≤ ((s.primeAmtWad * s.primePriceWad / Wad : ℕ) : ℝ) := by exact_mod_cast h
+      _ ≤ ((s.primeAmtWad * s.primePriceWad : ℕ) : ℝ) / Wad := Nat.cast_div_le
+      _ = (s.primeAmtWad : ℝ) * (s.primePriceWad : ℝ) / Wad := by push_cast; ring
+  -- goal: real freedBacked on the embedded state
+  show ((s.mainDebtWad : ℝ) / Wad)
+      ≤ ((s.primeAmtWad : ℝ) / Wad) * ((s.primePriceWad : ℝ) / Wad) - (s.subDebtWad : ℝ) / Wad
+  rw [le_sub_iff_add_le, ← add_div, div_mul_div_comm, ← div_div]
+  gcongr
+
+/-- **The on-chain `accrueLoop` refines the spec's.** Crediting `gWad` aPRIME on the integer state,
+then embedding, equals embedding then crediting `gWad/Wad` aPRIME in the real spec — the refinement
+diagram commutes. -/
+theorem accrueLoop_toReal (s : IState) (gWad : ℕ) :
+    (s.accrueLoop gWad).toReal = (s.toReal).accrueLoop ((gWad : ℝ) / Wad) := by
+  unfold IState.accrueLoop IState.toReal State.accrueLoop
+  congr 1
+  push_cast
+  ring
+
+/-- **Loop refinement payoff.** If the integer `freedBacked` guard passes after on-chain yield, the
+real spec state after the corresponding yield is `freedBacked`. -/
+theorem accrueLoop_freedBacked_refines (s : IState) (gWad : ℕ)
+    (h : (s.accrueLoop gWad).freedBacked) :
+    ((s.toReal).accrueLoop ((gWad : ℝ) / Wad)).freedBacked := by
+  rw [← accrueLoop_toReal]
+  exact freedBacked_refines _ h
 
 end FixedPoint
 end Propeller
