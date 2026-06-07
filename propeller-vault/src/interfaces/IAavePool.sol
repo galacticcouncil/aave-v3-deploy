@@ -32,4 +32,19 @@ interface IAavePool {
         view
         returns (uint256, uint256, uint256, uint256, uint256, uint256);
 
+    /// @notice The PoolAddressesProvider for this market — used to resolve the
+    ///         price oracle for manipulation-resistant swap min-out sizing.
+    function ADDRESSES_PROVIDER() external view returns (address);
+}
+
+/// @notice Minimal Aave PoolAddressesProvider surface.
+interface IPoolAddressesProvider {
+    function getPriceOracle() external view returns (address);
+}
+
+/// @notice Minimal AaveOracle surface. Returns the asset price in the market's
+///         base currency (USD, 8 decimals) — the same feed Aave uses for HF, so
+///         it resists pool-spot manipulation.
+interface IAaveOracle {
+    function getAssetPrice(address asset) external view returns (uint256);
 }

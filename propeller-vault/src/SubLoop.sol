@@ -8,7 +8,7 @@ import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/se
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {IAavePool} from "./interfaces/IAavePool.sol";
+import {IAavePool, IPoolAddressesProvider, IAaveOracle} from "./interfaces/IAavePool.sol";
 import {IDcaScheduler} from "./interfaces/IDcaScheduler.sol";
 import {ISubLoop} from "./interfaces/ISubLoop.sol";
 import {DcaDispatch} from "./lib/DcaDispatch.sol";
@@ -274,6 +274,11 @@ contract SubLoop is
         }
         // HOLLAR is 18dp and $1 ⇒ amount(18dp) = borrowBase(8dp) · 1e10.
         uint256 borrowHollar = (maxDebt8 - debtBase8) * 1e10;
+        // Cap per call to deployTranche: _fundDeploy sells synchronously via the
+        // router, so a borrow-to-floor in one shot would dump the whole amount
+        // into pool-143 and trip slippage. Tranche it — the keeper calls
+        // pokeBorrow repeatedly to ramp (gradual, like the old deploy DCA).
+        if (deployTranche > 0 && borrowHollar > deployTranche) borrowHollar = deployTranche;
         if (borrowHollar == 0) {
             emit Borrowed(0, healthFactor());
             return;
@@ -292,9 +297,21 @@ contract SubLoop is
     ///      constraint, no schedule lifecycle to babysit.
     function _fundDeploy(uint256 amount) internal {
         if (amount == 0) return;
-        // ~1:1 value; HOLLAR 18dp → aPRIME 6dp, minus slippage.
-        uint128 minOut = uint128(((amount / 1e12) * (1_000_000 - dcaSlippagePpm)) / 1_000_000);
+        // min-out off the AaveOracle fair rate (manipulation-resistant), NOT a
+        // hardcoded 1:1 — PRIME ≠ HOLLAR in value. aPRIME is 1:1 with PRIME.
+        // fair aPRIME (6dp) = amount HOLLAR (18dp) · pHollar/pPrime, /1e12 decimals.
+        (uint256 pHollar, uint256 pPrime) = _oracleRate();
+        uint256 fairOut = (amount * pHollar) / pPrime / 1e12;
+        uint128 minOut = uint128((fairOut * (1_000_000 - dcaSlippagePpm)) / 1_000_000);
         DcaDispatch.routerSell(hollarAssetId, aPrimeAssetId, uint128(amount), minOut, _deployRoute());
+    }
+
+    /// @dev (pHollar, pPrime) from the market's AaveOracle (USD, 8dp) — the same
+    ///      feed Aave uses for HF, so swap min-outs resist pool-spot manipulation.
+    function _oracleRate() internal view returns (uint256 pHollar, uint256 pPrime) {
+        address oracle = IPoolAddressesProvider(pool.ADDRESSES_PROVIDER()).getPriceOracle();
+        pHollar = IAaveOracle(oracle).getAssetPrice(address(hollar));
+        pPrime = IAaveOracle(oracle).getAssetPrice(address(prime));
     }
 
     /// @dev HOLLAR →[stableswap primePoolId]→ PRIME →[Aave]→ aPRIME.
@@ -332,8 +349,11 @@ contract SubLoop is
                     uint256 apBal = primeAToken.balanceOf(address(this));
                     if (sellAmt > apBal) sellAmt = apBal;
                     if (sellAmt > 0) {
-                        // ~1:1, aPRIME 6dp → HOLLAR 18dp, minus slippage.
-                        uint128 minOut = uint128((sellAmt * 1e12 * (1_000_000 - dcaSlippagePpm)) / 1_000_000);
+                        // min-out off the AaveOracle fair rate (aPRIME 1:1 PRIME).
+                        // fair HOLLAR (18dp) = sellAmt aPRIME (6dp) · pPrime/pHollar · 1e12.
+                        (uint256 pHollar, uint256 pPrime) = _oracleRate();
+                        uint256 fairOut = (sellAmt * pPrime * 1e12) / pHollar;
+                        uint128 minOut = uint128((fairOut * (1_000_000 - dcaSlippagePpm)) / 1_000_000);
                         DcaDispatch.routerSell(aPrimeAssetId, hollarAssetId, uint128(sellAmt), minOut, _unwindRoute());
                     }
                 }

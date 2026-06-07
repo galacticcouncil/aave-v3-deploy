@@ -137,6 +137,13 @@ contract MockPool is IAavePool {
         return (collBase8, debtBase8, 0, wAvgLtBps, 0, hf);
     }
 
+    // Doubles as its own PoolAddressesProvider + AaveOracle so the SubLoop's
+    // oracle-based min-out sizing resolves in tests. Prices are $1 (1e8) → the
+    // mock keeps the 1:1 swap assumption tests were written against.
+    function ADDRESSES_PROVIDER() external view returns (address) { return address(this); }
+    function getPriceOracle() external view returns (address) { return address(this); }
+    function getAssetPrice(address) external pure returns (uint256) { return 1e8; }
+
     function _hf(address user) internal view returns (uint256) {
         (, uint256 collWithLt8, uint256 debtBase8,) = _account(user);
         return debtBase8 == 0 ? HF_MAX : (collWithLt8 * WAD) / debtBase8;
