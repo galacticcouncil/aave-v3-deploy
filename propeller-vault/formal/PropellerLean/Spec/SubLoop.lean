@@ -383,6 +383,18 @@ predicate (`WellFormed`, `pegBand` [floor + over-mint cap], `subLoopHealthy` via
 `escrowOk` [escrow] and `0 ≤ shares` [shareConservation]). -/
 def Safe (s : State) (t : ℝ) : Prop := s.LoopSafe t ∧ s.escrowOk
 
+/-- **Genesis is `Safe`.** Every deposit ends by pegging the synthetic (`maintainPeg`). From a
+well-formed base position with a healthy sub-loop and clean escrow, that peg step lands in a `Safe`
+state: the re-peg establishes `pegBand` and keeps `WellFormed`, while the loop fields and escrow are
+untouched. This is the seed `run_Safe` carries forward through every subsequent operation. -/
+theorem maintainPeg_Safe (s : State) (t : ℝ)
+    (wf : WellFormed s) (hhealthy : s.subLoopHealthy t) (hesc : s.escrowOk) :
+    s.maintainPeg.Safe t := by
+  refine ⟨⟨maintainPeg_wellFormed s wf,
+           maintainPeg_pegBand s wf.mainDebt_pos.le wf.ltSynth_pos, ?_⟩, ?_⟩
+  · unfold subLoopHealthy at *; rwa [maintainPeg_subHF]
+  · simpa [escrowOk, maintainPeg, mintSynthToPeg] using hesc
+
 end State
 
 /-! ### Reachability — `LoopSafe` is closed under any valid operation sequence
@@ -484,5 +496,15 @@ theorem run_Safe (s : State) (t : ℝ) (ops : List Op)
 theorem run_mainHF (s : State) (t : ℝ) (ops : List Op)
     (hv : runValid s ops) (h : s.Safe t) : 1 ≤ (run s ops).mainHF :=
   State.LoopSafe_mainHF _ t (run_Safe s t ops hv h).1
+
+/-- **End-to-end safety from genesis.** Starting from a freshly-deposited (pegged) position — a
+well-formed base with a healthy loop and clean escrow — *any* valid sequence of protocol operations
+leaves the position never liquidated (`mainHF ≥ 1`). Genesis `Safe` (`maintainPeg_Safe`) seeds the
+reachability closure (`run_Safe`); no extra hypotheses about reachable states are needed. -/
+theorem genesis_run_mainHF (s : State) (t : ℝ) (ops : List Op)
+    (wf : WellFormed s) (hhealthy : s.subLoopHealthy t) (hesc : s.escrowOk)
+    (hv : runValid s.maintainPeg ops) :
+    1 ≤ (run s.maintainPeg ops).mainHF :=
+  run_mainHF s.maintainPeg t ops hv (State.maintainPeg_Safe s t wf hhealthy hesc)
 
 end Propeller
