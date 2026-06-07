@@ -27,6 +27,8 @@ library DcaDispatch {
 
     uint8 internal constant DCA_PALLET = 66; // construct_runtime: DCA = 66
     uint8 internal constant SCHEDULE_CALL = 0; // pallet_dca::Call::schedule is call 0
+    uint8 internal constant ROUTER_PALLET = 67; // construct_runtime: Router = 67
+    uint8 internal constant SELL_CALL = 0; // pallet_route::Call::sell is call 0
 
     // PoolType<AssetId> SCALE tags (traits/src/router.rs)
     uint8 internal constant POOL_XYK = 0;
@@ -102,6 +104,31 @@ library DcaDispatch {
             assetIn, assetOut, amountIn, minAmountOut, route
         );
         (bool ok, ) = DISPATCH.call(call);
+        if (!ok) revert DispatchFailed();
+    }
+
+    /// @notice Encode + dispatch `pallet_route::sell(asset_in, asset_out, amount_in,
+    ///         min_amount_out, route)` via 0x0401 (origin = this caller's account).
+    ///         Synchronous swap that executes through the route's pools with a
+    ///         caller-set min-out — it does NOT do pallet-DCA's EMA-oracle budget
+    ///         valuation, so it can sell assets the oracle can't price (e.g. the
+    ///         aToken aPRIME, which trades in no pool). Used by the unwind spiral.
+    function routerSell(
+        uint32 assetIn,
+        uint32 assetOut,
+        uint128 amountIn,
+        uint128 minAmountOut,
+        Hop[] memory route
+    ) internal {
+        bytes memory head = abi.encodePacked(
+            ROUTER_PALLET, SELL_CALL,
+            _le32(assetIn), _le32(assetOut), _le128(amountIn), _le128(minAmountOut)
+        );
+        bytes memory r = _compact(uint32(route.length));
+        for (uint256 i = 0; i < route.length; i++) {
+            r = abi.encodePacked(r, _encodeTrade(route[i]));
+        }
+        (bool ok, ) = DISPATCH.call(abi.encodePacked(head, r));
         if (!ok) revert DispatchFailed();
     }
 

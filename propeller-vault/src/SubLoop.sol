@@ -48,6 +48,10 @@ contract SubLoop is
 
     uint256 internal constant WAD = 1e18;
     uint256 internal constant VARIABLE_RATE = 2;
+    /// @dev per-step HF floor for the unwind spiral's aPRIME withdraw — just
+    ///      above Aave's ~1.0 hard limit so the in-route withdraw never reverts;
+    ///      the repay that follows lifts HF back toward target.
+    uint256 internal constant STEP_HF_FLOOR = 1.02e18;
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
@@ -208,10 +212,6 @@ contract SubLoop is
         // Equity (8dp USD) of this slice → HOLLAR (18dp, $1) for payout accounting.
         uint256 equity8 = totalSharesBefore == 0 ? 0 : (totalEquity() * shares) / totalSharesBefore;
         uint256 equityHollar = equity8 * 1e10;
-        // Collateral (aPRIME native) to pull to free that slice = proportional share.
-        uint256 collBudget = totalSharesBefore == 0
-            ? 0
-            : (primeAToken.balanceOf(address(this)) * shares) / totalSharesBefore;
 
         principalEquity -= (principalEquity * shares) / totalSharesBefore; // shrink cost basis
         _sharesOf[msg.sender] = held - shares;
@@ -224,18 +224,13 @@ contract SubLoop is
         unwindRequested[msg.sender] += equityHollar;
         unwindTargetEquity += equityHollar;
 
-        // Schedule / extend the unbounded aPRIME→HOLLAR unwind order. Tranches
-        // are HF-capped at execution (see the DCA adapter), so the spiral never
-        // dips below the floor before pokeRepay catches up.
-        if (address(dca) != address(0)) {
-            unwindOrderId = dca.scheduleUnwind(address(this), unwindTranche, collBudget);
-        } else {
-            DcaDispatch.scheduleSell(
-                dcaPeriod, uint128(collBudget), dcaSlippagePpm,
-                aPrimeAssetId, hollarAssetId, uint128(unwindTranche), 0, _unwindRoute()
-            );
-        }
-        unwindId = unwindOrderId;
+        // The unwind spiral is driven synchronously by the keeper in pokeRepay:
+        // it router-sells an HF-safe aPRIME sliver → HOLLAR each call. pallet-DCA
+        // can't price the aToken (aPRIME trades in no pool → no oracle entry →
+        // CalculatingPriceError), but pallet_route::sell executes via pool
+        // reserves with a caller-set min-out, no oracle valuation. So we record
+        // the request here and let pokeRepay grind it down.
+        unwindId = ++unwindOrderId;
         emit UnwindRequested(msg.sender, shares, equityHollar, unwindId);
     }
 
@@ -288,24 +283,18 @@ contract SubLoop is
         emit Borrowed(borrowHollar, healthFactor());
     }
 
-    /// @dev Push HOLLAR into the unbounded deploy DCA (HOLLAR→aPRIME).
+    /// @dev Synchronous HOLLAR→aPRIME via pallet_route::sell (no DCA). The route
+    ///      folds the stableswap swap + Aave supply, so the loop receives aPRIME
+    ///      collateral in-call. Gradualness comes from the keeper's HF-capped
+    ///      `pokeBorrow` cadence (each call borrows only up to the deploy floor,
+    ///      then levers that sliver). router.sell executes via pool reserves with
+    ///      a caller-set min-out — no EMA-oracle valuation, no priceability
+    ///      constraint, no schedule lifecycle to babysit.
     function _fundDeploy(uint256 amount) internal {
-        pendingDeployHollar += amount;
-        if (address(dca) != address(0)) {
-            // mock (tests) / future DCA precompile — SubLoop calls it directly,
-            // so the order's origin is this contract's account.
-            hollar.forceApprove(address(dca), 0);
-            hollar.forceApprove(address(dca), amount);
-            deployOrderId = dca.scheduleDeploy(address(this), deployTranche, amount);
-        } else {
-            // production: unbounded HOLLAR→aPRIME DCA, scheduled as THIS account
-            // via the 0x0401 dispatch (origin = SubLoop). Swap-in a DCA precompile
-            // later by setting `dca` to its address — no other change.
-            DcaDispatch.scheduleSell(
-                dcaPeriod, uint128(amount), dcaSlippagePpm,
-                hollarAssetId, aPrimeAssetId, uint128(deployTranche), 0, _deployRoute()
-            );
-        }
+        if (amount == 0) return;
+        // ~1:1 value; HOLLAR 18dp → aPRIME 6dp, minus slippage.
+        uint128 minOut = uint128(((amount / 1e12) * (1_000_000 - dcaSlippagePpm)) / 1_000_000);
+        DcaDispatch.routerSell(hollarAssetId, aPrimeAssetId, uint128(amount), minOut, _deployRoute());
     }
 
     /// @dev HOLLAR →[stableswap primePoolId]→ PRIME →[Aave]→ aPRIME.
@@ -324,8 +313,35 @@ contract SubLoop is
 
     /// @inheritdoc ISubLoop
     function pokeRepay() external override onlyRole(KEEPER_ROLE) nonReentrant {
-        // HOLLAR the unwind DCA delivered (excludes HOLLAR already reserved for
-        // vaults to pull).
+        // UNWIND SPIRAL STEP: while an unwind is open, synchronously sell an
+        // HF-safe sliver of aPRIME → HOLLAR via the router (no DCA — the router
+        // executes through pool reserves with a min-out, so the unpriceable
+        // aToken is fine). The withdraw inside the route dips HF toward Aave's
+        // ~1.0 limit; we cap the sliver to keep HF ≥ STEP_HF_FLOOR (1.02) so the
+        // withdraw never reverts, then the repay below lifts HF back up.
+        if (unwindTargetEquity > 0) {
+            (uint256 coll8, uint256 debt8, , uint256 lt, , ) = pool.getUserAccountData(address(this));
+            if (debt8 > 0 && lt > 0) {
+                // min collateral to keep HF ≥ 1.02 after the withdraw:
+                //   minColl8 = floor * debt8 * 1e4 / (lt_bps * WAD)
+                uint256 minColl8 = (STEP_HF_FLOOR * debt8 * 10000) / (lt * WAD);
+                if (coll8 > minColl8) {
+                    // base8 USD → aPRIME native (6dp), assume ~$1, 90% safety margin.
+                    uint256 sellAmt = ((coll8 - minColl8) * 90) / 100 / 100;
+                    if (unwindTranche > 0 && sellAmt > unwindTranche) sellAmt = unwindTranche;
+                    uint256 apBal = primeAToken.balanceOf(address(this));
+                    if (sellAmt > apBal) sellAmt = apBal;
+                    if (sellAmt > 0) {
+                        // ~1:1, aPRIME 6dp → HOLLAR 18dp, minus slippage.
+                        uint128 minOut = uint128((sellAmt * 1e12 * (1_000_000 - dcaSlippagePpm)) / 1_000_000);
+                        DcaDispatch.routerSell(aPrimeAssetId, hollarAssetId, uint128(sellAmt), minOut, _unwindRoute());
+                    }
+                }
+            }
+        }
+
+        // HOLLAR the unwind spiral delivered (excludes HOLLAR already reserved
+        // for vaults to pull).
         uint256 bal = hollar.balanceOf(address(this));
         uint256 avail = bal > reservedFreed ? bal - reservedFreed : 0;
         if (avail == 0) {
@@ -372,6 +388,9 @@ contract SubLoop is
             distributed += cut;
         }
         reservedFreed += distributed;
+        // Shrink the outstanding target so the pokeRepay spiral stops once all
+        // requested equity is freed (otherwise it would keep selling aPRIME).
+        unwindTargetEquity = unwindTargetEquity > distributed ? unwindTargetEquity - distributed : 0;
         // Rounding dust (freed - distributed) stays as idle HOLLAR; folded into
         // the next pokeRepay's `avail`.
     }
