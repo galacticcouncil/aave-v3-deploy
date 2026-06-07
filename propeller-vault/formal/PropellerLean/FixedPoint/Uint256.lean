@@ -25,6 +25,7 @@ structure IState where
   primeAmtWad   : ℕ := 0
   primePriceWad : ℕ := 0
   subDebtWad    : ℕ := 0
+  ltPrimeBps    : ℕ := 0
 
 /-- Synthetic risk-weighted value as Aave computes it: a **flooring** mul-div. -/
 def IState.synthValueWad (s : IState) : ℕ := s.synthWad * s.ltSynthBps / Bps
@@ -39,6 +40,12 @@ def IState.loopCollWad (s : IState) : ℕ := s.primeAmtWad * s.primePriceWad / W
 /-- Integer `freedBacked`, as the on-chain guard checks it: floored loop collateral covers the Main
 debt plus the loop debt (`mainDebt ≤ loopColl − subDebt ⟺ mainDebt + subDebt ≤ loopColl`). -/
 def IState.freedBacked (s : IState) : Prop := s.mainDebtWad + s.subDebtWad ≤ s.loopCollWad
+
+/-- Integer sub-loop health, as the on-chain liquidation guard checks it in **cleared** form (no
+division): the loop sits at/above the trigger `tBps` (bps) when `t·subDebt ≤ subHF·subDebt`, i.e.
+`tBps·subDebtWad ≤ loopColl·ltPrimeBps` (the floored loop collateral, risk-weighted by `ltPrimeBps`). -/
+def IState.subLoopHealthy (s : IState) (tBps : ℕ) : Prop :=
+  tBps * s.subDebtWad ≤ s.loopCollWad * s.ltPrimeBps
 
 /-- On-chain loop yield: credit `gWad` earned aPRIME to the loop. -/
 def IState.accrueLoop (s : IState) (gWad : ℕ) : IState :=
@@ -64,7 +71,7 @@ noncomputable def IState.toReal (s : IState) : Propeller.State where
   mainDebt := (s.mainDebtWad : ℝ) / Wad
   primeAmt := (s.primeAmtWad : ℝ) / Wad
   primePrice := (s.primePriceWad : ℝ) / Wad
-  ltPrime := 0
+  ltPrime := (s.ltPrimeBps : ℝ) / Bps
   subDebt := (s.subDebtWad : ℝ) / Wad
   shares := 0
   escrowShares := 0

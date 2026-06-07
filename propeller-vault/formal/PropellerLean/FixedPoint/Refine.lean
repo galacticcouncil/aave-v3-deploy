@@ -141,5 +141,53 @@ theorem repeg_floor_refines (s : IState) (kBps : ℕ)
     ((s.repegSynth kBps).toReal).principalFloored :=
   principalFloored_refines _ (repeg_principalFloored s kBps hL hk hdust)
 
+/-! ## Sub-loop health refinement (`subLoopHealthy`)
+
+The loop's liquidation check, the last dividing invariant. The on-chain guard is the **cleared** form
+`tBps·subDebtWad ≤ loopColl·ltPrimeBps` (one floor on `loopColl`); passing it implies the real
+`t ≤ subHF` with `t = tBps/Bps`, since the floored loop collateral *underestimates* the true value. -/
+
+theorem subLoopHealthy_refines (s : IState) (tBps : ℕ)
+    (hSub : 0 < s.subDebtWad) (h : s.subLoopHealthy tBps) :
+    (s.toReal).subLoopHealthy ((tBps : ℝ) / Bps) := by
+  have hWad : (0 : ℝ) < (Wad : ℝ) := by norm_num [Wad]
+  have hBps : (0 : ℝ) < (Bps : ℝ) := by norm_num [Bps]
+  have hWne : (Wad : ℝ) ≠ 0 := hWad.ne'
+  have hSubR : (0 : ℝ) < (s.subDebtWad : ℝ) := by exact_mod_cast hSub
+  unfold IState.subLoopHealthy IState.loopCollWad at h
+  -- step 1: cast the integer guard, underestimating via the floor
+  have hcast : ((s.primeAmtWad * s.primePriceWad / Wad : ℕ) : ℝ)
+      ≤ (s.primeAmtWad : ℝ) * s.primePriceWad / Wad := by
+    calc ((s.primeAmtWad * s.primePriceWad / Wad : ℕ) : ℝ)
+        ≤ ((s.primeAmtWad * s.primePriceWad : ℕ) : ℝ) / Wad := Nat.cast_div_le
+      _ = (s.primeAmtWad : ℝ) * s.primePriceWad / Wad := by push_cast; ring
+  have Hr : (tBps : ℝ) * s.subDebtWad
+      ≤ (s.primeAmtWad : ℝ) * s.primePriceWad / Wad * s.ltPrimeBps := by
+    calc (tBps : ℝ) * s.subDebtWad = ((tBps * s.subDebtWad : ℕ) : ℝ) := by push_cast; ring
+      _ ≤ ((s.primeAmtWad * s.primePriceWad / Wad * s.ltPrimeBps : ℕ) : ℝ) := by exact_mod_cast h
+      _ = ((s.primeAmtWad * s.primePriceWad / Wad : ℕ) : ℝ) * s.ltPrimeBps := by push_cast; ring
+      _ ≤ (s.primeAmtWad : ℝ) * s.primePriceWad / Wad * s.ltPrimeBps :=
+            mul_le_mul_of_nonneg_right hcast (Nat.cast_nonneg _)
+  -- step 2: clear the /Wad
+  have Hclear : (tBps : ℝ) * s.subDebtWad * Wad
+      ≤ (s.primeAmtWad : ℝ) * s.primePriceWad * s.ltPrimeBps := by
+    have h2 := mul_le_mul_of_nonneg_right Hr hWad.le
+    have e : (s.primeAmtWad : ℝ) * s.primePriceWad / Wad * s.ltPrimeBps * Wad
+        = (s.primeAmtWad : ℝ) * s.primePriceWad * s.ltPrimeBps := by field_simp
+    calc (tBps : ℝ) * s.subDebtWad * Wad
+        = (tBps : ℝ) * s.subDebtWad * Wad := rfl
+      _ ≤ (s.primeAmtWad : ℝ) * s.primePriceWad / Wad * s.ltPrimeBps * Wad := by
+            have hcomm : (tBps : ℝ) * s.subDebtWad * Wad = ((tBps : ℝ) * s.subDebtWad) * Wad := by
+              ring
+            rw [hcomm]; exact h2
+      _ = (s.primeAmtWad : ℝ) * s.primePriceWad * s.ltPrimeBps := e
+  -- step 3: discharge the real division
+  show (tBps : ℝ) / Bps ≤ (s.toReal).subHF
+  simp only [State.subHF, IState.toReal]
+  rw [le_div_iff₀ (div_pos hSubR hWad), div_mul_div_comm, div_mul_div_comm, div_mul_div_comm,
+      div_le_iff₀ (mul_pos hBps hWad), div_mul_eq_mul_div,
+      le_div_iff₀ (mul_pos (mul_pos hWad hWad) hBps)]
+  nlinarith [mul_le_mul_of_nonneg_right Hclear (mul_nonneg hWad.le hBps.le)]
+
 end FixedPoint
 end Propeller
