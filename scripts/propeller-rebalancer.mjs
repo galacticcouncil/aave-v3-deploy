@@ -38,6 +38,11 @@ const PRIME = 43; // 6 decimals
 const HOLLAR = 222; // 18 decimals
 const DEC = { [PRIME]: 6, [HOLLAR]: 18 };
 const SYM = { [PRIME]: "PRIME", [HOLLAR]: "HOLLAR" };
+// HOLLAR (asset 222) is an Erc20-bound asset — its balance lives in the ERC20
+// contract, not tokens.accounts (which always reads 0 for it). read it via the
+// Frontier runtime API at the holder's H160.
+const HOLLAR_ERC20 = "0x531a654d1696ED52e7275A8cede955E82620f99a";
+const VIEW_FROM = "0x0000000000000000000000000000000000000001";
 
 const args = new Set(process.argv.slice(2));
 const ONCE = args.has("--once");
@@ -64,10 +69,16 @@ function poolAccount(poolId) {
 
 async function readReserves(api, acct) {
   const out = {};
-  for (const aid of [PRIME, HOLLAR]) {
-    const r = await api.query.tokens.accounts(acct, aid);
-    out[aid] = r.free.toBigInt();
-  }
+  // PRIME (asset 43, Token-type) lives in tokens.accounts
+  out[PRIME] = (await api.query.tokens.accounts(acct, PRIME)).free.toBigInt();
+  // HOLLAR (asset 222, Erc20-bound) lives in the ERC20 contract — read balanceOf
+  // at the pool account's H160 (first 20 bytes of the 32-byte account) via the
+  // Frontier runtime API.
+  const poolH160 = acct.slice(0, 42);
+  const data = "0x70a08231" + poolH160.slice(2).padStart(64, "0");
+  const r = await api.call.ethereumRuntimeRPCApi.call(VIEW_FROM, HOLLAR_ERC20, data, "0", "2000000", null, null, null, false, null, null);
+  const v = r.toJSON()?.ok?.value ?? "0x";
+  out[HOLLAR] = v && v !== "0x" ? BigInt(v) : 0n;
   return out;
 }
 
