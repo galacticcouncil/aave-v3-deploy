@@ -254,7 +254,11 @@ contract SubLoop is
     // ══════════════════════════════════════════════════════════════════════
 
     /// @inheritdoc ISubLoop
-    function pokeBorrow() external override onlyRole(KEEPER_ROLE) nonReentrant whenNotPaused {
+    /// @dev permissionless: the call is fully bounded — borrows only down to
+    ///      deployHfFloor, caps the amount at deployTranche, and swaps with an
+    ///      oracle-fair minOut. A caller can only advance the ramp (or waste gas
+    ///      on a no-op at floor), never extract value, so no role is needed.
+    function pokeBorrow() external override nonReentrant whenNotPaused {
         // The DCA's Aave hop mints aPRIME to this loop but does not flip the
         // use-as-collateral flag, so without this the loop's borrow power stays 0.
         // Enable PRIME as collateral once it holds aPRIME (Aave no-ops if already on).

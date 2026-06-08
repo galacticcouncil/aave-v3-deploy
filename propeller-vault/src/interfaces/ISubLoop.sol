@@ -34,7 +34,8 @@ interface ISubLoop {
 
     // ── keeper ────────────────────────────────────────────────────────────
     /// @notice Deploy step: borrow HOLLAR up to a safe margin above target HF
-    ///         and top up the deploy DCA budget.
+    ///         and lever the tranche in (synchronous router sell, no DCA).
+    ///         permissionless — bounded by deployHfFloor + deployTranche + minOut.
     function pokeBorrow() external;
 
     /// @notice Unwind step: repay loop debt with HOLLAR the unwind DCA produced
