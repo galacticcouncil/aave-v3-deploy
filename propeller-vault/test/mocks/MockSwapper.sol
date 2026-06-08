@@ -15,9 +15,16 @@ contract MockSwapper is ISwapper {
     using SafeERC20 for IERC20;
 
     MockPool public immutable pool;
+    uint256 public haircutBps; // test knob: under-deliver vs oracle-fair (basis points)
 
     constructor(address _pool) {
         pool = MockPool(_pool);
+    }
+
+    /// @dev test-only: make `sell` return less than oracle-fair, to exercise a
+    ///      lossy/malicious fill against the vault's compound oracle floor.
+    function setHaircut(uint256 bps) external {
+        haircutBps = bps;
     }
 
     function _usd(address t, uint256 amt) internal view returns (uint256) {
@@ -38,6 +45,7 @@ contract MockSwapper is ISwapper {
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
         MockERC20(tokenIn).burn(address(this), amountIn);
         amountOut = _fromUsd(tokenOut, _usd(tokenIn, amountIn));
+        if (haircutBps > 0) amountOut = (amountOut * (10_000 - haircutBps)) / 10_000;
         require(amountOut >= minOut, "MockSwapper: minOut");
         MockERC20(tokenOut).mint(msg.sender, amountOut);
     }

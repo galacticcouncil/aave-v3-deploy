@@ -113,8 +113,7 @@ contract PropellerInvariantTest is Test {
         loop.setTranches(10_000_000e18, 10_000_000e6);
 
         handler = new Handler(vault, loop, pool, dca, eth, prime);
-        loop.grantRole(loop.KEEPER_ROLE(), address(handler));
-        vault.grantRole(vault.KEEPER_ROLE(), address(handler));
+        // permissionless: handler calls keeper ops without any grant
 
         targetContract(address(handler));
     }

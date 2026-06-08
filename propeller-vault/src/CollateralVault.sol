@@ -7,9 +7,10 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {IAavePool} from "./interfaces/IAavePool.sol";
+import {IAavePool, IPoolAddressesProvider, IAaveOracle} from "./interfaces/IAavePool.sol";
 import {ISwapper} from "./interfaces/ISwapper.sol";
 import {ISubLoop} from "./interfaces/ISubLoop.sol";
 import {ISyntheticToken} from "./interfaces/ISyntheticToken.sol";
@@ -51,7 +52,8 @@ contract CollateralVault is
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
-    bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
+    // KEEPER_ROLE removed: pokeSettle/compound/rebalance/maintainPeg are permissionless
+    // (no caller payout; compound enforces an oracle-fair minOut floor).
 
     // ── config ────────────────────────────────────────────────────────────
     IERC20 public collateral; // the deposited asset (ETH/tBTC/…)
@@ -326,7 +328,7 @@ contract CollateralVault is
     ///         spiral has freed, then settle queued requests FIFO. For each
     ///         request, repay its Main debt slice, release+burn its synthetic,
     ///         withdraw its collateral, and mark it claimable.
-    function pokeSettle() external onlyRole(KEEPER_ROLE) nonReentrant {
+    function pokeSettle() external nonReentrant {
         availableHollar += subLoop.pullFreed();
 
         // De-lever repayments (down-rebalance) settle first: repay Main debt and
@@ -410,24 +412,41 @@ contract CollateralVault is
     ///         the harvested token (PRIME) to swap into collateral and supply.
     function compound(address tokenIn, uint256 amountIn, uint256 minCollateralOut, bytes calldata route)
         external
-        onlyRole(KEEPER_ROLE)
         nonReentrant
+        whenNotPaused
     {
         if (amountIn == 0) revert ZeroAmount();
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        // permissionless: enforce an oracle-fair floor so a caller-supplied
+        // route/minOut can only tighten the swap, never force a lossy fill.
+        uint256 floor = (_fairCollateralOut(tokenIn, amountIn) * (BPS - compoundSlippageBps)) / BPS;
+        if (minCollateralOut < floor) minCollateralOut = floor;
         IERC20(tokenIn).forceApprove(address(swapper), 0);
         IERC20(tokenIn).forceApprove(address(swapper), amountIn);
         uint256 out = swapper.sell(tokenIn, address(collateral), amountIn, minCollateralOut, route);
+        if (out < floor) revert PrincipalShortfall(); // defense-in-depth vs a lying swapper
         collateral.forceApprove(address(pool), 0);
         collateral.forceApprove(address(pool), out);
         pool.supply(address(collateral), out, address(this), 0); // → aToken grows → share price ↑
         emit Harvested(out);
     }
 
+    /// @dev oracle-fair collateral output for `amountIn` of `tokenIn`, via the
+    ///      market's AaveOracle (USD 8dp), decimal-corrected. Mirrors
+    ///      SubLoop._oracleRate — manipulation-resistant (not pool spot).
+    function _fairCollateralOut(address tokenIn, uint256 amountIn) internal view returns (uint256) {
+        address oracle = IPoolAddressesProvider(pool.ADDRESSES_PROVIDER()).getPriceOracle();
+        uint256 pIn = IAaveOracle(oracle).getAssetPrice(tokenIn); // USD 8dp
+        uint256 pColl = IAaveOracle(oracle).getAssetPrice(address(collateral)); // USD 8dp
+        uint8 dIn = IERC20Metadata(tokenIn).decimals();
+        uint8 dColl = IERC20Metadata(address(collateral)).decimals();
+        return (amountIn * pIn * (10 ** dColl)) / (pColl * (10 ** dIn));
+    }
+
     /// @notice Rebalance the Main position back into the target-LTV band after a
     ///         collateral price move: borrow more (price up) or repay (price down),
     ///         growing/shrinking the loop and the synthetic in lockstep.
-    function rebalance() external onlyRole(KEEPER_ROLE) nonReentrant {
+    function rebalance() external nonReentrant whenNotPaused {
         // Isolate the collateral leg's LTV: collBase8 = ETH value + synth value,
         // and synth value = syntheticSupplied (both $1), so ETH value backs out
         // without a separate oracle ref.
@@ -486,7 +505,7 @@ contract CollateralVault is
 
     /// @notice Keep `synth·LT ≥ Main debt` as the HOLLAR debt accrues interest —
     ///         re-tops the synthetic so the principal stays un-liquidatable.
-    function maintainPeg() external onlyRole(KEEPER_ROLE) nonReentrant {
+    function maintainPeg() external nonReentrant {
         uint256 debt = hollarDebtToken.balanceOf(address(this));
         uint256 required = (debt * BPS + synthLtBps - 1) / synthLtBps;
         required += required / 200; // +0.5% buffer (matches deposit)
@@ -528,6 +547,13 @@ contract CollateralVault is
         tvlCap = newCap;
     }
 
+    /// @notice Max slippage (bps) tolerated by permissionless `compound` vs the
+    ///         oracle-fair output. Default 0 ⇒ fails closed until set.
+    function setCompoundSlippageBps(uint16 bps) external onlyRole(ADMIN_ROLE) {
+        require(bps < BPS, "bps");
+        compoundSlippageBps = bps;
+    }
+
     function pauseDeposits() external onlyRole(GUARDIAN_ROLE) {
         depositsPaused = true;
     }
@@ -546,5 +572,9 @@ contract CollateralVault is
 
     function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
 
-    uint256[39] private __gap;
+    // ── appended storage (permissionless-compound upgrade) — keep last ──
+    // max slippage (bps) vs oracle-fair output for compound; set by ADMIN.
+    uint256 public compoundSlippageBps;
+
+    uint256[38] private __gap;
 }

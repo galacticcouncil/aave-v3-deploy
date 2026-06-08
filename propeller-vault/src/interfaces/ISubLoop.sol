@@ -43,9 +43,10 @@ interface ISubLoop {
     ///         vaults pro-rata.
     function pokeRepay() external;
 
-    /// @notice Realize accrued carry and return the surplus HOLLAR to the caller
-    ///         (Harvester) for per-vault, in-kind distribution.
-    function harvest() external returns (uint256 hollarSurplus);
+    /// @notice Realize accrued carry: skim the surplus PRIME and send it to the
+    ///         configured harvester for per-vault, in-kind distribution.
+    ///         Permissionless — the payout pins to the harvester, not the caller.
+    function harvest() external returns (uint256 surplusPrime);
 
     /// @notice Safety de-lever toward target HF (same spiral as unwind, but the
     ///         freed HOLLAR repays loop debt with no payout). Guarded on HF.

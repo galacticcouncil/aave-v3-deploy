@@ -58,8 +58,8 @@ contract SubLoop is
     bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
     /// @notice Registered CollateralVaults — the only callers of deposit/unwind.
     bytes32 public constant VAULT_ROLE = keccak256("VAULT_ROLE");
-    /// @notice Harvester / keepers — call pokeBorrow / pokeRepay / harvest / deLever.
-    bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
+    // KEEPER_ROLE removed: pokeBorrow/pokeRepay/harvest/deLever are permissionless
+    // (bounded, oracle-priced, no caller payout). harvest pays the stored harvester.
 
     // ── config ────────────────────────────────────────────────────────────
     IAavePool public pool;
@@ -333,7 +333,7 @@ contract SubLoop is
     }
 
     /// @inheritdoc ISubLoop
-    function pokeRepay() external override onlyRole(KEEPER_ROLE) nonReentrant {
+    function pokeRepay() external override nonReentrant {
         // UNWIND SPIRAL STEP: while an unwind is open, synchronously sell an
         // HF-safe sliver of aPRIME → HOLLAR via the router (no DCA — the router
         // executes through pool reserves with a min-out, so the unpriceable
@@ -424,7 +424,7 @@ contract SubLoop is
     ///      cost basis. The Harvester swaps it into each vault's collateral. This
     ///      keeps SubLoop swap-free — withdrawing the surplus leaves HF at target
     ///      (removed collateral was the cushion the yield created).
-    function harvest() external override onlyRole(KEEPER_ROLE) nonReentrant returns (uint256 surplusPrime) {
+    function harvest() external override nonReentrant whenNotPaused returns (uint256 surplusPrime) {
         uint256 equity18 = totalEquity() * 1e10;
         if (equity18 <= principalEquity) {
             emit Harvested(0);
@@ -443,12 +443,15 @@ contract SubLoop is
             return 0;
         }
         pool.withdraw(address(prime), surplusPrime, address(this)); // HF stays ≥ target
-        IERC20(address(prime)).safeTransfer(msg.sender, surplusPrime);
+        // permissionless: surplus always routes to the configured harvester (which
+        // splits it pro-rata), never the caller. fall back to msg.sender only if unset.
+        address to = harvester == address(0) ? msg.sender : harvester;
+        IERC20(address(prime)).safeTransfer(to, surplusPrime);
         emit Harvested(surplusPrime);
     }
 
     /// @inheritdoc ISubLoop
-    function deLever() external override onlyRole(KEEPER_ROLE) nonReentrant {
+    function deLever() external override nonReentrant {
         uint256 hf = healthFactor();
         if (hf > deLeverTrigger) revert HealthyEnough();
         // Same spiral as unwind, but freed HOLLAR repays loop debt (no payout).
@@ -544,6 +547,12 @@ contract SubLoop is
         harvestThreshold = _harvestThreshold;
     }
 
+    /// @notice Recipient of harvested surplus PRIME. With harvest permissionless,
+    ///         the payout pins here (the Harvester) regardless of caller.
+    function setHarvester(address _harvester) external onlyRole(ADMIN_ROLE) {
+        harvester = _harvester;
+    }
+
     function pause() external onlyRole(GUARDIAN_ROLE) {
         _pause();
     }
@@ -554,5 +563,9 @@ contract SubLoop is
 
     function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
 
-    uint256[36] private __gap;
+    // ── appended storage (permissionless-harvest upgrade) — keep last ──
+    // recipient of harvested surplus PRIME; set by ADMIN post-upgrade.
+    address public harvester;
+
+    uint256[35] private __gap;
 }

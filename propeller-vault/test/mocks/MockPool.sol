@@ -137,12 +137,16 @@ contract MockPool is IAavePool {
         return (collBase8, debtBase8, 0, wAvgLtBps, 0, hf);
     }
 
-    // Doubles as its own PoolAddressesProvider + AaveOracle so the SubLoop's
-    // oracle-based min-out sizing resolves in tests. Prices are $1 (1e8) → the
-    // mock keeps the 1:1 swap assumption tests were written against.
+    // Doubles as its own PoolAddressesProvider + AaveOracle so oracle-based
+    // min-out sizing resolves in tests. Returns each asset's real USD price (8dp)
+    // from its reserve `priceWad` (1e18 = $1) — consistent with MockSwapper's
+    // pricing, so the vault's compound oracle-floor matches the swap output.
+    // HOLLAR/PRIME stay $1 → SubLoop's 1:1 min-out math is unchanged.
     function ADDRESSES_PROVIDER() external view returns (address) { return address(this); }
     function getPriceOracle() external view returns (address) { return address(this); }
-    function getAssetPrice(address) external pure returns (uint256) { return 1e8; }
+    function getAssetPrice(address asset) external view returns (uint256) {
+        return reserves[asset].priceWad / 1e10; // 1e18 $1 → 1e8 (8dp USD)
+    }
 
     function _hf(address user) internal view returns (uint256) {
         (, uint256 collWithLt8, uint256 debtBase8,) = _account(user);

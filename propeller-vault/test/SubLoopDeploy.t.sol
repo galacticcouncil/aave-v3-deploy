@@ -62,7 +62,7 @@ contract SubLoopDeployTest is Test {
 
         // roles + params (test is admin)
         loop.registerVault(address(this)); // VAULT_ROLE
-        loop.grantRole(loop.KEEPER_ROLE(), address(this));
+        // permissionless: pokeBorrow needs no keeper grant
         loop.setTranches(10_000_000e18, 10_000_000e18); // big tranche → one-shot per budget
     }
 

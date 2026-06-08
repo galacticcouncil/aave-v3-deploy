@@ -57,7 +57,6 @@ contract SubLoopUnwindTest is Test {
         );
         loop = SubLoop(address(new ERC1967Proxy(address(impl), init)));
         loop.registerVault(address(this));
-        loop.grantRole(loop.KEEPER_ROLE(), address(this));
         loop.setTranches(10_000_000e18, 10_000_000e6);
     }
 

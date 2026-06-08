@@ -18,7 +18,8 @@ interface ICompoundable {
 contract Harvester is AccessControl {
     using SafeERC20 for IERC20;
 
-    bytes32 public constant KEEPER_ROLE = keccak256("KEEPER_ROLE");
+    // KEEPER_ROLE removed: harvest/deLever are permissionless. DEFAULT_ADMIN_ROLE
+    // is retained for addVault (registry management).
 
     ISubLoop public immutable subLoop;
     IERC20 public immutable prime; // the token SubLoop.harvest returns
@@ -44,27 +45,36 @@ contract Harvester is AccessControl {
     /// @notice Skim loop carry → distribute PRIME pro-rata by loop shares →
     ///         compound each vault's cut into its collateral.
     /// @param minOuts per-vault min collateral out (slippage bound); pass 0s in tests.
-    function harvest(uint256[] calldata minOuts) external onlyRole(KEEPER_ROLE) {
-        uint256 surplus = subLoop.harvest(); // PRIME, sent to this Harvester
+    function harvest(uint256[] calldata minOuts) external {
+        subLoop.harvest(); // PRIME → this Harvester (routed via SubLoop.harvester)
+        // distribute the FULL balance, not just this call's skim — a direct
+        // SubLoop.harvest() caller may have parked PRIME here; nothing strands.
+        uint256 surplus = prime.balanceOf(address(this));
         if (surplus == 0) {
             emit HarvestRun(0);
             return;
         }
         uint256 total = subLoop.totalShares();
         uint256 n = vaults.length;
+        uint256 registeredShares;
         for (uint256 i = 0; i < n; i++) {
             address v = vaults[i];
-            uint256 cut = total == 0 ? 0 : (surplus * subLoop.sharesOf(v)) / total;
+            uint256 vShares = subLoop.sharesOf(v);
+            registeredShares += vShares;
+            uint256 cut = total == 0 ? 0 : (surplus * vShares) / total;
             if (cut == 0) continue;
             prime.forceApprove(v, 0);
             prime.forceApprove(v, cut);
             ICompoundable(v).compound(address(prime), cut, i < minOuts.length ? minOuts[i] : 0, "");
         }
+        // pro-rata fairness: every share-holding vault must be registered, else
+        // its slice would silently strand. Fail loud on a stale registry.
+        require(registeredShares == total, "vault set incomplete");
         emit HarvestRun(surplus);
     }
 
     /// @notice Trigger loop de-lever when HF is at/below the trigger.
-    function deLever() external onlyRole(KEEPER_ROLE) {
+    function deLever() external {
         subLoop.deLever();
         emit DeLeverRun();
     }

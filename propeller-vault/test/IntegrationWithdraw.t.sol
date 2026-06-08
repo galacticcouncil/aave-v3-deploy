@@ -107,9 +107,8 @@ contract IntegrationWithdrawTest is Test {
 
         synth.grantRole(synth.MINTER_ROLE(), address(vault));
         loop.registerVault(address(vault));
-        loop.grantRole(loop.KEEPER_ROLE(), address(this));
+        // permissionless: keeper ops need no grant
         loop.setTranches(10_000_000e18, 10_000_000e6);
-        vault.grantRole(vault.KEEPER_ROLE(), address(this));
     }
 
     function test_depositRampWithdrawReturnsPrincipal() public {
