@@ -98,40 +98,30 @@ object "CollateralVaultAave" {
                     revert(0, __ecnr_rds)
                 }
             }
-            let _minted := 0
             {
                 let __ecwr_ptr := mload(64)
                 mstore(__ecwr_ptr, shl(224, 0x40c10f19))
                 mstore(add(__ecwr_ptr, 4), onBehalfOf)
                 mstore(add(__ecwr_ptr, 36), synthAmount)
                 mstore(64, add(__ecwr_ptr, 96))
-                let __ecwr_success := call(gas(), synth, 0, __ecwr_ptr, 68, __ecwr_ptr, 32)
+                let __ecwr_success := call(gas(), synth, 0, __ecwr_ptr, 68, 0, 0)
                 if iszero(__ecwr_success) {
                     let __ecwr_rds := returndatasize()
                     returndatacopy(0, 0, __ecwr_rds)
                     revert(0, __ecwr_rds)
                 }
-                if lt(returndatasize(), 32) {
-                    revert(0, 0)
-                }
-                _minted := mload(__ecwr_ptr)
             }
-            let _seeded := 0
             {
                 let __ecwr_ptr := mload(64)
                 mstore(__ecwr_ptr, shl(224, 0xb6b55f25))
                 mstore(add(__ecwr_ptr, 4), borrowAmount)
                 mstore(64, add(__ecwr_ptr, 64))
-                let __ecwr_success := call(gas(), loop, 0, __ecwr_ptr, 36, __ecwr_ptr, 32)
+                let __ecwr_success := call(gas(), loop, 0, __ecwr_ptr, 36, 0, 0)
                 if iszero(__ecwr_success) {
                     let __ecwr_rds := returndatasize()
                     returndatacopy(0, 0, __ecwr_rds)
                     revert(0, __ecwr_rds)
                 }
-                if lt(returndatasize(), 32) {
-                    revert(0, 0)
-                }
-                _seeded := mload(__ecwr_ptr)
             }
             stop()
         }
@@ -374,40 +364,30 @@ object "CollateralVaultAave" {
                         revert(0, __ecnr_rds)
                     }
                 }
-                let _minted := 0
                 {
                     let __ecwr_ptr := mload(64)
                     mstore(__ecwr_ptr, shl(224, 0x40c10f19))
                     mstore(add(__ecwr_ptr, 4), onBehalfOf)
                     mstore(add(__ecwr_ptr, 36), synthAmount)
                     mstore(64, add(__ecwr_ptr, 96))
-                    let __ecwr_success := call(gas(), synth, 0, __ecwr_ptr, 68, __ecwr_ptr, 32)
+                    let __ecwr_success := call(gas(), synth, 0, __ecwr_ptr, 68, 0, 0)
                     if iszero(__ecwr_success) {
                         let __ecwr_rds := returndatasize()
                         returndatacopy(0, 0, __ecwr_rds)
                         revert(0, __ecwr_rds)
                     }
-                    if lt(returndatasize(), 32) {
-                        revert(0, 0)
-                    }
-                    _minted := mload(__ecwr_ptr)
                 }
-                let _seeded := 0
                 {
                     let __ecwr_ptr := mload(64)
                     mstore(__ecwr_ptr, shl(224, 0xb6b55f25))
                     mstore(add(__ecwr_ptr, 4), borrowAmount)
                     mstore(64, add(__ecwr_ptr, 64))
-                    let __ecwr_success := call(gas(), loop, 0, __ecwr_ptr, 36, __ecwr_ptr, 32)
+                    let __ecwr_success := call(gas(), loop, 0, __ecwr_ptr, 36, 0, 0)
                     if iszero(__ecwr_success) {
                         let __ecwr_rds := returndatasize()
                         returndatacopy(0, 0, __ecwr_rds)
                         revert(0, __ecwr_rds)
                     }
-                    if lt(returndatasize(), 32) {
-                        revert(0, 0)
-                    }
-                    _seeded := mload(__ecwr_ptr)
                 }
                 stop()
             }
@@ -639,40 +619,30 @@ object "CollateralVaultAave" {
                                 revert(0, __ecnr_rds)
                             }
                         }
-                        let _minted := 0
                         {
                             let __ecwr_ptr := mload(64)
                             mstore(__ecwr_ptr, shl(224, 0x40c10f19))
                             mstore(add(__ecwr_ptr, 4), onBehalfOf)
                             mstore(add(__ecwr_ptr, 36), synthAmount)
                             mstore(64, add(__ecwr_ptr, 96))
-                            let __ecwr_success := call(gas(), synth, 0, __ecwr_ptr, 68, __ecwr_ptr, 32)
+                            let __ecwr_success := call(gas(), synth, 0, __ecwr_ptr, 68, 0, 0)
                             if iszero(__ecwr_success) {
                                 let __ecwr_rds := returndatasize()
                                 returndatacopy(0, 0, __ecwr_rds)
                                 revert(0, __ecwr_rds)
                             }
-                            if lt(returndatasize(), 32) {
-                                revert(0, 0)
-                            }
-                            _minted := mload(__ecwr_ptr)
                         }
-                        let _seeded := 0
                         {
                             let __ecwr_ptr := mload(64)
                             mstore(__ecwr_ptr, shl(224, 0xb6b55f25))
                             mstore(add(__ecwr_ptr, 4), borrowAmount)
                             mstore(64, add(__ecwr_ptr, 64))
-                            let __ecwr_success := call(gas(), loop, 0, __ecwr_ptr, 36, __ecwr_ptr, 32)
+                            let __ecwr_success := call(gas(), loop, 0, __ecwr_ptr, 36, 0, 0)
                             if iszero(__ecwr_success) {
                                 let __ecwr_rds := returndatasize()
                                 returndatacopy(0, 0, __ecwr_rds)
                                 revert(0, __ecwr_rds)
                             }
-                            if lt(returndatasize(), 32) {
-                                revert(0, 0)
-                            }
-                            _seeded := mload(__ecwr_ptr)
                         }
                         stop()
                     }

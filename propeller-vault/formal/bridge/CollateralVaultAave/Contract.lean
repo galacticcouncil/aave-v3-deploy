@@ -52,11 +52,15 @@ verity_contract CollateralVaultAave where
       function withdraw(Address, Uint256, Address) returns (Uint256)
     end
     -- inter-contract surface: the vault drives its own SyntheticToken and the shared SubLoop.
+    -- both are VOID in the deployed cut (SyntheticToken.mint / SubLoop.deposit are `Unit`), so the
+    -- interfaces must declare no return — a `returns (...)` here lowers the call site to the
+    -- with-return ECM, which reverts (empty) on the 0-byte returndata of a void callee. (SyntheticToken
+    -- matches the Solidity, whose mint is void too; SubLoop.sol returns shares, abstracted away here.)
     interface ISynth where
-      function mint(Address, Uint256) returns (Bool)
+      function mint(Address, Uint256)
     end
     interface ISubLoop where
-      function deposit(Uint256) returns (Bool)
+      function deposit(Uint256)
     end
 
   constructor (keeper : Address, poolAddr : Address, synthAddr : Address, loopAddr : Address) := do
@@ -101,8 +105,8 @@ verity_contract CollateralVaultAave where
     setStorage synthSupplySlot newSynth
     pool.supply asset assets onBehalfOf 0
     pool.borrow hollar borrowAmount 2 0 onBehalfOf
-    let _minted ← synth.mint onBehalfOf synthAmount           -- CollateralVault → SyntheticToken
-    let _seeded ← loop.deposit borrowAmount                   -- CollateralVault → SubLoop
+    synth.mint onBehalfOf synthAmount                         -- CollateralVault → SyntheticToken (void)
+    loop.deposit borrowAmount                                 -- CollateralVault → SubLoop (void)
 
   -- unwind/settle (Solidity step 5): repay HOLLAR debt, then withdraw freed collateral from Aave.
   -- Effects (lower debt + shares + assets) precede both interactions; same CEI annotation as deposit.
