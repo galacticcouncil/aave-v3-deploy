@@ -253,21 +253,23 @@ must be `evm.Executed`, **not** `evm.ExecutedFailed` — substrate `evm.call`
 returns `Ok` even on internal EVM revert, so the only reliable signal is the
 events list.
 
-### Dry-run first (gc chopsticks)
-The lark-2 rehearsal confirmed `scripts/submit-hdcl-proposal.ts` works against a
-gc chopsticks fork. Same flow for the mainnet dry-run:
+### Dry-run first (gc chopsticks ≥ 2.2.0)
+The lark-2 rehearsal proved `scripts/submit-hdcl-proposal.ts` works against a
+gc chopsticks fork. Same flow for the mainnet dry-run, using
+**`@galacticcouncil/chopsticks@2.2.0`** (or later) — published to npm, no
+workspace-symlink hacks needed:
 
 ```sh
-# terminal 1 — gc chopsticks (~/git/chopsticks; needs ../@galacticcouncil/chopsticks-db
-# symlinked into node_modules/@acala-network/chopsticks-db until the rebrand is
-# pushed through the dist build)
-node packages/chopsticks/chopsticks.cjs \
-  --config configs/hydradx.yml \
-  --endpoint <mainnet-rpc> \
-  --port 8000 \
-  --db ./hydradx-mainnet.db.sqlite
+# terminal 1 — chopsticks against mainnet
+# Either from the gc fork repo:
+cd ~/git/chopsticks
+node packages/chopsticks/chopsticks.cjs --config configs/hydradx.yml --port 8000
+# (configs/hydradx.yml has mainnet endpoints baked in + the Alice storage hacks)
+#
+# Or via npx, no local checkout needed:
+# npx @galacticcouncil/chopsticks@^2.2.0 --endpoint wss://rpc.hydradx.cloud --port 8000
 
-# terminal 2 — submit + enact in one pass (regenerates the proposal, switches
+# terminal 2 — submit + enact in one pass (regenerates the proposal, flips
 # chopsticks to Instant block mode, bumps Alice to 5B HDX, votes on Root, scans
 # events). PROPOSAL_WS points the script at chopsticks; HARDHAT_NETWORK + RPC
 # point ethers/hardhat at the same fork so address resolution matches.
@@ -277,12 +279,13 @@ MARKET_NAME=HDCL HARDHAT_NETWORK=hydration RPC=http://localhost:8000 \
 ```
 
 The script (idempotent — safe to re-run after a partial landing):
-- Calls `dev_setBlockBuildMode("Instant")` so each tx auto-seals a block (working
-  around chopsticks's "Failed to apply inherents" startup error in Instant mode)
+- Calls `dev_setBlockBuildMode("Instant")` so each tx auto-seals a block (the
+  `--build-block-mode Instant` startup flag still fails on Hydration's
+  parachain inherents; flipping at runtime works).
 - Bumps Alice's free balance to ≥5B HDX via `dev_setStorage` (gc's hydradx.yml
-  import-storage truncates her to ~1000 HDX otherwise)
+  `import-storage` truncates her to ~1000 HDX otherwise).
 - Submits the batchAll on the Root track, places decision deposit, votes aye with
-  full conviction, fast-forwards via `dev_newBlock` until approval + enactment
+  full conviction, fast-forwards via `dev_newBlock` until approval + enactment.
 
 Inspect the post-enactment events: every `dispatchAsAaveManager` → `evm.call`
 must emit `evm.Executed`, not `evm.ExecutedFailed` (substrate `evm.call` returns
@@ -307,10 +310,33 @@ Expected output (all ✓):
 - Substrate asset 55 (HDCL) → aToken proxy, Erc20, fee currency
 - `evmAccounts.approvedContract(Pool-Proxy-HDCL)` = true
 
-> Note: `moonbeam-tools fast-execute-chopstick-proposal.ts` (force-enact without
-> a vote) is broken as of 2026-05 — `@moonbeam-network/api-augment` doesn't
-> resolve against the installed `@polkadot/types`. The submit-and-vote flow
-> above replaces it for HDCL.
+#### Deploy-time smoke tests (optional, recommended)
+
+chopsticks 2.2.0 implements the full EVM client surface (`eth_sendRawTransaction`,
+`eth_getTransactionReceipt`, `eth_getLogs`, etc.) — so you can also dry-run the
+Phase-1 oracle adapter deploy + Phase-4 zap deploy against the same fork before
+the proposal:
+
+```sh
+# Flip chopsticks to Instant mode + fund a test EVM address with WETH (asset 20)
+curl -sX POST http://localhost:8000 -H "content-type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"dev_setBlockBuildMode","params":["Instant"]}'
+node scripts/fund-test-deployer.mjs
+
+# Deploy HDCLOracleAdapter against the live forked vault + sanity-check
+node scripts/smoke-test-hdcl-on-chopsticks.mjs
+# → status: success, latestAnswer ≈ $1.00 from the live vault state
+```
+
+See [chopsticks-testing-hydration](https://garden.intergalactic.limited/wiki/chopsticks-testing-hydration/)
+for the canonical chopsticks runbook (including the WETH-not-HDX funding model
+for `pallet-evm`'s gas currency, the `2.lark` vs `0.lark` shard gotcha, and the
+Instant-mode-is-fire-and-forget race condition).
+
+> Stale tool note: `moonbeam-tools fast-execute-chopstick-proposal.ts`
+> (force-enact without a vote) is still broken as of 2026-06 —
+> `@moonbeam-network/api-augment` doesn't resolve against the installed
+> `@polkadot/types`. The submit-and-vote flow above replaces it for HDCL.
 
 ---
 
