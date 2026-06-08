@@ -45,9 +45,9 @@ const abi = new ethers.utils.AbiCoder();
 const wad = (x) => ethers.BigNumber.from(10).pow(18).mul(x).toString();
 const subLoopI = new ethers.utils.Interface([
   "function registerVault(address)", "function setTranches(uint256,uint256)",
-  "function configureDca(uint32,uint32,uint32,uint32,uint32,uint32)", "function grantRole(bytes32,address)",
+  "function configureDca(uint32,uint32,uint32,uint32,uint32,uint32)", "function setHarvester(address)",
 ]);
-const vaultI = new ethers.utils.Interface(["function grantRole(bytes32,address)"]);
+const vaultI = new ethers.utils.Interface(["function setCompoundSlippageBps(uint16)"]);
 const synthI = new ethers.utils.Interface(["function grantRole(bytes32,address)"]);
 const harvI = new ethers.utils.Interface(["function addVault(address)"]);
 const cfgI = new ethers.utils.Interface([
@@ -146,7 +146,7 @@ async function main() {
     aTokenName: "Propeller aSynth", aTokenSymbol: "aPSYNTH", variableDebtTokenName: "Propeller vDebt", variableDebtTokenSymbol: "vdPSYNTH",
     stableDebtTokenName: "Propeller sDebt", stableDebtTokenSymbol: "sdPSYNTH", params: "0x",
   }];
-  const MINTER = ethers.utils.id("MINTER_ROLE"), KEEPER = ethers.utils.id("KEEPER_ROLE");
+  const MINTER = ethers.utils.id("MINTER_ROLE");
   const g = "600000";
 
   const batches = {
@@ -165,8 +165,9 @@ async function main() {
       aaveMgr(SUBLOOP, subLoopI.encodeFunctionData("registerVault", [VAULT]), g),
       aaveMgr(SUBLOOP, subLoopI.encodeFunctionData("setTranches", [wad(5000), wad(5000)]), g),
       aaveMgr(SUBLOOP, subLoopI.encodeFunctionData("configureDca", [222, 43, 1043, 143, 10, 10000]), g),
-      aaveMgr(SUBLOOP, subLoopI.encodeFunctionData("grantRole", [KEEPER, HARVESTER]), g),
-      aaveMgr(VAULT, vaultI.encodeFunctionData("grantRole", [KEEPER, HARVESTER]), g),
+      // keeperless: pin the harvest payout + set compound slippage (no KEEPER grants)
+      aaveMgr(SUBLOOP, subLoopI.encodeFunctionData("setHarvester", [HARVESTER]), g),
+      aaveMgr(VAULT, vaultI.encodeFunctionData("setCompoundSlippageBps", [100]), g),
       aaveMgr(HARVESTER, harvI.encodeFunctionData("addVault", [VAULT]), g),
     ]),
   };
