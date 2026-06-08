@@ -5,6 +5,10 @@ export const CONFIG = {
   // signer only pays gas — pokeBorrow is permissionless, no role required.
   PRIVATE_KEY: process.env.LOOPER_PRIVATE_KEY as `0x${string}`,
   SUBLOOP_ADDRESS: process.env.SUBLOOP_ADDRESS as `0x${string}`,
+  // CollateralVault proxy — drives pokeSettle/rebalance/maintainPeg + queue gating.
+  VAULT_ADDRESS: process.env.VAULT_ADDRESS as `0x${string}`,
+  // Harvester — skim+distribute carry (optional; harvest skipped if unset).
+  HARVESTER_ADDRESS: (process.env.HARVESTER_ADDRESS || '') as `0x${string}`,
   // aave main-market pool, for leverage logging (defaults to lark-2 main market).
   POOL_ADDRESS: (process.env.POOL_ADDRESS ||
     '0x1b02E051683b5cfaC5929C25E84adb26ECf87B38') as `0x${string}`,
@@ -12,5 +16,7 @@ export const CONFIG = {
   // idle once HF is within this fraction above target — avoids burning gas on
   // borrow-to-floor no-ops. e.g. 0.005 = stop ramping at HF ≤ target·1.005.
   RAMP_HF_BUFFER: Number(process.env.RAMP_HF_BUFFER || 0.005),
+  // run the slow maintenance ops (peg/rebalance/harvest) every N cycles.
+  SLOW_EVERY: Number(process.env.SLOW_EVERY || 10),
   ALERT_WEBHOOK: process.env.ALERT_WEBHOOK,
 };

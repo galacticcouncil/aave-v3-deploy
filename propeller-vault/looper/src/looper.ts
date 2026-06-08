@@ -21,30 +21,31 @@ const hydration: Chain = {
   },
 };
 
-// ─── ABIs (only what the looper touches) ─────────────────────────────────────
+// ─── ABIs (only what the maintainer touches) ─────────────────────────────────
 
 const SUBLOOP_ABI = [
+  view('healthFactor', 'uint256'),
+  view('targetHf', 'uint256'),
+  view('deLeverTrigger', 'uint256'),
+  nonpayable('pokeBorrow'), // permissionless ramp (lever one tranche)
+  nonpayable('pokeRepay'), // permissionless unwind servicing
+  nonpayable('deLever'), // permissionless safety de-lever
+] as const;
+
+const VAULT_ABI = [
+  view('queueHead', 'uint256'),
+  view('queueTail', 'uint256'),
+  nonpayable('pokeSettle'), // settle the redeem queue
+  nonpayable('rebalance'), // keep the LTV band
+  nonpayable('maintainPeg'), // top up the synthetic floor
+] as const;
+
+const HARVESTER_ABI = [
   {
-    name: 'healthFactor',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'targetHf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  // permissionless ramp step — borrows one HF-bounded, tranche-capped slice and
-  // levers it in synchronously. No-ops (Borrowed(0)) once HF is at the floor.
-  {
-    name: 'pokeBorrow',
+    name: 'harvest',
     type: 'function',
     stateMutability: 'nonpayable',
-    inputs: [],
+    inputs: [{ name: 'minOuts', type: 'uint256[]' }],
     outputs: [],
   },
 ] as const;
@@ -66,27 +67,42 @@ const POOL_ABI = [
   },
 ] as const;
 
+function view(name: string, out: string) {
+  return { name, type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: out }] } as const;
+}
+function nonpayable(name: string) {
+  return { name, type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [] } as const;
+}
+
 const WAD = 10n ** 18n;
 
-// ─── Looper class ─────────────────────────────────────────────────────────────
+// ─── Maintainer ───────────────────────────────────────────────────────────────
+//
+// Permissionless keeper for the Propeller loop. Drives every now-open op:
+//   fast (each cycle): pokeBorrow (ramp) · deLever (safety) · pokeRepay+pokeSettle
+//                      (service withdrawals)
+//   slow (every SLOW_EVERY): maintainPeg · rebalance · harvest
+// Each op self-gates on-chain, so a skipped read only wastes gas, never misbehaves.
+// Signs with a gas-only account — no role required (all targets are permissionless).
 
 export class PropellerLooper {
   private publicClient: PublicClient;
   private walletClient: WalletClient;
   private account: ReturnType<typeof privateKeyToAccount>;
   private subLoop: Address;
+  private vault: Address;
+  private harvester: Address;
   private pool: Address;
+  private cycle = 0;
 
   constructor() {
     this.account = privateKeyToAccount(CONFIG.PRIVATE_KEY);
     this.subLoop = CONFIG.SUBLOOP_ADDRESS;
+    this.vault = CONFIG.VAULT_ADDRESS;
+    this.harvester = CONFIG.HARVESTER_ADDRESS;
     this.pool = CONFIG.POOL_ADDRESS;
 
-    this.publicClient = createPublicClient({
-      chain: hydration,
-      transport: http(CONFIG.RPC_URL),
-    });
-
+    this.publicClient = createPublicClient({ chain: hydration, transport: http(CONFIG.RPC_URL) });
     this.walletClient = createWalletClient({
       account: this.account,
       chain: hydration,
@@ -94,15 +110,15 @@ export class PropellerLooper {
     });
   }
 
-  // ─── Main cycle ──────────────────────────────────────────────────────
-
   async runCycle(): Promise<void> {
-    console.log(`\n[${new Date().toISOString()}] Running looper cycle...`);
+    this.cycle++;
+    console.log(`\n[${new Date().toISOString()}] maintainer cycle #${this.cycle}`);
 
-    const [hf, target] = (await Promise.all([
+    const [hf, target, trigger] = (await Promise.all([
       this.read(SUBLOOP_ABI, this.subLoop, 'healthFactor'),
       this.read(SUBLOOP_ABI, this.subLoop, 'targetHf'),
-    ])) as [bigint, bigint];
+      this.read(SUBLOOP_ABI, this.subLoop, 'deLeverTrigger'),
+    ])) as [bigint, bigint, bigint];
 
     const leverage = await this.readLeverage();
     console.log(
@@ -110,52 +126,55 @@ export class PropellerLooper {
         (leverage !== null ? `   leverage ${leverage.toFixed(2)}×` : ''),
     );
 
-    // idle once HF is within RAMP_HF_BUFFER above target. deployHfFloor == target,
-    // so borrowing below this would just no-op and burn gas.
-    const bufferBps = BigInt(Math.floor((1 + CONFIG.RAMP_HF_BUFFER) * 1e6));
-    const idleThreshold = (target * bufferBps) / 1_000_000n;
-    if (hf <= idleThreshold) {
-      console.log('  at/near target — idle.');
-      return;
+    // ── fast: ramp / safety ────────────────────────────────────────────
+    // delever only if HF fell BELOW the floor (genuinely under-collateralised);
+    // never during the normal ramp (pokeBorrow stops at the floor). deLever is a
+    // stub today — calling it is a safe no-op until its spiral is implemented.
+    if (hf < target) {
+      await this.poke(SUBLOOP_ABI, this.subLoop, 'deLever', 'deLever (HF below floor)');
+    } else if (hf > (target * BigInt(Math.floor((1 + CONFIG.RAMP_HF_BUFFER) * 1e6))) / 1_000_000n) {
+      await this.poke(SUBLOOP_ABI, this.subLoop, 'pokeBorrow', 'pokeBorrow (ramp)');
+    } else {
+      console.log('  HF in band — no ramp.');
+    }
+    void trigger; // reserved for future deLever gating once implemented
+
+    // ── fast: service withdrawals (only when the redeem queue is non-empty) ──
+    if (this.vault) {
+      const [head, tail] = (await Promise.all([
+        this.read(VAULT_ABI, this.vault, 'queueHead'),
+        this.read(VAULT_ABI, this.vault, 'queueTail'),
+      ])) as [bigint, bigint];
+      if (tail > head) {
+        await this.poke(SUBLOOP_ABI, this.subLoop, 'pokeRepay', 'pokeRepay (free unwind equity)');
+        await this.poke(VAULT_ABI, this.vault, 'pokeSettle', 'pokeSettle (settle redeem queue)');
+      }
     }
 
-    // ramp one tranche toward target.
-    try {
-      console.log('  pokeBorrow() — levering one tranche...');
-      await this.write(SUBLOOP_ABI, this.subLoop, 'pokeBorrow');
-      const hfAfter = (await this.read(
-        SUBLOOP_ABI,
-        this.subLoop,
-        'healthFactor',
-      )) as bigint;
-      console.log(`  pokeBorrow() succeeded — HF now ${fmtHf(hfAfter)}`);
-    } catch (err) {
-      console.error('  pokeBorrow() failed:', err);
-      await this.sendAlert(
-        `pokeBorrow() reverted on SubLoop ${this.subLoop}: ${String(err).slice(0, 300)}`,
-        'error',
-      );
+    // ── slow: peg / rebalance / harvest (self-gating no-ops) ────────────
+    if (this.vault && this.cycle % CONFIG.SLOW_EVERY === 0) {
+      await this.poke(VAULT_ABI, this.vault, 'maintainPeg', 'maintainPeg');
+      await this.poke(VAULT_ABI, this.vault, 'rebalance', 'rebalance');
+      if (this.harvester) {
+        await this.poke(HARVESTER_ABI, this.harvester, 'harvest', 'harvest (skim+distribute)', [[]]);
+      }
     }
   }
-
-  // ─── Leverage read (collateral / equity) ─────────────────────────────
 
   private async readLeverage(): Promise<number | null> {
     try {
       const data = (await this.read(POOL_ABI, this.pool, 'getUserAccountData', [
         this.subLoop,
       ])) as readonly bigint[];
-      const coll = data[0];
-      const debt = data[1];
-      const equity = coll - debt;
+      const equity = data[0] - data[1];
       if (equity <= 0n) return null;
-      return Number(coll) / Number(equity);
+      return Number(data[0]) / Number(equity);
     } catch {
       return null;
     }
   }
 
-  // ─── Contract helpers ────────────────────────────────────────────────
+  // ─── helpers ─────────────────────────────────────────────────────────
 
   private async read(
     abi: readonly unknown[],
@@ -171,67 +190,46 @@ export class PropellerLooper {
     });
   }
 
-  private async write(
+  /// simulate → send a permissionless poke; a benign revert (nothing to do /
+  /// HealthyEnough / paused) is logged and skipped, never fatal.
+  private async poke(
     abi: readonly unknown[],
     address: Address,
     functionName: string,
-    args?: readonly unknown[],
+    label: string,
+    args: readonly unknown[] = [],
   ): Promise<void> {
-    const { request } = await this.publicClient.simulateContract({
-      account: this.account,
-      address,
-      abi: abi as any,
-      functionName: functionName as any,
-      args: args as any,
-    });
-    // Hydration requires legacy (type 0) transactions.
-    const hash = await this.walletClient.writeContract({
-      ...request,
-      gasPrice: 1_500_000n,
-      gas: 5_000_000n,
-    } as any);
-    console.log(`    tx: ${hash}`);
-    await this.publicClient.waitForTransactionReceipt({ hash });
-  }
-
-  // ─── Alerting ────────────────────────────────────────────────────────
-
-  private async sendAlert(
-    message: string,
-    level: 'warn' | 'error' = 'warn',
-  ): Promise<void> {
-    if (!CONFIG.ALERT_WEBHOOK) return;
-    const color = level === 'error' ? 0xe74c3c : 0xf1c40f;
     try {
-      await fetch(CONFIG.ALERT_WEBHOOK, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: 'Propeller Looper',
-          embeds: [
-            {
-              title:
-                level === 'error'
-                  ? 'Propeller Looper — error'
-                  : 'Propeller Looper — warning',
-              description: message,
-              color,
-              footer: { text: `SubLoop ${this.subLoop}` },
-              timestamp: new Date().toISOString(),
-            },
-          ],
-        }),
+      const { request } = await this.publicClient.simulateContract({
+        account: this.account,
+        address,
+        abi: abi as any,
+        functionName: functionName as any,
+        args: args as any,
       });
+      const hash = await this.walletClient.writeContract({
+        ...request,
+        gasPrice: 1_500_000n,
+        gas: 5_000_000n,
+      } as any);
+      console.log(`  ${label} → ${hash}`);
+      await this.publicClient.waitForTransactionReceipt({ hash });
     } catch (err) {
-      console.error('  sendAlert failed:', err);
+      // simulate reverts on no-op/guarded paths — expected, just skip.
+      console.log(`  ${label}: skipped (${shortErr(err)})`);
     }
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── formatting ─────────────────────────────────────────────────────────────
 
-// HF is WAD-scaled. With no debt Aave returns ~uint256.max, so cap the display.
 function fmtHf(hf: bigint): string {
   if (hf > 1000n * WAD) return '∞';
   return (Number(hf) / 1e18).toFixed(3);
+}
+
+function shortErr(err: unknown): string {
+  const m = (err as Error)?.message ?? String(err);
+  const reason = m.match(/reason:\s*([^\n]+)/)?.[1] ?? m.split('\n')[0];
+  return reason.slice(0, 80);
 }
