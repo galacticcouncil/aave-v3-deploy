@@ -47,26 +47,31 @@ theorem deposit_issues_borrow_call :
                 mod.resultVars == [] && args.length == 6
           | _ => false)) = true := by decide
 
-/-- `deposit` issues the **inter-contract** `SyntheticToken.mint` call (3 args: synth + `to`,`amount`). -/
+/-- `deposit` issues the **inter-contract** `SyntheticToken.mint` call: a state-writing **void**
+    `externalCallNoReturn` ECM (3 args: synth + `to`,`amount`). `SyntheticToken.mint` is `Unit`
+    (matching `SyntheticToken.sol`, whose mint is also void), so it's the no-output ECM
+    (`resultVars := []`, no returndata check) — not `externalCallWithReturn`. -/
 theorem deposit_issues_synth_mint :
     (CollateralVaultAave.spec.functions).any (fun fn =>
       fn.name == "deposit" &&
         fn.body.any (fun stmt =>
           match stmt with
           | Stmt.ecm mod args =>
-              mod.name == "externalCallWithReturn" && mod.numArgs == 3 && mod.writesState &&
-                args.length == 3
+              mod.name == "externalCallNoReturn" && mod.numArgs == 3 && mod.writesState &&
+                mod.resultVars == [] && args.length == 3
           | _ => false)) = true := by decide
 
-/-- `deposit` issues the **inter-contract** `SubLoop.deposit` call (2 args: loop + `borrowAmount`). -/
+/-- `deposit` issues the **inter-contract** `SubLoop.deposit` call: a state-writing **void**
+    `externalCallNoReturn` ECM (2 args: loop + `borrowAmount`). `SubLoop.deposit` is `Unit`, so it's
+    the no-output ECM (`resultVars := []`, no returndata check) — not `externalCallWithReturn`. -/
 theorem deposit_issues_subloop_deposit :
     (CollateralVaultAave.spec.functions).any (fun fn =>
       fn.name == "deposit" &&
         fn.body.any (fun stmt =>
           match stmt with
           | Stmt.ecm mod args =>
-              mod.name == "externalCallWithReturn" && mod.numArgs == 2 && mod.writesState &&
-                args.length == 2
+              mod.name == "externalCallNoReturn" && mod.numArgs == 2 && mod.writesState &&
+                mod.resultVars == [] && args.length == 2
           | _ => false)) = true := by decide
 
 /-- `deposit` issues exactly four external calls (supply, borrow, synth.mint, subloop.deposit). -/
