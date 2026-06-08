@@ -3,7 +3,7 @@ import 'dotenv/config';
 export const CONFIG = {
   RPC_URL: process.env.RPC_URL || 'https://rpc.nice.hydration.cloud',
   // signer only pays gas — pokeBorrow is permissionless, no role required.
-  PRIVATE_KEY: process.env.PROPOSER_PRIVATE_KEY as `0x${string}`,
+  PRIVATE_KEY: process.env.LOOPER_PRIVATE_KEY as `0x${string}`,
   SUBLOOP_ADDRESS: process.env.SUBLOOP_ADDRESS as `0x${string}`,
   // aave main-market pool, for leverage logging (defaults to lark-2 main market).
   POOL_ADDRESS: (process.env.POOL_ADDRESS ||

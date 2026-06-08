@@ -1,4 +1,4 @@
-# Propeller Proposer
+# Propeller Looper
 
 Off-chain loop that ramps the shared `SubLoop` to its target health factor.
 
@@ -37,14 +37,14 @@ Local:
 
 ```sh
 npm install
-SUBLOOP_ADDRESS=0x… PROPOSER_PRIVATE_KEY=0x… RPC_URL=https://… npm start
+SUBLOOP_ADDRESS=0x… LOOPER_PRIVATE_KEY=0x… RPC_URL=https://… npm start
 ```
 
 Swarm:
 
 ```sh
-docker stack deploy -c docker-stack.yml propeller-proposer
+docker stack deploy -c docker-stack.yml propeller-looper
 ```
 
-See `docker-stack.yml` for the full env list. Keep `replicas: 1` — two proposers
+See `docker-stack.yml` for the full env list. Keep `replicas: 1` — two loopers
 would collide on the signer's tx nonce.

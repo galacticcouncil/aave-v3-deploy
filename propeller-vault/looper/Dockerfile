@@ -27,5 +27,5 @@ COPY --from=builder /app/dist ./dist
 # Drop root. The `node` user is provided by the base image (uid 1000).
 USER node
 
-# No exposed port — the proposer is an outbound-only polling client.
+# No exposed port — the looper is an outbound-only polling client.
 CMD ["node", "dist/index.js"]

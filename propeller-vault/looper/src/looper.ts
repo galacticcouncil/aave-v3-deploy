@@ -21,7 +21,7 @@ const hydration: Chain = {
   },
 };
 
-// ─── ABIs (only what the proposer touches) ───────────────────────────────────
+// ─── ABIs (only what the looper touches) ─────────────────────────────────────
 
 const SUBLOOP_ABI = [
   {
@@ -68,9 +68,9 @@ const POOL_ABI = [
 
 const WAD = 10n ** 18n;
 
-// ─── Proposer class ───────────────────────────────────────────────────────────
+// ─── Looper class ─────────────────────────────────────────────────────────────
 
-export class PropellerProposer {
+export class PropellerLooper {
   private publicClient: PublicClient;
   private walletClient: WalletClient;
   private account: ReturnType<typeof privateKeyToAccount>;
@@ -97,7 +97,7 @@ export class PropellerProposer {
   // ─── Main cycle ──────────────────────────────────────────────────────
 
   async runCycle(): Promise<void> {
-    console.log(`\n[${new Date().toISOString()}] Running proposer cycle...`);
+    console.log(`\n[${new Date().toISOString()}] Running looper cycle...`);
 
     const [hf, target] = (await Promise.all([
       this.read(SUBLOOP_ABI, this.subLoop, 'healthFactor'),
@@ -207,13 +207,13 @@ export class PropellerProposer {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: 'Propeller Proposer',
+          username: 'Propeller Looper',
           embeds: [
             {
               title:
                 level === 'error'
-                  ? 'Propeller Proposer — error'
-                  : 'Propeller Proposer — warning',
+                  ? 'Propeller Looper — error'
+                  : 'Propeller Looper — warning',
               description: message,
               color,
               footer: { text: `SubLoop ${this.subLoop}` },
