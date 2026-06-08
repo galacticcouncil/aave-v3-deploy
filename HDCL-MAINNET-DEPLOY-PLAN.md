@@ -22,7 +22,7 @@ governance mechanism, and the final addresses change.
 
 | Thing | Mainnet address | Notes |
 |---|---|---|
-| HDCL Vault (proxy) | _deploy first_ | ERC-4626/7540 vault; deploy via `hdcl-vault/script` |
+| HDCL Vault (proxy) | _Step 0a below_ | ERC-4626/7540 vault — deploy first |
 | HOLLAR (GhoToken) | `0x531a654d1696ED52e7275A8cede955E82620f99a` | existing |
 | GhoOracle ($1 fixed) | `0x6096C9D71F7c06024578a62F4B608a1Bb06834F8` | existing |
 | ZeroDiscountRateStrategy | `0x33A7C640140FEBafEcC9801AF723A0C14420eEd7` | existing (hollar mainnet) |
@@ -32,6 +32,128 @@ governance mechanism, and the final addresses change.
 
 All of these are already wired into the HDCL market config for the `hydration`
 network (`markets/hdcl/index.ts`, `helpers/constants.ts`).
+
+---
+
+## 0a. Deploy the HDCL Vault
+
+The vault is the foundation — every later phase keys off the vault proxy
+address. Dry-run against a chopsticks mainnet fork first, then broadcast
+the same flow against real mainnet.
+
+### Dry-run against a chopsticks mainnet fork
+
+```sh
+# terminal 1 — chopsticks against mainnet
+cd ~/git/chopsticks
+node packages/chopsticks/chopsticks.cjs --config configs/hydradx-mainnet.yml --port 8000
+
+# terminal 2 — flip Instant, fund a test EVM deployer, dry-run the deploy
+curl -sX POST http://localhost:8000 -H "content-type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"dev_setBlockBuildMode","params":["Instant"]}'
+node scripts/fund-test-deployer.mjs                # fund hardhat dev #0 with WETH
+node scripts/deploy-vault-dryrun.mjs               # ports Deploy.s.sol to viem
+```
+
+The dry-run prints the addresses + verifies `getOraclePrice() > 0` and
+`exchangeRate() ≈ 1e18`. Typical output:
+
+```
+1. QueueLib:        0xcf7ed3a…  gasUsed 807,396
+2. HDCLVault impl:  0xdc64a14…  gasUsed 9,064,722
+3. ERC1967Proxy:    0x5fc8d32…  gasUsed 839,238
+4. WDCLOracle:      0x0165878…  gasUsed 374,784
+5. setOracle:                   gasUsed 61,326
+6. getOraclePrice = 1.0e18  ✅
+```
+
+Total ~11.15M gas. At mainnet `eth_gasPrice ≈ 3.78M wei`: ≈ **0.042 WETH**;
+budget ~0.1 WETH for headroom.
+
+### Findings from the dry-run (apply to mainnet broadcast)
+
+These bit the dry-run and will bite a mainnet run the same way unless
+handled — they aren't in `Deploy.s.sol` because the lark deploy script
+ran against lark testnet where the constraints are looser:
+
+1. **Hydration's pallet-ethereum rejects EIP-1559 (type-2) txs** (`custom:2`).
+   Use legacy (type-0) txs. `forge --legacy` does this; the viem deploy
+   script sets `type: "legacy"` + `gasPrice` (not maxFee/maxPriorityFee).
+2. **`gasPrice` must be ≥ live `eth_gasPrice`.** Mainnet's DynamicEvmFee
+   sits at ~3.78M wei (vs ~1.5M on lark testnets). Query at runtime; don't
+   hard-code lark's value.
+3. **Per-tx gas cap is ~12M.** 18M fails validate (`custom:13` = gas
+   exceeds limit). The vault impl needs ~9M; size your txOpts accordingly.
+4. **`forge script ... --broadcast --rpc-url http://chopsticks` mis-handles
+   chopsticks's lazy-loaded delegatecall state.** Internal staticcalls
+   through proxies return `[Stop]` even when `cast call` to the same
+   selector works. The viem script (`deploy-vault-dryrun.mjs`) bypasses
+   this entirely. For the **mainnet broadcast** you can use forge directly
+   (no lazy-loaded state involved) OR the viem script — both work; the
+   viem script is what was end-to-end validated above.
+
+### Mainnet broadcast
+
+After the dry-run succeeds, broadcast with operator's mainnet key:
+
+```sh
+# Option A — viem script (validated path; legacy txs handled, gasPrice queried)
+RPC=https://rpc.hydradx.cloud \
+  PRIVATE_KEY=0x<mainnet-deployer-key> \
+  node scripts/deploy-vault-dryrun.mjs
+# (despite the name, the script broadcasts wherever RPC points)
+
+# Option B — forge against mainnet directly (Deploy.s.sol; constants are
+# already mainnet)
+cd ~/git/aave-v3-deploy/hdcl-vault
+ADMIN_ADDRESS=0x<deployer-eoa> \
+PRIVATE_KEY=0x<mainnet-deployer-key> \
+forge script script/Deploy.s.sol:Deploy \
+  --rpc-url https://rpc.hydradx.cloud \
+  --broadcast --legacy --slow --gas-estimate-multiplier 200
+```
+
+Record the proxy address. That's `MAINNET_VAULT` for the rest of the plan.
+
+### Post-deploy — grants + seed + role rotation
+
+```sh
+RPC=https://rpc.hydradx.cloud \
+  PRIVATE_KEY=0x<deployer> \
+  VAULT_ADDRESS=<MAINNET_VAULT> \
+  GUARDIAN_ADDRESS=<hydration-tech-committee> \
+  KEEPER_ADDRESS=<keeper-bot> \
+  SEED_AMOUNT=100 \
+  node scripts/post-deploy-vault.mjs
+```
+
+Idempotent — re-running skips already-granted roles + already-seeded
+positions. Total gas ~300K for grants + ~3M for seed (Decentral
+`createPosition` is the heavy step). Source ~100 HOLLAR on the deployer
+before running with `SEED_AMOUNT`.
+
+After verifying state, rotate admin/upgrader roles to governance:
+
+```sh
+RPC=… PRIVATE_KEY=0x<deployer> VAULT_ADDRESS=<MAINNET_VAULT> \
+  NEW_ADMIN=<governance> \
+  node scripts/post-deploy-vault.mjs
+```
+
+This grants `DEFAULT_ADMIN_ROLE` / `ADMIN_ROLE` / `UPGRADER_ROLE` to
+`NEW_ADMIN` first, **then** renounces the deployer's copies. The order
+matters — never have zero admins. Once renounced, the deployer can't
+recover admin via the same key.
+
+Post-deploy invariants (script verifies last three automatically; see
+`hdcl-vault/DEPLOYMENT.md` for the full list):
+
+- `vault.totalAssets() > 0` + `vault.totalSupply() > 0` (after seed)
+- `vault.exchangeRate() ≈ 1e18` (±10 wei)
+- `vault.getOraclePrice() > 0`
+- `vault.hasRole(GUARDIAN_ROLE, <tech-committee>) == true`
+- `vault.hasRole(CLAIM_OPERATOR_ROLE, <keeper>) == true`
+- (after rotation) `vault.hasRole(ADMIN_ROLE, <deployer>) == false`
 
 ---
 
