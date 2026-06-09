@@ -40,6 +40,7 @@ private theorem pokeBorrow_unfold (s : ContractState) (amount : Uint256)
         storageArray := s.storageArray,
         sender := s.sender,
         thisAddress := s.thisAddress,
+        txOrigin := s.txOrigin,
         msgValue := s.msgValue,
         selfBalance := s.selfBalance,
         blockTimestamp := s.blockTimestamp,
@@ -91,6 +92,7 @@ private theorem pokeRepay_unfold (s : ContractState) (amount : Uint256)
         storageArray := s.storageArray,
         sender := s.sender,
         thisAddress := s.thisAddress,
+        txOrigin := s.txOrigin,
         msgValue := s.msgValue,
         selfBalance := s.selfBalance,
         blockTimestamp := s.blockTimestamp,
@@ -152,5 +154,133 @@ theorem balanceOf_meets_spec (s : ContractState) (addr : Address) :
     balanceOf_spec addr ((balanceOf addr).runValue s) s := by
   simp [balanceOf, balanceOf_spec, Contract.runValue, getMapping, Verity.bind, Bind.bind,
     Verity.pure, Pure.pure, shareBalancesSlot]
+
+/-! ### Multi-vault share accounting: conservation + cross-vault isolation
+
+`deposit` and `requestUnwind` are the only ops that move the per-vault share book (slot 3) and the
+stored `totalShares` (slot 2). The on-chain `SubLoop` is shared by many vaults, so the safety-critical
+facts are: (1) the caller's entry and `totalShares` change by the **same** amount — conservation — and
+(2) **no other vault's** entry moves — isolation (the "PRIME-isolation" claim). -/
+
+open Verity.Proofs.Stdlib.Automation (address_beq_false_of_ne)
+
+/-- Unfold `deposit` on the no-overflow path. -/
+private theorem deposit_unfold (s : ContractState) (seed : Uint256)
+    (h_sh : (s.storageMap 3 s.sender : Nat) + (seed : Nat) ≤ MAX_UINT256)
+    (h_pr : (s.storage 0 : Nat) + (seed : Nat) ≤ MAX_UINT256)
+    (h_su : (s.storage 2 : Nat) + (seed : Nat) ≤ MAX_UINT256) :
+    (deposit seed).run s = ContractResult.success ()
+      { «storage» := fun slotIdx =>
+          if slotIdx == 2 then EVM.Uint256.add (s.storage 2) seed
+          else if slotIdx == 0 then EVM.Uint256.add (s.storage 0) seed
+          else s.storage slotIdx,
+        transientStorage := s.transientStorage,
+        storageAddr := s.storageAddr,
+        storageMap := fun slotIdx addr =>
+          if (slotIdx == 3 && addr == s.sender) = true then EVM.Uint256.add (s.storageMap 3 s.sender) seed
+          else s.storageMap slotIdx addr,
+        storageMapUint := s.storageMapUint,
+        storageMap2 := s.storageMap2,
+        storageArray := s.storageArray,
+        sender := s.sender,
+        thisAddress := s.thisAddress,
+        txOrigin := s.txOrigin,
+        msgValue := s.msgValue,
+        selfBalance := s.selfBalance,
+        blockTimestamp := s.blockTimestamp,
+        blockNumber := s.blockNumber,
+        chainId := s.chainId,
+        blobBaseFee := s.blobBaseFee,
+        calldataSize := s.calldataSize,
+        calldata := s.calldata,
+        memory := s.memory,
+        knownAddresses := fun slotIdx =>
+          if slotIdx == 3 then (s.knownAddresses slotIdx).insert s.sender
+          else s.knownAddresses slotIdx,
+        events := s.events } := by
+  have h_sh' := safeAdd_some (s.storageMap 3 s.sender) seed h_sh
+  have h_pr' := safeAdd_some (s.storage 0) seed h_pr
+  have h_su' := safeAdd_some (s.storage 2) seed h_su
+  simp only [deposit, shareBalancesSlot, primeAmtSlot, totalSharesSlot, msgSender, getMapping,
+    getStorage, setMapping, setStorage, requireSomeUint, Verity.pure, Verity.bind, Bind.bind,
+    Pure.pure, Contract.run, h_sh', h_pr', h_su', beq_iff_eq, decide_eq_true_eq,
+    ite_true, ite_false, HAdd.hAdd]
+
+/-- **Conservation (deposit):** the caller's share entry and `totalShares` both rise by exactly
+`seed` — equal deltas, so `∑ shares = totalShares` is preserved. -/
+theorem deposit_conserves (s : ContractState) (seed : Uint256)
+    (h_sh : (s.storageMap 3 s.sender : Nat) + (seed : Nat) ≤ MAX_UINT256)
+    (h_pr : (s.storage 0 : Nat) + (seed : Nat) ≤ MAX_UINT256)
+    (h_su : (s.storage 2 : Nat) + (seed : Nat) ≤ MAX_UINT256) :
+    ((deposit seed).runState s).storageMap 3 s.sender = EVM.Uint256.add (s.storageMap 3 s.sender) seed ∧
+    ((deposit seed).runState s).storage 2 = EVM.Uint256.add (s.storage 2) seed := by
+  have h := Contract.eq_of_run_success (deposit_unfold s seed h_sh h_pr h_su)
+  simp only [Contract.runState]; rw [h]; constructor <;> simp
+
+/-- **Isolation (deposit):** a deposit by `s.sender` leaves every other vault's share entry
+untouched — no cross-vault contamination. -/
+theorem deposit_isolation (s : ContractState) (seed : Uint256) (other : Address)
+    (h_other : other ≠ s.sender)
+    (h_sh : (s.storageMap 3 s.sender : Nat) + (seed : Nat) ≤ MAX_UINT256)
+    (h_pr : (s.storage 0 : Nat) + (seed : Nat) ≤ MAX_UINT256)
+    (h_su : (s.storage 2 : Nat) + (seed : Nat) ≤ MAX_UINT256) :
+    ((deposit seed).runState s).storageMap 3 other = s.storageMap 3 other := by
+  have h := Contract.eq_of_run_success (deposit_unfold s seed h_sh h_pr h_su)
+  simp only [Contract.runState]; rw [h]
+  simp [address_beq_false_of_ne other s.sender h_other]
+
+/-- Unfold `requestUnwind` on the sufficient-balance path. -/
+private theorem requestUnwind_unfold (s : ContractState) (shares : Uint256)
+    (h_sh : s.storageMap 3 s.sender ≥ shares) (h_su : s.storage 2 ≥ shares) :
+    (requestUnwind shares).run s = ContractResult.success ()
+      { «storage» := fun slotIdx =>
+          if slotIdx == 2 then EVM.Uint256.sub (s.storage 2) shares else s.storage slotIdx,
+        transientStorage := s.transientStorage,
+        storageAddr := s.storageAddr,
+        storageMap := fun slotIdx addr =>
+          if (slotIdx == 3 && addr == s.sender) = true then EVM.Uint256.sub (s.storageMap 3 s.sender) shares
+          else s.storageMap slotIdx addr,
+        storageMapUint := s.storageMapUint,
+        storageMap2 := s.storageMap2,
+        storageArray := s.storageArray,
+        sender := s.sender,
+        thisAddress := s.thisAddress,
+        txOrigin := s.txOrigin,
+        msgValue := s.msgValue,
+        selfBalance := s.selfBalance,
+        blockTimestamp := s.blockTimestamp,
+        blockNumber := s.blockNumber,
+        chainId := s.chainId,
+        blobBaseFee := s.blobBaseFee,
+        calldataSize := s.calldataSize,
+        calldata := s.calldata,
+        memory := s.memory,
+        knownAddresses := fun slotIdx =>
+          if slotIdx == 3 then (s.knownAddresses slotIdx).insert s.sender
+          else s.knownAddresses slotIdx,
+        events := s.events } := by
+  have h_sh' := uint256_ge_val_le h_sh
+  have h_su' := uint256_ge_val_le h_su
+  simp only [requestUnwind, shareBalancesSlot, totalSharesSlot, msgSender, getMapping, getStorage,
+    setMapping, setStorage, Verity.require, Verity.pure, Verity.bind, Bind.bind, Pure.pure,
+    Contract.run, h_sh, h_su, beq_iff_eq, decide_eq_true_eq, ite_true, ite_false]
+
+/-- **Conservation (requestUnwind):** the caller's entry and `totalShares` both fall by exactly
+`shares` — equal deltas, conservation preserved. -/
+theorem requestUnwind_conserves (s : ContractState) (shares : Uint256)
+    (h_sh : s.storageMap 3 s.sender ≥ shares) (h_su : s.storage 2 ≥ shares) :
+    ((requestUnwind shares).runState s).storageMap 3 s.sender = EVM.Uint256.sub (s.storageMap 3 s.sender) shares ∧
+    ((requestUnwind shares).runState s).storage 2 = EVM.Uint256.sub (s.storage 2) shares := by
+  have h := Contract.eq_of_run_success (requestUnwind_unfold s shares h_sh h_su)
+  simp only [Contract.runState]; rw [h]; constructor <;> simp
+
+/-- **Isolation (requestUnwind):** burning the caller's shares leaves every other vault untouched. -/
+theorem requestUnwind_isolation (s : ContractState) (shares : Uint256) (other : Address)
+    (h_other : other ≠ s.sender)
+    (h_sh : s.storageMap 3 s.sender ≥ shares) (h_su : s.storage 2 ≥ shares) :
+    ((requestUnwind shares).runState s).storageMap 3 other = s.storageMap 3 other := by
+  have h := Contract.eq_of_run_success (requestUnwind_unfold s shares h_sh h_su)
+  simp only [Contract.runState]; rw [h]
+  simp [address_beq_false_of_ne other s.sender h_other]
 
 end Contracts.SubLoop.Proofs
