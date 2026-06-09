@@ -29,7 +29,6 @@ contract DeployMain is Script {
     uint256 constant PRIME_LIQ_THRESHOLD = 0.88e18;
     uint256 constant TARGET_HF = 1.05e18;
     uint256 constant DELEVER_TRIGGER = 1.10e18;
-    uint16 constant TARGET_LTV_BPS = 7400; // under ETH's 7500 max
     uint16 constant SYNTH_LT_BPS = 9800;
     uint256 constant TVL_CAP = 1_000_000e18;
 
@@ -60,7 +59,6 @@ contract DeployMain is Script {
                 synth,
                 AETH,
                 HOLLAR_VDEBT,
-                TARGET_LTV_BPS,
                 SYNTH_LT_BPS,
                 TVL_CAP,
                 GOV

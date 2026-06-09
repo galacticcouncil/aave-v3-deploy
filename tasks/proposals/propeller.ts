@@ -25,20 +25,25 @@ import ProposalDecoder from "../../helpers/proposal-decoder";
 const GHO_ORACLE_ADDRESS = "0x6096C9D71F7c06024578a62F4B608a1Bb06834F8";
 
 // Propeller synthetic collateral.
-//   - reserve: LTV 0 / LT 98% / borrowing disabled / non-isolation / $1 oracle
+//   - reserve: LTV 1% / LT 98% / borrowing disabled / non-isolation / $1 oracle
 //     → supplied by the CollateralVault to floor each Main position's HF so the
 //       principal is un-liquidatable at any collateral price.
+//   - LTV must be a SMALL NON-ZERO value: Aave refuses to enable an LTV-0
+//     reserve as collateral (validateUseAsCollateral), which leaves the synth
+//     out of totalCollateralBase — HF floor inert + rebalance broken (found
+//     live on lark-2). 1% grants negligible borrow power; the vault sizes its
+//     borrow off the real-collateral delta and never leans on synth LTV.
 //   - registered as an Erc20 substrate asset so the EVM ERC20 precompile bridges
 //     it (matches the HDCL ordering requirement: register before initReserves).
 const SYNTH_ASSET_ID = Number(process.env.PROPELLER_SYNTH_ASSET_ID || 5550);
 const SYNTH_LT = "9800"; // 98%
-const SYNTH_LTV = "0"; // grants zero borrow power
+const SYNTH_LTV = "100"; // 1% — must be > 0 (see above), still ~zero borrow power
 const SYNTH_BONUS = "10100"; // 1% (lt*bonus must stay ≤ 1e4 in pct terms)
 const SYNTH_SUPPLY_CAP = "0"; // 0 = unlimited
 
 task(
   `propeller`,
-  `Propeller launch — list the synthetic collateral reserve (LTV 0 / LT 98 / no-borrow / $1)`
+  `Propeller launch — list the synthetic collateral reserve (LTV 1% / LT 98 / no-borrow / $1)`
 ).setAction(async function (_, hre) {
   const { utils } = hre.ethers;
   const networkId = FORK ? FORK : hre.network.name;
@@ -125,8 +130,8 @@ task(
     addTransaction(tx);
   }
 
-  // LTV 0 / LT 98 / bonus 1% — synth·LT floors Main HF strictly above 1.
-  console.log("---------> configure synthetic as collateral (LTV 0 / LT 98)");
+  // LTV 1% / LT 98 / bonus 1% — synth·LT floors Main HF strictly above 1.
+  console.log("---------> configure synthetic as collateral (LTV 1% / LT 98)");
   addTransaction(
     await poolConfigurator.populateTransaction.configureReserveAsCollateral(
       synth, SYNTH_LTV, SYNTH_LT, SYNTH_BONUS, { gasLimit: 1_000_000 }

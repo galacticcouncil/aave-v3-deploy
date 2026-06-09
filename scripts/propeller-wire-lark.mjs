@@ -155,7 +155,8 @@ async function main() {
       aaveMgr(CONFIGURATOR, cfgI.encodeFunctionData("initReserves", [input]), "10000000"),
     ]),
     "configure": api.tx.utility.batchAll([
-      aaveMgr(CONFIGURATOR, cfgI.encodeFunctionData("configureReserveAsCollateral", [SYNTH, 0, 9800, 10100]), g),
+      // LTV must be >0 or Aave never enables the synth as collateral (floor inert)
+      aaveMgr(CONFIGURATOR, cfgI.encodeFunctionData("configureReserveAsCollateral", [SYNTH, 100, 9800, 10100]), g),
       aaveMgr(CONFIGURATOR, cfgI.encodeFunctionData("setReserveBorrowing", [SYNTH, false]), g),
       aaveMgr(CONFIGURATOR, cfgI.encodeFunctionData("setSupplyCap", [SYNTH, 0]), g),
       aaveMgr(ORACLE, oracleI.encodeFunctionData("setAssetSources", [[SYNTH], [GHO_ORACLE]]), g),

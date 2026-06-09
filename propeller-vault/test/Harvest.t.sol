@@ -7,9 +7,10 @@ import {CollateralVault} from "../src/CollateralVault.sol";
 import {SubLoop} from "../src/SubLoop.sol";
 import {SyntheticToken} from "../src/SyntheticToken.sol";
 import {Harvester} from "../src/Harvester.sol";
+import {DcaDispatch} from "../src/lib/DcaDispatch.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPool} from "./mocks/MockPool.sol";
-import {MockDcaScheduler} from "./mocks/MockDcaScheduler.sol";
+import {MockDispatch} from "./mocks/MockDispatch.sol";
 import {MockSwapper} from "./mocks/MockSwapper.sol";
 
 /// @notice Harvest: simulate PRIME yield (aPRIME accrues in the loop), then
@@ -30,7 +31,6 @@ contract HarvestTest is Test {
     MockERC20 synthDebt;
 
     MockPool pool;
-    MockDcaScheduler dca;
     MockSwapper swapper;
     SyntheticToken synth;
     SubLoop loop;
@@ -55,9 +55,10 @@ contract HarvestTest is Test {
         pool.initReserve(address(eth), address(aEth), address(ethDebt), 8500, 7500, 18, 3_000e18);
         pool.initReserve(address(hollar), address(aHollar), address(hollarDebt), 0, 0, 18, 1e18);
         pool.initReserve(address(prime), address(aPrime), address(primeDebt), 8800, 8500, 6, 1e18);
-        pool.initReserve(address(synth), address(aSynth), address(synthDebt), 9800, 0, 18, 1e18);
+        // synth: LT 98%, SMALL non-zero LTV so it can be enabled as collateral
+        // (the planned listing — an LTV-0 reserve can never be collateral on Aave)
+        pool.initReserve(address(synth), address(aSynth), address(synthDebt), 9800, 100, 18, 1e18);
 
-        dca = new MockDcaScheduler(address(pool), address(hollar), address(prime));
         swapper = new MockSwapper(address(pool));
 
         loop = SubLoop(
@@ -67,7 +68,7 @@ contract HarvestTest is Test {
                     abi.encodeCall(
                         SubLoop.initialize,
                         (
-                            address(pool), address(dca), address(hollar), address(prime),
+                            address(pool), address(0), address(hollar), address(prime),
                             address(aPrime), address(hollarDebt), 0.88e18, 1.05e18, 1.10e18, address(this)
                         )
                     )
@@ -83,13 +84,19 @@ contract HarvestTest is Test {
                         (
                             "Propeller ETH", "pETH", address(eth), address(pool), address(loop),
                             address(swapper), address(hollar), address(synth), address(aEth),
-                            address(hollarDebt), 7400, 9800, 1_000e18, address(this)
+                            address(hollarDebt), 9800, 1_000e18, address(this)
                         )
                     )
                 )
             )
         );
         harvester = new Harvester(address(loop), address(prime), address(this));
+
+        vm.etch(DcaDispatch.DISPATCH, address(new MockDispatch()).code);
+        MockDispatch(payable(DcaDispatch.DISPATCH)).configure(
+            address(pool), address(hollar), address(prime), 222, 1043
+        );
+        loop.configureDca(222, 43, 1043, 143, 0, 10_000);
 
         synth.grantRole(synth.MINTER_ROLE(), address(vault));
         loop.registerVault(address(vault));
@@ -101,17 +108,17 @@ contract HarvestTest is Test {
         harvester.addVault(address(vault));
     }
 
-    function test_harvestCompoundsYieldIntoSharePrice() public {
-        // deposit 1 ETH and ramp the loop
+    function _depositAndRamp() internal returns (uint256 shares) {
         eth.mint(address(this), 1e18);
         eth.approve(address(vault), 1e18);
-        vault.deposit(1e18, address(this));
+        shares = vault.deposit(1e18, address(this));
         for (uint256 i = 0; i < 40; i++) {
-            uint256 oid = loop.deployOrderId();
-            if (dca.remaining(oid) > 0) dca.executeDeployFully(oid);
             loop.pokeBorrow();
         }
-        if (dca.remaining(loop.deployOrderId()) > 0) dca.executeDeployFully(loop.deployOrderId());
+    }
+
+    function test_harvestCompoundsYieldIntoSharePrice() public {
+        _depositAndRamp();
 
         uint256 aEthBefore = aEth.balanceOf(address(vault)); // 1e18
         uint256 equityBasis = loop.totalEquity();
@@ -129,5 +136,61 @@ contract HarvestTest is Test {
         assertGt(aEth.balanceOf(address(vault)), aEthBefore, "yield compounded into pETH");
         // loop equity skimmed back to ~basis
         assertApproxEqRel(loop.totalEquity(), equityBasis, 0.01e18, "equity back to basis");
+    }
+
+    /// PRIME price appreciation (+6%) is carry like any other: harvest skims it
+    /// at the ORACLE price (bug C — a $1 assumption would withdraw 6% too much
+    /// PRIME and dip the loop HF below target) and compounds it into the
+    /// deposit. Net effect on a 1 ETH deposit ≈ maxLtv·loopLeverage·6%.
+    function test_primePriceAppreciationCompoundsToDeposit() public {
+        _depositAndRamp();
+        uint256 equityBasis = loop.totalEquity(); // ~2250e8 ($2250 seed)
+        uint256 hfBefore = loop.healthFactor();
+
+        pool.setPrice(address(prime), 1.06e18); // PRIME +6%
+
+        uint256[] memory minOuts = new uint256[](1);
+        harvester.harvest(minOuts);
+
+        // surplus ≈ 6% of the levered PRIME position ≈ $833 → 0.2777 ETH @3000.
+        // (0.75 LTV × ~6.17 loop leverage × 6% ≈ 27.8% of the 1 ETH deposit.)
+        assertApproxEqRel(
+            aEth.balanceOf(address(vault)), 1.277e18, 0.02e18, "PRIME gain compounded into pETH"
+        );
+        // equity back to ~basis at the NEW price (skim was oracle-sized)…
+        assertApproxEqRel(loop.totalEquity(), equityBasis, 0.02e18, "equity back to basis");
+        // …and the loop HF did NOT dip below where it started (bug C symptom)
+        assertGe(loop.healthFactor() + 0.005e18, hfBefore, "harvest left HF at target");
+    }
+
+    /// bug A regression: harvest during an OPEN redemption must not skim the
+    /// exiter's in-flight equity (shares already burned, equity still in the
+    /// loop) — only true carry above basis + in-flight unwinds.
+    function test_harvestSkipsInFlightUnwindEquity() public {
+        uint256 shares = _depositAndRamp();
+        uint256 equity0 = loop.totalEquity(); // ~2250e8
+
+        // open a redemption for HALF the position → ~half the equity in flight
+        uint256 reqId = vault.requestRedeem(shares / 2, address(this));
+        uint256 inFlight = loop.unwindTargetEquity();
+        assertApproxEqRel(inFlight, uint256(equity0) * 1e10 / 2, 0.01e18, "half equity in flight");
+
+        // accrue 1% PRIME yield — the only true carry
+        uint256 yieldPrime = aPrime.balanceOf(address(loop)) / 100;
+        aPrime.mint(address(loop), yieldPrime);
+
+        // harvest mid-redemption: skims ONLY the yield, not the exiter's slice
+        uint256 surplusPrime = loop.harvest();
+        assertApproxEqRel(surplusPrime, yieldPrime, 0.02e18, "skimmed only the carry");
+        assertEq(loop.unwindTargetEquity(), inFlight, "in-flight equity untouched");
+
+        // the exiter still settles to ~their full half ETH
+        for (uint256 i = 0; i < 400; i++) {
+            if (loop.unwindTargetEquity() == 0) break;
+            loop.pokeRepay();
+        }
+        vault.pokeSettle();
+        uint256 got = vault.claim(reqId, address(this));
+        assertApproxEqRel(got, 0.5e18, 0.02e18, "exiter principal intact");
     }
 }

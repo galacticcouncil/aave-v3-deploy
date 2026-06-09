@@ -133,7 +133,8 @@ library DcaDispatch {
     }
 
     /// @notice EVM-derived Substrate AccountId32 for an address:
-    ///         [20-byte addr][b"ETH\0"][8x00] (pallet-evm-accounts mapping).
+    ///         [b"ETH\0"][20-byte addr][8x00] (pallet-evm-accounts
+    ///         truncated_account_id — prefix FIRST, see lib.rs:553).
     function ownerOf(address a) internal pure returns (bytes32) {
         // Hydration truncated AccountId: b"ETH\0" ++ 20-byte addr ++ 8x00
         // (pallet-evm-accounts truncated_account_id; prefix is FIRST).

@@ -6,7 +6,6 @@ import {CollateralVault} from "../../src/CollateralVault.sol";
 import {SubLoop} from "../../src/SubLoop.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockPool} from "../mocks/MockPool.sol";
-import {MockDcaScheduler} from "../mocks/MockDcaScheduler.sol";
 
 /// @notice Randomized driver for the Propeller invariant suite. A single actor
 ///         (this handler) deposits, drives the deploy/unwind DCA + keeper pokes,
@@ -16,7 +15,6 @@ contract Handler is Test {
     CollateralVault public vault;
     SubLoop public loop;
     MockPool public pool;
-    MockDcaScheduler public dca;
     MockERC20 public eth;
     MockERC20 public prime;
 
@@ -27,14 +25,12 @@ contract Handler is Test {
         CollateralVault _vault,
         SubLoop _loop,
         MockPool _pool,
-        MockDcaScheduler _dca,
         MockERC20 _eth,
         MockERC20 _prime
     ) {
         vault = _vault;
         loop = _loop;
         pool = _pool;
-        dca = _dca;
         eth = _eth;
         prime = _prime;
     }
@@ -50,12 +46,10 @@ contract Handler is Test {
         vault.deposit(amt, address(this));
     }
 
-    // ── keeper + DCA: ramp the loop ──────────────────────────────────────────
+    // ── keeper: ramp the loop (each poke borrows + levers a tranche) ─────────
     function ramp(uint256 n) external {
         n = bound(n, 1, 8);
         for (uint256 i = 0; i < n; i++) {
-            uint256 oid = loop.deployOrderId();
-            if (oid != 0 && dca.remaining(oid) > 0) dca.executeDeployFully(oid);
             loop.pokeBorrow();
         }
     }
@@ -70,15 +64,12 @@ contract Handler is Test {
         ghostEscrowed += shares;
     }
 
-    // ── keeper + DCA: deleveraging spiral ─────────────────────────────────────
+    // ── keeper: deleveraging spiral (pokeRepay sells + repays per call) ───────
     function churnUnwind(uint256 n) external {
-        uint256 uid = loop.unwindOrderId();
-        if (uid == 0) return;
+        if (loop.unwindTargetEquity() == 0) return;
         n = bound(n, 1, 12);
         for (uint256 i = 0; i < n; i++) {
-            if (prime.balanceOf(address(loop)) == 0) break;
-            if (pool.maxWithdrawable(address(loop), address(prime)) == 0) break;
-            dca.executeUnwind(uid);
+            if (loop.unwindTargetEquity() == 0) break;
             loop.pokeRepay();
         }
     }

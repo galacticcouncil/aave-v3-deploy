@@ -4,14 +4,16 @@ pragma solidity ^0.8.22;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {SubLoop} from "../src/SubLoop.sol";
+import {DcaDispatch} from "../src/lib/DcaDispatch.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPool} from "./mocks/MockPool.sol";
-import {MockDcaScheduler} from "./mocks/MockDcaScheduler.sol";
+import {MockDispatch} from "./mocks/MockDispatch.sol";
 
-/// @notice Deploy-ramp flow: deposit a HOLLAR seed, then alternate
-///         DCA-deploy (HOLLAR→aPRIME) and keeper pokeBorrow until the loop
-///         self-ramps to the target HF. Asserts the equity invariant holds
-///         throughout and HF converges to ~1.05.
+/// @notice Deploy-ramp flow: deposit a HOLLAR seed, then keeper pokeBorrow
+///         until the loop self-ramps to the target HF (each poke borrows an
+///         HF-safe tranche and router-sells it HOLLAR→aPRIME synchronously via
+///         the dispatch precompile — mocked by MockDispatch etched at 0x0401).
+///         Asserts the equity invariant holds throughout and HF converges.
 contract SubLoopDeployTest is Test {
     MockERC20 hollar;
     MockERC20 prime;
@@ -20,7 +22,6 @@ contract SubLoopDeployTest is Test {
     MockERC20 hollarDebt;
     MockERC20 aHollar; // unused collateral side of HOLLAR reserve
     MockPool pool;
-    MockDcaScheduler dca;
     SubLoop loop;
 
     uint256 constant SEED = 1_000e18; // 1000 HOLLAR
@@ -40,14 +41,12 @@ contract SubLoopDeployTest is Test {
         // HOLLAR: borrow-only (LT 0 / LTV 0), 18dp, $1
         pool.initReserve(address(hollar), address(aHollar), address(hollarDebt), 0, 0, 18, 1e18);
 
-        dca = new MockDcaScheduler(address(pool), address(hollar), address(prime));
-
         SubLoop impl = new SubLoop();
         bytes memory init = abi.encodeCall(
             SubLoop.initialize,
             (
                 address(pool),
-                address(dca),
+                address(0), // dca seam unused: inline DcaDispatch
                 address(hollar),
                 address(prime),
                 address(aPrime),
@@ -60,28 +59,30 @@ contract SubLoopDeployTest is Test {
         );
         loop = SubLoop(address(new ERC1967Proxy(address(impl), init)));
 
+        // router mock at the dispatch precompile + route ids (mainnet values)
+        vm.etch(DcaDispatch.DISPATCH, address(new MockDispatch()).code);
+        MockDispatch(payable(DcaDispatch.DISPATCH)).configure(
+            address(pool), address(hollar), address(prime), 222, 1043
+        );
+        loop.configureDca(222, 43, 1043, 143, 0, 10_000); // 1% slippage
+
         // roles + params (test is admin)
         loop.registerVault(address(this)); // VAULT_ROLE
         // permissionless: pokeBorrow needs no keeper grant
-        loop.setTranches(10_000_000e18, 10_000_000e18); // big tranche → one-shot per budget
+        loop.setTranches(10_000_000e18, 10_000_000e6); // big tranche → one-shot per budget
     }
 
     function test_deployRampReachesTargetHf() public {
-        // seed the loop as a vault
+        // seed the loop as a vault (the deposit levers the seed in synchronously)
         hollar.mint(address(this), SEED);
         hollar.approve(address(loop), SEED);
         uint256 shares = loop.deposit(SEED);
         assertEq(shares, SEED, "first-deposit shares == seed");
 
-        // ramp: deploy what's funded, then borrow to target, repeat
+        // ramp: each poke borrows up to the HF floor and levers the tranche in
         for (uint256 i = 0; i < 40; i++) {
-            uint256 oid = loop.deployOrderId();
-            if (dca.remaining(oid) > 0) dca.executeDeployFully(oid);
             loop.pokeBorrow();
         }
-        // final deploy of the last borrow
-        uint256 last = loop.deployOrderId();
-        if (dca.remaining(last) > 0) dca.executeDeployFully(last);
 
         uint256 hf = loop.healthFactor();
         uint256 equity = loop.totalEquity(); // 8dp USD

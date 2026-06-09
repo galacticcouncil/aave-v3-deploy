@@ -32,7 +32,6 @@ contract DeployVaultTBTC is Script {
     address constant TBTC = 0x00000000000000000000000000000001000f453d;
     address constant ATBTC = 0x69003a65189f6Ed993D3bD3E2B74f1Db39F405ce;
 
-    uint16 constant TARGET_LTV_BPS = 7400; // under tBTC's 80% LTV
     uint16 constant SYNTH_LT_BPS = 9800;
     uint256 constant TVL_CAP = 50e18; // aligns with tBTC supply cap
 
@@ -51,7 +50,6 @@ contract DeployVaultTBTC is Script {
                 SYNTH,
                 ATBTC,
                 HOLLAR_VDEBT,
-                TARGET_LTV_BPS,
                 SYNTH_LT_BPS,
                 TVL_CAP,
                 GOV

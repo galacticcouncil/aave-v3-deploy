@@ -9,7 +9,8 @@ import {SyntheticToken} from "../src/SyntheticToken.sol";
 import {Harvester} from "../src/Harvester.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPool} from "./mocks/MockPool.sol";
-import {MockDcaScheduler} from "./mocks/MockDcaScheduler.sol";
+import {DcaDispatch} from "../src/lib/DcaDispatch.sol";
+import {MockDispatch} from "./mocks/MockDispatch.sol";
 import {MockSwapper} from "./mocks/MockSwapper.sol";
 
 /// @notice Verifies the KEEPER_ROLE removal: every former keeper op is callable
@@ -31,7 +32,6 @@ contract PermissionlessKeeperTest is Test {
     MockERC20 synthDebt;
 
     MockPool pool;
-    MockDcaScheduler dca;
     MockSwapper swapper;
     SyntheticToken synth;
     SubLoop loop;
@@ -58,9 +58,8 @@ contract PermissionlessKeeperTest is Test {
         pool.initReserve(address(eth), address(aEth), address(ethDebt), 8500, 7500, 18, 3_000e18);
         pool.initReserve(address(hollar), address(aHollar), address(hollarDebt), 0, 0, 18, 1e18);
         pool.initReserve(address(prime), address(aPrime), address(primeDebt), 8800, 8500, 6, 1e18);
-        pool.initReserve(address(synth), address(aSynth), address(synthDebt), 9800, 0, 18, 1e18);
-
-        dca = new MockDcaScheduler(address(pool), address(hollar), address(prime));
+        // synth: small non-zero LTV so it can be enabled as collateral
+        pool.initReserve(address(synth), address(aSynth), address(synthDebt), 9800, 100, 18, 1e18);
         swapper = new MockSwapper(address(pool));
 
         loop = SubLoop(
@@ -70,7 +69,7 @@ contract PermissionlessKeeperTest is Test {
                     abi.encodeCall(
                         SubLoop.initialize,
                         (
-                            address(pool), address(dca), address(hollar), address(prime),
+                            address(pool), address(0), address(hollar), address(prime),
                             address(aPrime), address(hollarDebt), 0.88e18, 1.05e18, 1.10e18, address(this)
                         )
                     )
@@ -86,13 +85,19 @@ contract PermissionlessKeeperTest is Test {
                         (
                             "Propeller ETH", "pETH", address(eth), address(pool), address(loop),
                             address(swapper), address(hollar), address(synth), address(aEth),
-                            address(hollarDebt), 7400, 9800, 1_000e18, address(this)
+                            address(hollarDebt), 9800, 1_000e18, address(this)
                         )
                     )
                 )
             )
         );
         harvester = new Harvester(address(loop), address(prime), address(this));
+
+        vm.etch(DcaDispatch.DISPATCH, address(new MockDispatch()).code);
+        MockDispatch(payable(DcaDispatch.DISPATCH)).configure(
+            address(pool), address(hollar), address(prime), 222, 1043
+        );
+        loop.configureDca(222, 43, 1043, 143, 0, 10_000);
 
         synth.grantRole(synth.MINTER_ROLE(), address(vault));
         loop.registerVault(address(vault));

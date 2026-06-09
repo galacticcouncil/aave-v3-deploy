@@ -32,6 +32,11 @@ interface IAavePool {
         view
         returns (uint256, uint256, uint256, uint256, uint256, uint256);
 
+    /// @notice The reserve configuration bitmap (DataTypes.ReserveConfigurationMap
+    ///         is a single-member struct — ABI-identical to a bare uint256).
+    ///         bits 0-15 = max LTV (bps), bits 16-31 = liquidation threshold.
+    function getConfiguration(address asset) external view returns (uint256);
+
     /// @notice The PoolAddressesProvider for this market — used to resolve the
     ///         price oracle for manipulation-resistant swap min-out sizing.
     function ADDRESSES_PROVIDER() external view returns (address);

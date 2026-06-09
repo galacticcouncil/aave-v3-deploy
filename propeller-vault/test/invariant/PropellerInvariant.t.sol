@@ -8,7 +8,8 @@ import {SubLoop} from "../../src/SubLoop.sol";
 import {SyntheticToken} from "../../src/SyntheticToken.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockPool} from "../mocks/MockPool.sol";
-import {MockDcaScheduler} from "../mocks/MockDcaScheduler.sol";
+import {DcaDispatch} from "../../src/lib/DcaDispatch.sol";
+import {MockDispatch} from "../mocks/MockDispatch.sol";
 import {Handler} from "./Handler.sol";
 
 /// @notice Invariant suite. The fuzzer drives the Handler through random
@@ -30,7 +31,6 @@ contract PropellerInvariantTest is Test {
     MockERC20 synthDebt;
 
     MockPool pool;
-    MockDcaScheduler dca;
     SyntheticToken synth;
     SubLoop loop;
     CollateralVault vault;
@@ -54,9 +54,8 @@ contract PropellerInvariantTest is Test {
         pool.initReserve(address(eth), address(aEth), address(ethDebt), 8500, 7500, 18, 3_000e18);
         pool.initReserve(address(hollar), address(aHollar), address(hollarDebt), 0, 0, 18, 1e18);
         pool.initReserve(address(prime), address(aPrime), address(primeDebt), 8800, 8500, 6, 1e18);
-        pool.initReserve(address(synth), address(aSynth), address(synthDebt), SYNTH_LT, 0, 18, 1e18);
-
-        dca = new MockDcaScheduler(address(pool), address(hollar), address(prime));
+        // synth: small non-zero LTV so it can be enabled as collateral
+        pool.initReserve(address(synth), address(aSynth), address(synthDebt), SYNTH_LT, 100, 18, 1e18);
 
         loop = SubLoop(
             address(
@@ -66,7 +65,7 @@ contract PropellerInvariantTest is Test {
                         SubLoop.initialize,
                         (
                             address(pool),
-                            address(dca),
+                            address(0),
                             address(hollar),
                             address(prime),
                             address(aPrime),
@@ -98,7 +97,6 @@ contract PropellerInvariantTest is Test {
                             address(synth),
                             address(aEth),
                             address(hollarDebt),
-                            7400,
                             SYNTH_LT,
                             1_000e18,
                             address(this)
@@ -108,11 +106,17 @@ contract PropellerInvariantTest is Test {
             )
         );
 
+        vm.etch(DcaDispatch.DISPATCH, address(new MockDispatch()).code);
+        MockDispatch(payable(DcaDispatch.DISPATCH)).configure(
+            address(pool), address(hollar), address(prime), 222, 1043
+        );
+        loop.configureDca(222, 43, 1043, 143, 0, 10_000);
+
         synth.grantRole(synth.MINTER_ROLE(), address(vault));
         loop.registerVault(address(vault));
         loop.setTranches(10_000_000e18, 10_000_000e6);
 
-        handler = new Handler(vault, loop, pool, dca, eth, prime);
+        handler = new Handler(vault, loop, pool, eth, prime);
         // permissionless: handler calls keeper ops without any grant
 
         targetContract(address(handler));

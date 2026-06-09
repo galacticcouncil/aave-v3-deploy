@@ -8,7 +8,8 @@ import {SubLoop} from "../src/SubLoop.sol";
 import {SyntheticToken} from "../src/SyntheticToken.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPool} from "./mocks/MockPool.sol";
-import {MockDcaScheduler} from "./mocks/MockDcaScheduler.sol";
+import {DcaDispatch} from "../src/lib/DcaDispatch.sol";
+import {MockDispatch} from "./mocks/MockDispatch.sol";
 
 /// @notice Full user journey end-to-end: deposit ETH → loop ramps → request
 ///         redeem → loop deleverages → pokeSettle repays Main debt / burns synth
@@ -28,7 +29,6 @@ contract IntegrationWithdrawTest is Test {
     MockERC20 synthDebt;
 
     MockPool pool;
-    MockDcaScheduler dca;
     SyntheticToken synth;
     SubLoop loop;
     CollateralVault vault;
@@ -51,9 +51,8 @@ contract IntegrationWithdrawTest is Test {
         pool.initReserve(address(eth), address(aEth), address(ethDebt), 8500, 7500, 18, 3_000e18);
         pool.initReserve(address(hollar), address(aHollar), address(hollarDebt), 0, 0, 18, 1e18);
         pool.initReserve(address(prime), address(aPrime), address(primeDebt), 8800, 8500, 6, 1e18);
-        pool.initReserve(address(synth), address(aSynth), address(synthDebt), 9800, 0, 18, 1e18);
-
-        dca = new MockDcaScheduler(address(pool), address(hollar), address(prime));
+        // synth: small non-zero LTV so it can be enabled as collateral
+        pool.initReserve(address(synth), address(aSynth), address(synthDebt), 9800, 100, 18, 1e18);
 
         loop = SubLoop(
             address(
@@ -63,7 +62,7 @@ contract IntegrationWithdrawTest is Test {
                         SubLoop.initialize,
                         (
                             address(pool),
-                            address(dca),
+                            address(0),
                             address(hollar),
                             address(prime),
                             address(aPrime),
@@ -95,7 +94,6 @@ contract IntegrationWithdrawTest is Test {
                             address(synth),
                             address(aEth),
                             address(hollarDebt),
-                            7400,
                             9800,
                             1_000e18,
                             address(this)
@@ -104,6 +102,12 @@ contract IntegrationWithdrawTest is Test {
                 )
             )
         );
+
+        vm.etch(DcaDispatch.DISPATCH, address(new MockDispatch()).code);
+        MockDispatch(payable(DcaDispatch.DISPATCH)).configure(
+            address(pool), address(hollar), address(prime), 222, 1043
+        );
+        loop.configureDca(222, 43, 1043, 143, 0, 10_000);
 
         synth.grantRole(synth.MINTER_ROLE(), address(vault));
         loop.registerVault(address(vault));
@@ -119,22 +123,16 @@ contract IntegrationWithdrawTest is Test {
 
         // ── ramp the loop to target HF ────────────────────────────────────
         for (uint256 i = 0; i < 40; i++) {
-            uint256 oid = loop.deployOrderId();
-            if (dca.remaining(oid) > 0) dca.executeDeployFully(oid);
             loop.pokeBorrow();
         }
-        if (dca.remaining(loop.deployOrderId()) > 0) dca.executeDeployFully(loop.deployOrderId());
         assertApproxEqRel(loop.healthFactor(), 1.05e18, 0.03e18, "loop at target HF");
 
         // ── request full redemption ───────────────────────────────────────
         uint256 reqId = vault.requestRedeem(shares, address(this));
-        uint256 unwindId = loop.unwindOrderId();
 
         // ── deleverage the loop (the unwind spiral) ───────────────────────
         for (uint256 i = 0; i < 400; i++) {
-            if (aPrime.balanceOf(address(loop)) == 0) break;
-            if (pool.maxWithdrawable(address(loop), address(prime)) == 0) break;
-            dca.executeUnwind(unwindId);
+            if (loop.unwindTargetEquity() == 0) break;
             loop.pokeRepay();
         }
 

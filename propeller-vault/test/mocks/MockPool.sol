@@ -27,6 +27,13 @@ contract MockPool is IAavePool {
 
     mapping(address => Reserve) public reserves;
     address[] public assets;
+    /// @notice user => asset => counts as collateral. Models Aave's
+    ///         use-as-collateral flag: auto-set only on the FIRST supply and
+    ///         only when the reserve LTV > 0 (ValidationLogic LTV==0 gate) —
+    ///         the exact semantics that made the LTV-0 synth floor inert on
+    ///         the live market (bug B). An un-flagged aToken balance is NOT in
+    ///         totalCollateralBase.
+    mapping(address => mapping(address => bool)) public usingAsCollateral;
 
     uint256 internal constant BPS = 1e4;
     uint256 internal constant WAD = 1e18;
@@ -49,6 +56,12 @@ contract MockPool is IAavePool {
         reserves[asset].priceWad = priceWad;
     }
 
+    /// @notice Test helper: governance changing a reserve's max LTV (does NOT
+    ///         retro-enable existing suppliers — matches Aave).
+    function setLtv(address asset, uint16 ltvBps) external {
+        reserves[asset].ltvBps = ltvBps;
+    }
+
     /// @notice Price ($1 = 1e18) and decimals for a reserve — used by MockSwapper
     ///         to price cross-asset swaps the way an oracle-fed router would.
     function assetPrice(address asset) external view returns (uint256 priceWad, uint8 dec) {
@@ -66,7 +79,12 @@ contract MockPool is IAavePool {
     // ── IAavePool ─────────────────────────────────────────────────────────
     function supply(address asset, uint256 amount, address onBehalfOf, uint16) external override {
         IERC20(asset).transferFrom(msg.sender, address(this), amount);
-        reserves[asset].aToken.mint(onBehalfOf, amount);
+        Reserve storage r = reserves[asset];
+        bool firstSupply = r.aToken.balanceOf(onBehalfOf) == 0;
+        r.aToken.mint(onBehalfOf, amount);
+        // Aave SupplyLogic.executeSupply: auto-enable only on first supply,
+        // and validateAutomaticUseAsCollateral rejects LTV-0 reserves.
+        if (firstSupply && r.ltvBps > 0) usingAsCollateral[onBehalfOf][asset] = true;
     }
 
     function withdraw(address asset, uint256 amount, address to) external override returns (uint256) {
@@ -95,7 +113,24 @@ contract MockPool is IAavePool {
         return r;
     }
 
-    function setUserUseReserveAsCollateral(address, bool) external override {}
+    function setUserUseReserveAsCollateral(address asset, bool useAsCollateral) external override {
+        Reserve storage r = reserves[asset];
+        if (useAsCollateral) {
+            // Aave: UNDERLYING_BALANCE_ZERO + USER_IN_ISOLATION_MODE_OR_LTV_ZERO
+            require(r.aToken.balanceOf(msg.sender) > 0, "MockPool: balance 0");
+            require(r.ltvBps > 0, "MockPool: ltv 0");
+            usingAsCollateral[msg.sender][asset] = true;
+        } else {
+            usingAsCollateral[msg.sender][asset] = false;
+            require(_hf(msg.sender) >= WAD, "MockPool: HF<1 after disable");
+        }
+    }
+
+    /// @notice Aave reserve configuration bitmap: bits 0-15 LTV, 16-31 LT.
+    function getConfiguration(address asset) external view returns (uint256) {
+        Reserve storage r = reserves[asset];
+        return uint256(r.ltvBps) | (uint256(r.ltBps) << 16);
+    }
 
     /// @notice Mock of the router/AaveTradeExecutor's on-behalf withdraw (the
     ///         first hop of an unwind DCA route): burn `from`'s aToken and send
@@ -162,7 +197,9 @@ contract MockPool is IAavePool {
         for (uint256 i = 0; i < n; i++) {
             Reserve storage r = reserves[assets[i]];
             uint256 c = r.aToken.balanceOf(user);
-            if (c > 0) {
+            // only FLAGGED balances count — an aToken supplied while the
+            // reserve was LTV-0 is invisible to HF/collateral (matches Aave).
+            if (c > 0 && usingAsCollateral[user][assets[i]]) {
                 uint256 v = _usd8(assets[i], c);
                 collBase8 += v;
                 collWithLt8 += (v * r.ltBps) / BPS;

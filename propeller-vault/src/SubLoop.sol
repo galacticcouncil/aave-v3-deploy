@@ -245,8 +245,26 @@ contract SubLoop is
         } else {
             unwindRequested[msg.sender] = 0;
         }
+        // prune finished unwinders so _creditFreed's loop doesn't grow unbounded
+        if (unwindRequested[msg.sender] == 0) _pruneUnwinder(msg.sender);
         hollar.safeTransfer(msg.sender, hollarSent);
         emit FreedPulled(msg.sender, hollarSent);
+    }
+
+    /// @dev swap-remove `vault` from `_unwinders` and clear its flag. Called
+    ///      once its outstanding request hits zero; a later requestUnwind
+    ///      re-registers it.
+    function _pruneUnwinder(address vault) internal {
+        if (!_isUnwinding[vault]) return;
+        _isUnwinding[vault] = false;
+        uint256 n = _unwinders.length;
+        for (uint256 i = 0; i < n; i++) {
+            if (_unwinders[i] == vault) {
+                _unwinders[i] = _unwinders[n - 1];
+                _unwinders.pop();
+                return;
+            }
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -340,7 +358,7 @@ contract SubLoop is
         // aToken is fine). The withdraw inside the route dips HF toward Aave's
         // ~1.0 limit; we cap the sliver to keep HF ≥ STEP_HF_FLOOR (1.02) so the
         // withdraw never reverts, then the repay below lifts HF back up.
-        if (unwindTargetEquity > 0) {
+        if (unwindTargetEquity > 0 || deleverDebtTarget > 0) {
             (uint256 coll8, uint256 debt8, , uint256 lt, , ) = pool.getUserAccountData(address(this));
             if (debt8 > 0 && lt > 0) {
                 // min collateral to keep HF ≥ 1.02 after the withdraw:
@@ -373,6 +391,23 @@ contract SubLoop is
             return;
         }
 
+        // Safety de-lever first: the FULL proceeds repay loop debt (no payout,
+        // no proportional split — collateral already left in the sell, so each
+        // repaid sliver raises HF). Equity is unchanged (coll −x, debt −x).
+        uint256 deleverRepaid;
+        if (deleverDebtTarget > 0) {
+            deleverRepaid = avail < deleverDebtTarget ? avail : deleverDebtTarget;
+            hollar.forceApprove(address(pool), 0);
+            hollar.forceApprove(address(pool), deleverRepaid);
+            pool.repay(address(hollar), deleverRepaid, VARIABLE_RATE, address(this));
+            deleverDebtTarget -= deleverRepaid;
+            avail -= deleverRepaid;
+            if (avail == 0) {
+                emit Repaid(deleverRepaid, healthFactor());
+                return;
+            }
+        }
+
         // The DCA already withdrew the collateral that produced `avail`. Repay
         // the debt portion of that slice so the position shrinks *proportionally*
         // (HF preserved), and free the equity remainder:
@@ -392,11 +427,17 @@ contract SubLoop is
 
         uint256 freed = avail - repayHollar;
         if (freed > 0) _creditFreed(freed);
-        emit Repaid(repayHollar, healthFactor());
+        emit Repaid(deleverRepaid + repayHollar, healthFactor());
     }
 
-    /// @dev Credit freed equity HOLLAR to open unwind requests, pro-rata by
-    ///      outstanding `unwindRequested`, capped per vault at its request.
+    /// @dev Credit freed equity HOLLAR to open unwind requests, pro-rata by the
+    ///      REMAINING-to-credit slice (request minus credited-but-unpulled),
+    ///      capped there too. Weighting by the raw `unwindRequested` is wrong:
+    ///      it only shrinks on pull while `unwindTargetEquity` shrinks on
+    ///      credit, so after any credit-without-pull round req/target > 1 and
+    ///      Σcut exceeds `freed` — `reservedFreed` then overstates the loop's
+    ///      actual HOLLAR and pulls revert on balance. Σrem == target, so this
+    ///      weighting distributes at most `freed`.
     function _creditFreed(uint256 freed) internal {
         uint256 target = unwindTargetEquity;
         if (target == 0) return;
@@ -404,10 +445,10 @@ contract SubLoop is
         uint256 distributed;
         for (uint256 i = 0; i < n; i++) {
             address v = _unwinders[i];
-            uint256 req = unwindRequested[v];
-            if (req == 0) continue;
-            uint256 cut = (freed * req) / target;
-            if (cut > req) cut = req;
+            uint256 rem = unwindRequested[v] - freedHollar[v];
+            if (rem == 0) continue;
+            uint256 cut = (freed * rem) / target;
+            if (cut > rem) cut = rem;
             freedHollar[v] += cut;
             distributed += cut;
         }
@@ -426,18 +467,26 @@ contract SubLoop is
     ///      (removed collateral was the cushion the yield created).
     function harvest() external override nonReentrant whenNotPaused returns (uint256 surplusPrime) {
         uint256 equity18 = totalEquity() * 1e10;
-        if (equity18 <= principalEquity) {
+        // in-flight unwind equity belongs to exiting vaults: their shares are
+        // already burned (principalEquity dropped) but the equity stays in the
+        // loop until pokeRepay frees it. it is NOT carry — skimming it would
+        // pay one vault's principal out to the others' shareholders.
+        uint256 reserved18 = principalEquity + unwindTargetEquity;
+        if (equity18 <= reserved18) {
             emit Harvested(0);
             return 0;
         }
-        uint256 surplus18 = equity18 - principalEquity;
+        uint256 surplus18 = equity18 - reserved18;
         // guard: only harvest once carry exceeds the threshold fraction of basis
         if (principalEquity != 0 && surplus18 * WAD < principalEquity * harvestThreshold) {
             emit Harvested(0);
             return 0;
         }
-        // surplus (HOLLAR 18dp, $1) → PRIME native (6dp, $1)
-        surplusPrime = surplus18 / 1e12;
+        // surplus (HOLLAR 18dp) → PRIME native (6dp) at the ORACLE rate — PRIME
+        // is not $1 (mirrors _fundDeploy); a /1e12 would over-withdraw by the
+        // PRIME premium and dip HF below target.
+        (uint256 pHollar, uint256 pPrime) = _oracleRate();
+        surplusPrime = (surplus18 * pHollar) / pPrime / 1e12;
         if (surplusPrime == 0) {
             emit Harvested(0);
             return 0;
@@ -451,11 +500,26 @@ contract SubLoop is
     }
 
     /// @inheritdoc ISubLoop
+    /// @dev Sizes the safety de-lever: sell collateral and repay loop debt with
+    ///      the FULL proceeds (no payout) until HF is back at targetHf. With
+    ///      hf = coll·lt/debt and proceeds x repaying debt 1:1,
+    ///        (coll − x)·lt / (debt − x) = targetHf
+    ///        ⇒ x = (targetHf·debt − lt·coll) / (targetHf − lt)
+    ///      The spiral itself runs in pokeRepay (same machinery as unwind);
+    ///      this only sets the repay target. Permissionless — HF-guarded, no
+    ///      caller payout, repeated calls re-derive (not accumulate) the target.
     function deLever() external override nonReentrant {
         uint256 hf = healthFactor();
         if (hf > deLeverTrigger) revert HealthyEnough();
-        // Same spiral as unwind, but freed HOLLAR repays loop debt (no payout).
-        // TODO(impl): schedule/advance an unwind DCA sized to restore targetHf.
+        (uint256 coll8, uint256 debt8, , uint256 ltBps, , ) = pool.getUserAccountData(address(this));
+        uint256 ltWad = ltBps * 1e14; // bps → WAD
+        // degenerate (no debt / LT ≥ target HF) or already at/above target
+        if (debt8 == 0 || targetHf <= ltWad) revert HealthyEnough();
+        if (hf >= targetHf) revert HealthyEnough();
+        uint256 x8 = (targetHf * debt8 - ltWad * coll8) / (targetHf - ltWad);
+        uint256 x18 = x8 * 1e10;
+        if (x18 == 0 || x18 <= deleverDebtTarget) revert HealthyEnough();
+        deleverDebtTarget = x18; // re-derive, don't accumulate
         emit DeLevered(hf, healthFactor());
     }
 
@@ -567,5 +631,10 @@ contract SubLoop is
     // recipient of harvested surplus PRIME; set by ADMIN post-upgrade.
     address public harvester;
 
-    uint256[35] private __gap;
+    // ── appended storage (deLever upgrade) — keep last ──
+    /// @notice Outstanding safety de-lever debt repay (HOLLAR 18dp). Set by
+    ///         deLever, drained by pokeRepay ahead of the proportional split.
+    uint256 public deleverDebtTarget;
+
+    uint256[34] private __gap;
 }

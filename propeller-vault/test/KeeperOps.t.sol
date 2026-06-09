@@ -6,18 +6,20 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {CollateralVault} from "../src/CollateralVault.sol";
 import {SubLoop} from "../src/SubLoop.sol";
 import {SyntheticToken} from "../src/SyntheticToken.sol";
+import {DcaDispatch} from "../src/lib/DcaDispatch.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPool} from "./mocks/MockPool.sol";
-import {MockDcaScheduler} from "./mocks/MockDcaScheduler.sol";
+import {MockDispatch} from "./mocks/MockDispatch.sol";
 
-/// @notice Keeper ops: rebalance (re-lever as collateral appreciates) and
+/// @notice Keeper ops: rebalance (re-lever as collateral appreciates, de-lever
+///         on a drop — always toward the reserve's max LTV, read live) and
 ///         maintainPeg (re-top synthetic as Main debt accrues interest).
 contract KeeperOpsTest is Test {
     MockERC20 eth; MockERC20 aEth; MockERC20 ethDebt;
     MockERC20 hollar; MockERC20 aHollar; MockERC20 hollarDebt;
     MockERC20 prime; MockERC20 aPrime; MockERC20 primeDebt;
     MockERC20 aSynth; MockERC20 synthDebt;
-    MockPool pool; MockDcaScheduler dca; SyntheticToken synth;
+    MockPool pool; SyntheticToken synth;
     SubLoop loop; CollateralVault vault;
 
     uint16 constant SYNTH_LT = 9800;
@@ -33,13 +35,19 @@ contract KeeperOpsTest is Test {
         pool.initReserve(address(eth), address(aEth), address(ethDebt), 8500, 7500, 18, 3_000e18);
         pool.initReserve(address(hollar), address(aHollar), address(hollarDebt), 0, 0, 18, 1e18);
         pool.initReserve(address(prime), address(aPrime), address(primeDebt), 8800, 8500, 6, 1e18);
-        pool.initReserve(address(synth), address(aSynth), address(synthDebt), SYNTH_LT, 0, 18, 1e18);
+        // synth: small non-zero LTV so it can be enabled as collateral
+        pool.initReserve(address(synth), address(aSynth), address(synthDebt), SYNTH_LT, 100, 18, 1e18);
 
-        dca = new MockDcaScheduler(address(pool), address(hollar), address(prime));
         loop = SubLoop(address(new ERC1967Proxy(address(new SubLoop()), abi.encodeCall(SubLoop.initialize,
-            (address(pool),address(dca),address(hollar),address(prime),address(aPrime),address(hollarDebt),0.88e18,1.05e18,1.10e18,address(this))))));
+            (address(pool),address(0),address(hollar),address(prime),address(aPrime),address(hollarDebt),0.88e18,1.05e18,1.10e18,address(this))))));
         vault = CollateralVault(address(new ERC1967Proxy(address(new CollateralVault()), abi.encodeCall(CollateralVault.initialize,
-            ("Propeller ETH","pETH",address(eth),address(pool),address(loop),address(0),address(hollar),address(synth),address(aEth),address(hollarDebt),7400,SYNTH_LT,1_000e18,address(this))))));
+            ("Propeller ETH","pETH",address(eth),address(pool),address(loop),address(0),address(hollar),address(synth),address(aEth),address(hollarDebt),SYNTH_LT,1_000e18,address(this))))));
+
+        vm.etch(DcaDispatch.DISPATCH, address(new MockDispatch()).code);
+        MockDispatch(payable(DcaDispatch.DISPATCH)).configure(
+            address(pool), address(hollar), address(prime), 222, 1043
+        );
+        loop.configureDca(222, 43, 1043, 143, 0, 10_000);
 
         synth.grantRole(synth.MINTER_ROLE(), address(vault));
         loop.registerVault(address(vault));
@@ -53,39 +61,32 @@ contract KeeperOpsTest is Test {
 
     function _ramp() internal {
         for (uint256 i = 0; i < 40; i++) {
-            uint256 oid = loop.deployOrderId();
-            if (dca.remaining(oid) > 0) dca.executeDeployFully(oid);
             loop.pokeBorrow();
         }
-        if (dca.remaining(loop.deployOrderId()) > 0) dca.executeDeployFully(loop.deployOrderId());
     }
 
     function test_rebalanceDownOnDrop() public {
         _ramp();
-        uint256 debtBefore = hollarDebt.balanceOf(address(vault)); // ~2220
+        uint256 debtBefore = hollarDebt.balanceOf(address(vault)); // ~2250 (75% of $3000)
         uint256 loopBefore = vault.loopShares();
 
-        // ETH −50% → LTV blows past the band → de-lever to target
+        // ETH −50% → LTV blows past the band → de-lever to the max LTV
         pool.setPrice(address(eth), 1_500e18);
         vault.rebalance();
         assertGt(vault.deleverTarget(), 0, "de-lever scheduled");
         assertLt(vault.loopShares(), loopBefore, "loop slice queued to unwind");
 
         // run the unwind spiral, then settle the de-lever repay
-        uint256 uid = loop.unwindOrderId();
         for (uint256 i = 0; i < 400; i++) {
-            if (dca.remaining(uid) == 0) break; // de-lever slice fully unwound
-            if (aPrime.balanceOf(address(loop)) == 0) break;
-            if (pool.maxWithdrawable(address(loop), address(prime)) == 0) break;
-            dca.executeUnwind(uid);
+            if (loop.unwindTargetEquity() == 0) break;
             loop.pokeRepay();
         }
         vault.pokeSettle();
 
-        // Main debt repaid toward target (ethValue 1500 × 74% ≈ 1110)
+        // Main debt repaid toward the max LTV (ethValue 1500 × 75% = 1125)
         uint256 debtAfter = hollarDebt.balanceOf(address(vault));
         assertLt(debtAfter, debtBefore, "debt reduced");
-        assertApproxEqRel(debtAfter, 1_110e18, 0.05e18, "debt ~ target LTV after de-lever");
+        assertApproxEqRel(debtAfter, 1_125e18, 0.05e18, "debt ~ max LTV after de-lever");
         // INV-1 still holds
         assertGe(aSynth.balanceOf(address(vault)) * SYNTH_LT / 1e4, debtAfter, "synth still covers debt");
     }
@@ -102,6 +103,22 @@ contract KeeperOpsTest is Test {
         assertGt(vault.loopShares(), loopBefore, "extra deployed into loop");
         // INV-1 preserved: synth still floors Main debt
         assertGe(aSynth.balanceOf(address(vault)) * SYNTH_LT / 1e4, hollarDebt.balanceOf(address(vault)), "synth still covers debt");
+    }
+
+    function test_rebalanceFollowsGovernanceLtvChange() public {
+        // governance raises the ETH reserve max LTV 75% → 80%: the vault
+        // auto-follows (no stored target, no admin call) on the next rebalance.
+        // (small price drift so the 500bps hysteresis band is cleanly crossed:
+        // ltv = 2250/3030 ≈ 74.3%, band low = 80% − 5% = 75%)
+        uint256 debtBefore = hollarDebt.balanceOf(address(vault)); // 2250 @ 75%
+        pool.setLtv(address(eth), 8000);
+        pool.setPrice(address(eth), 3_030e18);
+        vault.rebalance();
+        // target debt = 80% × $3030 = $2424
+        assertApproxEqRel(
+            hollarDebt.balanceOf(address(vault)), 2_424e18, 0.01e18, "debt re-levered to the new 80% max"
+        );
+        assertGt(hollarDebt.balanceOf(address(vault)), debtBefore, "borrowed the LTV delta");
     }
 
     function test_maintainPegOnInterestAccrual() public {

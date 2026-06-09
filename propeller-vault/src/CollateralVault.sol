@@ -66,9 +66,15 @@ contract CollateralVault is
     IERC20 public hollarDebtToken; // Aave variable-debt token for HOLLAR (Main debt)
 
     // ── policy params (→ governance / pallet-parameters analogue) ───────────
-    uint16 public targetLtvBps; // e.g. 7400 for ETH (a touch under the 7500 max)
-    uint16 public ltvBandLowBps; // rebalance up when LTV drifts below
-    uint16 public ltvBandHighBps; // rebalance down when LTV drifts above
+    // target LTV is NOT stored: the vault always runs at the reserve's max LTV,
+    // read live off the pool (bits 0-15 of the configuration bitmap). There is
+    // no reason to run below it — the synthetic floor, not the LTV, is the
+    // liquidation guard — and a stored copy drifts from governance changes.
+    /// @dev rebalance hysteresis around the reserve max LTV: re-lever up when
+    ///      utilization drifts this far below it, de-lever when this far above
+    ///      (only a collateral price drop can push LTV past the max).
+    uint16 internal constant LTV_BAND_LOW_GAP_BPS = 500;
+    uint16 internal constant LTV_BAND_HIGH_GAP_BPS = 300;
     uint16 public synthLtBps; // synthetic reserve's liquidation threshold (e.g. 9800)
     uint256 public tvlCap; // deposit-side cap (collateral units)
     bool public depositsPaused;
@@ -139,7 +145,6 @@ contract CollateralVault is
         address _synthetic,
         address _collateralAToken,
         address _hollarDebtToken,
-        uint16 _targetLtvBps,
         uint16 _synthLtBps,
         uint256 _tvlCap,
         address _admin
@@ -161,9 +166,6 @@ contract CollateralVault is
         collateralAToken = IERC20(_collateralAToken);
         hollarDebtToken = IERC20(_hollarDebtToken);
 
-        targetLtvBps = _targetLtvBps;
-        ltvBandLowBps = _targetLtvBps > 500 ? _targetLtvBps - 500 : 0;
-        ltvBandHighBps = _targetLtvBps + 300;
         synthLtBps = _synthLtBps;
         tvlCap = _tvlCap;
 
@@ -243,28 +245,24 @@ contract CollateralVault is
         collateral.forceApprove(address(pool), assets);
         pool.supply(address(collateral), assets, address(this), 0);
 
-        // 2. Borrow HOLLAR at target LTV against the collateral JUST supplied —
-        //    the DELTA in account collateral value, not the total. Sizing off the
-        //    total over-borrows on incremental deposits (the existing position,
-        //    incl. the LTV-0 synthetic, inflates collBase8) → Aave error 36
-        //    COLLATERAL_CANNOT_COVER_NEW_BORROW. (collateral USD 8dp → HOLLAR 18dp @ $1.)
+        // 2. Borrow HOLLAR at the reserve's max LTV against the collateral JUST
+        //    supplied — the DELTA in account collateral value, not the total.
+        //    Sizing off the total over-borrows on incremental deposits (the
+        //    existing position, incl. the synthetic, inflates collBase8) →
+        //    Aave error 36 COLLATERAL_CANNOT_COVER_NEW_BORROW.
+        //    (collateral USD 8dp → HOLLAR 18dp @ $1.)
         (uint256 collAfter8, , , , , ) = pool.getUserAccountData(address(this));
-        uint256 borrowHollar = ((collAfter8 - collBefore8) * targetLtvBps) / BPS * 1e10;
+        uint256 borrowHollar = ((collAfter8 - collBefore8) * _maxLtvBps()) / BPS * 1e10;
 
         pool.borrow(address(hollar), borrowHollar, VARIABLE_RATE, 0, address(this));
 
         // 3. Mint synthetic sized so synth·LT > debt — floors the Main HF
         //    strictly ABOVE 1 from the synthetic *alone*, so the principal is
         //    un-liquidatable at any collateral price (the +0.5% buffer keeps it
-        //    clear of the boundary through rounding/8dp-base truncation). LTV 0
-        //    ⇒ the synthetic adds no borrow power.
+        //    clear of the boundary through rounding/8dp-base truncation).
         uint256 synthAmt = (borrowHollar * BPS + synthLtBps - 1) / synthLtBps;
         synthAmt += synthAmt / 200; // +0.5% buffer
-        syntheticSupplied += synthAmt;
-        synthetic.mint(address(this), synthAmt);
-        IERC20(address(synthetic)).forceApprove(address(pool), 0);
-        IERC20(address(synthetic)).forceApprove(address(pool), synthAmt);
-        pool.supply(address(synthetic), synthAmt, address(this), 0);
+        _supplySynth(synthAmt);
 
         // 4. Route the borrowed HOLLAR into the shared loop.
         hollar.forceApprove(address(subLoop), 0);
@@ -443,13 +441,15 @@ contract CollateralVault is
         return (amountIn * pIn * (10 ** dColl)) / (pColl * (10 ** dIn));
     }
 
-    /// @notice Rebalance the Main position back into the target-LTV band after a
+    /// @notice Rebalance the Main position back to the reserve's max LTV after a
     ///         collateral price move: borrow more (price up) or repay (price down),
     ///         growing/shrinking the loop and the synthetic in lockstep.
     function rebalance() external nonReentrant whenNotPaused {
         // Isolate the collateral leg's LTV: collBase8 = ETH value + synth value,
         // and synth value = syntheticSupplied (both $1), so ETH value backs out
-        // without a separate oracle ref.
+        // without a separate oracle ref. (Requires the synth to actually count
+        // as collateral — i.e. a reserve LTV > 0 and the use-as-collateral flag
+        // on; _supplySynth enforces the flag.)
         (uint256 collBase8, uint256 debtBase8, , , , ) = pool.getUserAccountData(address(this));
         uint256 synthValue8 = syntheticSupplied / 1e10;
         uint256 ethValue8 = collBase8 > synthValue8 ? collBase8 - synthValue8 : 0;
@@ -458,11 +458,12 @@ contract CollateralVault is
             return;
         }
         uint256 ltvBefore = (debtBase8 * BPS) / ethValue8;
+        uint256 maxLtv = _maxLtvBps();
 
-        if (ltvBefore < ltvBandLowBps) {
-            // Collateral appreciated → borrow up to target and deploy the slack,
+        if (ltvBefore + LTV_BAND_LOW_GAP_BPS < maxLtv) {
+            // Collateral appreciated → borrow up to the max and deploy the slack,
             // so the yield notional tracks the collateral value.
-            uint256 targetDebt8 = (ethValue8 * targetLtvBps) / BPS;
+            uint256 targetDebt8 = (ethValue8 * maxLtv) / BPS;
             uint256 addHollar = (targetDebt8 - debtBase8) * 1e10;
             if (addHollar == 0) {
                 emit Rebalanced(ltvBefore, ltvBefore);
@@ -472,22 +473,18 @@ contract CollateralVault is
 
             uint256 addSynth = (addHollar * BPS + synthLtBps - 1) / synthLtBps;
             addSynth += addSynth / 200;
-            syntheticSupplied += addSynth;
-            synthetic.mint(address(this), addSynth);
-            IERC20(address(synthetic)).forceApprove(address(pool), 0);
-            IERC20(address(synthetic)).forceApprove(address(pool), addSynth);
-            pool.supply(address(synthetic), addSynth, address(this), 0);
+            _supplySynth(addSynth);
 
             hollar.forceApprove(address(subLoop), 0);
             hollar.forceApprove(address(subLoop), addHollar);
             loopShares += subLoop.deposit(addHollar);
-        } else if (ltvBefore > ltvBandHighBps) {
+        } else if (ltvBefore > maxLtv + LTV_BAND_HIGH_GAP_BPS) {
             // Collateral fell → over-levered on the real ETH. De-lever: unwind the
             // loop slice that frees the excess debt's worth of equity; `pokeSettle`
             // repays Main debt + burns synth from it (ahead of the redeem queue).
             // NOT safety-critical — the synthetic still floors Main HF ≥ 1; this
             // restores the real-collateral backing ratio (and trims yield-side risk).
-            uint256 targetDebt8 = (ethValue8 * targetLtvBps) / BPS;
+            uint256 targetDebt8 = (ethValue8 * maxLtv) / BPS;
             uint256 repay8 = debtBase8 - targetDebt8;
             uint256 loopEq8 = subLoop.equityOf(address(this));
             uint256 sliceShares = loopEq8 == 0 ? 0 : (loopShares * repay8) / loopEq8;
@@ -514,12 +511,32 @@ contract CollateralVault is
             return;
         }
         uint256 add = required - syntheticSupplied;
-        syntheticSupplied += add;
-        synthetic.mint(address(this), add);
-        IERC20(address(synthetic)).forceApprove(address(pool), 0);
-        IERC20(address(synthetic)).forceApprove(address(pool), add);
-        pool.supply(address(synthetic), add, address(this), 0);
+        _supplySynth(add);
         emit SyntheticPegMaintained(int256(add));
+    }
+
+    /// @dev Mint + supply `amt` synthetic and make sure it COUNTS: Aave only
+    ///      auto-enables an asset as collateral on the very first supply (and
+    ///      only when its reserve LTV > 0), so without the explicit enable the
+    ///      synth sits outside totalCollateralBase and the HF floor is inert.
+    ///      try/catch tolerates an LTV-0 listing (Aave reverts the enable) so
+    ///      deposits aren't bricked by a misconfigured reserve — the INV-1
+    ///      storage guard still holds, the on-chain floor just waits for the
+    ///      governance LTV fix.
+    function _supplySynth(uint256 amt) internal {
+        syntheticSupplied += amt;
+        synthetic.mint(address(this), amt);
+        IERC20(address(synthetic)).forceApprove(address(pool), 0);
+        IERC20(address(synthetic)).forceApprove(address(pool), amt);
+        pool.supply(address(synthetic), amt, address(this), 0);
+        try pool.setUserUseReserveAsCollateral(address(synthetic), true) {} catch {}
+    }
+
+    /// @dev The collateral reserve's max LTV (bps) — bits 0-15 of the Aave
+    ///      reserve configuration bitmap. Read live so the vault auto-follows
+    ///      any governance change; never stored.
+    function _maxLtvBps() internal view returns (uint256) {
+        return pool.getConfiguration(address(collateral)) & 0xFFFF;
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -535,12 +552,6 @@ contract CollateralVault is
         uint256 totalA = totalAssets();
         shares = totalA == 0 ? assets : (assets * supply) / totalA;
         if (shares == 0) revert DepositTooSmall();
-    }
-
-    function setLtvBand(uint16 target, uint16 low, uint16 high) external onlyRole(ADMIN_ROLE) {
-        targetLtvBps = target;
-        ltvBandLowBps = low;
-        ltvBandHighBps = high;
     }
 
     function setTvlCap(uint256 newCap) external onlyRole(ADMIN_ROLE) {

@@ -8,7 +8,8 @@ import {SubLoop} from "../src/SubLoop.sol";
 import {SyntheticToken} from "../src/SyntheticToken.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPool} from "./mocks/MockPool.sol";
-import {MockDcaScheduler} from "./mocks/MockDcaScheduler.sol";
+import {DcaDispatch} from "../src/lib/DcaDispatch.sol";
+import {MockDispatch} from "./mocks/MockDispatch.sol";
 
 /// @notice CollateralVault Main-leg + the synthetic-flooring property: after a
 ///         deposit opens the Main position (supply ETH, borrow HOLLAR, mint+
@@ -29,7 +30,6 @@ contract CollateralVaultDepositTest is Test {
     MockERC20 synthDebt;
 
     MockPool pool;
-    MockDcaScheduler dca;
     SyntheticToken synth;
     SubLoop loop;
     CollateralVault vault;
@@ -38,7 +38,6 @@ contract CollateralVaultDepositTest is Test {
     uint16 constant ETH_LT = 8500;
     uint16 constant ETH_LTV = 7500;
     uint16 constant SYNTH_LT = 9800;
-    uint16 constant TARGET_LTV = 7400;
 
     function setUp() public {
         eth = new MockERC20("ETH", "ETH", 18);
@@ -58,9 +57,8 @@ contract CollateralVaultDepositTest is Test {
         pool.initReserve(address(eth), address(aEth), address(ethDebt), ETH_LT, ETH_LTV, 18, ETH_PRICE);
         pool.initReserve(address(hollar), address(aHollar), address(hollarDebt), 0, 0, 18, 1e18);
         pool.initReserve(address(prime), address(aPrime), address(primeDebt), 8800, 8500, 6, 1e18);
-        pool.initReserve(address(synth), address(aSynth), address(synthDebt), SYNTH_LT, 0, 18, 1e18);
-
-        dca = new MockDcaScheduler(address(pool), address(hollar), address(prime));
+        // synth: small non-zero LTV so it can be enabled as collateral
+        pool.initReserve(address(synth), address(aSynth), address(synthDebt), SYNTH_LT, 100, 18, 1e18);
 
         // SubLoop
         SubLoop loopImpl = new SubLoop();
@@ -72,7 +70,7 @@ contract CollateralVaultDepositTest is Test {
                         SubLoop.initialize,
                         (
                             address(pool),
-                            address(dca),
+                            address(0),
                             address(hollar),
                             address(prime),
                             address(aPrime),
@@ -106,7 +104,6 @@ contract CollateralVaultDepositTest is Test {
                             address(synth),
                             address(aEth),
                             address(hollarDebt),
-                            TARGET_LTV,
                             SYNTH_LT,
                             1_000e18,
                             address(this)
@@ -117,6 +114,12 @@ contract CollateralVaultDepositTest is Test {
         );
 
         // wiring
+        vm.etch(DcaDispatch.DISPATCH, address(new MockDispatch()).code);
+        MockDispatch(payable(DcaDispatch.DISPATCH)).configure(
+            address(pool), address(hollar), address(prime), 222, 1043
+        );
+        loop.configureDca(222, 43, 1043, 143, 0, 10_000);
+
         synth.grantRole(synth.MINTER_ROLE(), address(vault));
         loop.registerVault(address(vault));
     }
@@ -129,7 +132,7 @@ contract CollateralVaultDepositTest is Test {
         // Main legs opened
         assertEq(aEth.balanceOf(address(vault)), 1e18, "ETH supplied");
         uint256 debt = hollarDebt.balanceOf(address(vault));
-        assertApproxEqRel(debt, 2_220e18, 0.01e18, "borrowed ~ 74% of $3000"); // $2220
+        assertApproxEqRel(debt, 2_250e18, 0.01e18, "borrowed at the 75% reserve max"); // $2250
         // synth sized so synth*LT >= debt (+0.5% buffer) ⇒ synth ≈ debt/0.98
         uint256 synthBal = aSynth.balanceOf(address(vault));
         uint256 synthLtValue = (synthBal * SYNTH_LT) / 1e4;
