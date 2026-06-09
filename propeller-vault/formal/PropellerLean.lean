@@ -6,6 +6,7 @@ import PropellerLean.Spec.Ops
 import PropellerLean.Spec.Preservation
 import PropellerLean.Spec.Redemption
 import PropellerLean.Spec.SubLoop
+import PropellerLean.Spec.SubLoopShares
 import PropellerLean.Spec.Aggregate
 import PropellerLean.Spec.Examples
 import PropellerLean.FixedPoint.Uint256
