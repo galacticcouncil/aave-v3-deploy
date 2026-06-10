@@ -348,4 +348,22 @@ theorem creditFreed2_no_over_credit (s : ContractState) (v1 v2 : Address) (freed
   exact (add_coe_le _ _).trans
     (Nat.add_le_add_left (creditFreed2_credited_le freed _ _ _ hmatch hT hov1 hov2) _)
 
+/-- **Bug G on the bytecode arithmetic:** weighting by raw `requested` (not `rem = requested − freed`)
+over-credits. With the contract's real `mulDivDown`, crediting the full outstanding `target`
+(`freed = target`) distributes `req₁+req₂ = freed + Σ freedHollar` — strictly **more** than `freed`
+once any equity is credited-but-unpulled (`Σ freedHollar > 0`). That surplus is what made
+`reservedFreed` overstate the balance and pulls revert. (Arithmetic-level — we don't ship a buggy
+entrypoint; this uses the exact EVM floored op the contract runs.) -/
+theorem creditFreed2Buggy_over_credits (freed req1 req2 fr1 fr2 target : Uint256)
+    (hreq1 : (fr1 : Nat) ≤ (req1 : Nat)) (hreq2 : (fr2 : Nat) ≤ (req2 : Nat))
+    (hmatch : ((req1 : Nat) - (fr1 : Nat)) + ((req2 : Nat) - (fr2 : Nat)) = (target : Nat))
+    (hfreed : (freed : Nat) = (target : Nat)) (hT : 0 < (target : Nat))
+    (hpos : 0 < (fr1 : Nat) + (fr2 : Nat))
+    (hov1 : (freed : Nat) * (req1 : Nat) ≤ MAX_UINT256)
+    (hov2 : (freed : Nat) * (req2 : Nat) ≤ MAX_UINT256) :
+    (freed : Nat) < (mulDivDown freed req1 target : Nat) + (mulDivDown freed req2 target : Nat) := by
+  rw [mulDivDown_nat_eq freed req1 target hov1, mulDivDown_nat_eq freed req2 target hov2,
+    if_neg hT.ne', if_neg hT.ne', hfreed, Nat.mul_div_cancel_left _ hT, Nat.mul_div_cancel_left _ hT]
+  omega
+
 end Contracts.SubLoop.Proofs
