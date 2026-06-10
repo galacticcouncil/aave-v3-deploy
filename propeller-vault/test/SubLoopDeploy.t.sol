@@ -46,12 +46,9 @@ contract SubLoopDeployTest is Test {
             SubLoop.initialize,
             (
                 address(pool),
-                address(0), // dca seam unused: inline DcaDispatch
                 address(hollar),
                 address(prime),
                 address(aPrime),
-                address(hollarDebt),
-                0.88e18, // PRIME LT
                 TARGET_HF,
                 1.10e18, // de-lever trigger
                 address(this) // admin
@@ -64,7 +61,7 @@ contract SubLoopDeployTest is Test {
         MockDispatch(payable(DcaDispatch.DISPATCH)).configure(
             address(pool), address(hollar), address(prime), 222, 1043
         );
-        loop.configureDca(222, 43, 1043, 143, 0, 10_000); // 1% slippage
+        loop.configureDca(222, 43, 1043, 143, 10_000); // 1% slippage
 
         // roles + params (test is admin)
         loop.registerVault(address(this)); // VAULT_ROLE

@@ -32,8 +32,7 @@ import {ISyntheticToken} from "./interfaces/ISyntheticToken.sol";
 ///         HOLLAR, burn synthetic, withdraw collateral). A target-LTV band keeps
 ///         the loop sized to the collateral value as price moves.
 ///
-///         Patterned on HDCLVault. STATUS: structured skeleton — the Aave call
-///         sequences and loop wiring are marked TODO(impl).
+///         Patterned on HDCLVault.
 contract CollateralVault is
     ERC20Upgradeable,
     AccessControlUpgradeable,
@@ -76,6 +75,9 @@ contract CollateralVault is
     uint16 internal constant LTV_BAND_LOW_GAP_BPS = 500;
     uint16 internal constant LTV_BAND_HIGH_GAP_BPS = 300;
     uint16 public synthLtBps; // synthetic reserve's liquidation threshold (e.g. 9800)
+    /// @notice Max slippage (bps) permissionless `compound` tolerates vs the
+    ///         oracle-fair output. Default 0 ⇒ fails closed until set.
+    uint16 public compoundSlippageBps;
     uint256 public tvlCap; // deposit-side cap (collateral units)
     bool public depositsPaused;
 
@@ -232,9 +234,11 @@ contract CollateralVault is
         if (receiver == address(0)) revert ZeroAddress();
         if (depositsPaused) revert DepositsArePaused();
         if (assets == 0) revert ZeroAmount();
-        if (totalAssets() + assets > tvlCap) revert ExceedsTvlCap();
+        // one aToken balanceOf for both the cap check and share pricing
+        uint256 totalA = totalAssets();
+        if (totalA + assets > tvlCap) revert ExceedsTvlCap();
 
-        shares = _previewShares(assets); // from pre-deposit totalAssets
+        shares = _previewShares(assets, totalA); // from pre-deposit totalAssets
         if (totalSupply() == 0) _mint(DEAD_ADDRESS, DEAD_SHARES);
         _mint(receiver, shares);
 
@@ -543,13 +547,12 @@ contract CollateralVault is
     //                         INTERNAL / ADMIN
     // ══════════════════════════════════════════════════════════════════════
 
-    function _previewShares(uint256 assets) internal view returns (uint256 shares) {
+    function _previewShares(uint256 assets, uint256 totalA) internal view returns (uint256 shares) {
         uint256 supply = totalSupply();
         if (supply == 0) {
             if (assets <= DEAD_SHARES) revert DepositTooSmall();
             return assets - DEAD_SHARES;
         }
-        uint256 totalA = totalAssets();
         shares = totalA == 0 ? assets : (assets * supply) / totalA;
         if (shares == 0) revert DepositTooSmall();
     }
@@ -583,9 +586,5 @@ contract CollateralVault is
 
     function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
 
-    // ── appended storage (permissionless-compound upgrade) — keep last ──
-    // max slippage (bps) vs oracle-fair output for compound; set by ADMIN.
-    uint256 public compoundSlippageBps;
-
-    uint256[38] private __gap;
+    uint256[40] private __gap;
 }

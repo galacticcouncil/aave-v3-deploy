@@ -39,7 +39,7 @@ contract KeeperOpsTest is Test {
         pool.initReserve(address(synth), address(aSynth), address(synthDebt), SYNTH_LT, 100, 18, 1e18);
 
         loop = SubLoop(address(new ERC1967Proxy(address(new SubLoop()), abi.encodeCall(SubLoop.initialize,
-            (address(pool),address(0),address(hollar),address(prime),address(aPrime),address(hollarDebt),0.88e18,1.05e18,1.10e18,address(this))))));
+            (address(pool),address(hollar),address(prime),address(aPrime),1.05e18,1.10e18,address(this))))));
         vault = CollateralVault(address(new ERC1967Proxy(address(new CollateralVault()), abi.encodeCall(CollateralVault.initialize,
             ("Propeller ETH","pETH",address(eth),address(pool),address(loop),address(0),address(hollar),address(synth),address(aEth),address(hollarDebt),SYNTH_LT,1_000e18,address(this))))));
 
@@ -47,7 +47,7 @@ contract KeeperOpsTest is Test {
         MockDispatch(payable(DcaDispatch.DISPATCH)).configure(
             address(pool), address(hollar), address(prime), 222, 1043
         );
-        loop.configureDca(222, 43, 1043, 143, 0, 10_000);
+        loop.configureDca(222, 43, 1043, 143, 10_000);
 
         synth.grantRole(synth.MINTER_ROLE(), address(vault));
         loop.registerVault(address(vault));

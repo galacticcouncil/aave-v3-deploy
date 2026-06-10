@@ -70,12 +70,9 @@ contract CollateralVaultDepositTest is Test {
                         SubLoop.initialize,
                         (
                             address(pool),
-                            address(0),
                             address(hollar),
                             address(prime),
                             address(aPrime),
-                            address(hollarDebt),
-                            0.88e18,
                             1.05e18,
                             1.10e18,
                             address(this)
@@ -118,7 +115,7 @@ contract CollateralVaultDepositTest is Test {
         MockDispatch(payable(DcaDispatch.DISPATCH)).configure(
             address(pool), address(hollar), address(prime), 222, 1043
         );
-        loop.configureDca(222, 43, 1043, 143, 0, 10_000);
+        loop.configureDca(222, 43, 1043, 143, 10_000);
 
         synth.grantRole(synth.MINTER_ROLE(), address(vault));
         loop.registerVault(address(vault));

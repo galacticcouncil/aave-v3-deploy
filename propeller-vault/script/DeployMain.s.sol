@@ -26,7 +26,6 @@ contract DeployMain is Script {
     address constant APRIME = 0x4C892a298A9C6b4cEd988b3D6E9CF93333aADcF7;
     address constant GOV = 0xAa7e0000000000000000000000000000000Aa7e0;
 
-    uint256 constant PRIME_LIQ_THRESHOLD = 0.88e18;
     uint256 constant TARGET_HF = 1.05e18;
     uint256 constant DELEVER_TRIGGER = 1.10e18;
     uint16 constant SYNTH_LT_BPS = 9800;
@@ -41,7 +40,7 @@ contract DeployMain is Script {
         SubLoop loopImpl = new SubLoop();
         bytes memory loopInit = abi.encodeCall(
             SubLoop.initialize,
-            (POOL, address(0), HOLLAR, PRIME, APRIME, HOLLAR_VDEBT, PRIME_LIQ_THRESHOLD, TARGET_HF, DELEVER_TRIGGER, GOV)
+            (POOL, HOLLAR, PRIME, APRIME, TARGET_HF, DELEVER_TRIGGER, GOV)
         );
         SubLoop subLoop = SubLoop(address(new ERC1967Proxy(address(loopImpl), loopInit)));
 

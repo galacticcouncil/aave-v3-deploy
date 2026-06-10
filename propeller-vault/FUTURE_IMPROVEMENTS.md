@@ -2,9 +2,12 @@
 
 Backlog + status for the contract-audit remedies (2026-06-09 audit, implemented
 2026-06-10 on this branch). The contracts here are **fresh-deploy source** —
-CollateralVault dropped storage slots (no UUPS compat with the live lark-2
-proxies); SubLoop stayed **append-only** so the live loop can be upgraded to
-pick up the A/C/E/G fixes + deLever.
+both contracts dropped/reorganized storage (no UUPS compat with the live lark-2
+proxies; superseded by the fresh-redeploy decision). Dead code removed
+2026-06-10: the unused IDcaScheduler seam, write-only vars
+(pendingDeployHollar, deployOrderId, unwindHfFloor, primeLiqThreshold,
+SubLoop.hollarDebtToken, dcaPeriod), setDcaScheduler, MockDcaScheduler;
+SubLoop.initialize is 7 args, configureDca 5.
 
 ## Implemented (this branch, suite green)
 
@@ -22,8 +25,8 @@ pick up the A/C/E/G fixes + deLever.
   `Harvest.t.sol::test_primePriceAppreciationCompoundsToDeposit` (+6% PRIME →
   compounds ~27.8% onto a 1 ETH deposit, HF stays at target).
 - **D [MEDIUM] deLever stub** — implemented: sizes
-  `x = (targetHf·debt − lt·coll)/(targetHf − lt)` into `deleverDebtTarget`
-  (appended storage, slot 379); `pokeRepay` runs the spiral while it's open and
+  `x = (targetHf·debt − lt·coll)/(targetHf − lt)` into `deleverDebtTarget`;
+  `pokeRepay` runs the spiral while it's open and
   repays loop debt with the FULL proceeds (no payout) before the proportional
   split. Regression: `SubLoopUnwind.t.sol::test_deLeverRestoresTargetHf`.
 - **E [LOW] `_unwinders` unbounded** — `pullFreed` swap-removes a finished
@@ -53,20 +56,15 @@ pick up the A/C/E/G fixes + deLever.
   pallet-evm-accounts::truncated_account_id is `b"ETH\0" ++ addr ++ 8×00`
   (hydration-node lib.rs:553) — the library was right, the reference wasn't.
 
-## Open — lark-2 (live testnet) remediation
+## Open — lark-2
 
-1. **Run the interim referendum**: `scripts/propeller-synth-ltv-lark.mjs --live`
-   (synth reserve LTV 0 → 100 bps; one Root call). NOT retroactive — see next.
-2. **Live positions don't retro-enable**: the two vaults supplied synth under
-   LTV 0, so the bump engages only on their NEXT synth supply. Live vaults run
-   the OLD impl (no `_supplySynth` enable) → either upgrade the vault impl
-   (storage-compatible variant of the enable only) or redeploy fresh. The
-   manufactured `deleverTarget`/unwind backlog on the tBTC vault also needs
-   draining (pokeSettle after the spiral) or a redeploy.
-3. **Upgrade the live SubLoop** (append-only ✓) to pick up A/C/E/G + deLever.
-4. **Looper mitigation until then**: gate `harvest()` calls on
-   `unwindTargetEquity() == 0` — any harvest during an open redemption leaks
-   (A), and B keeps redemptions open. (Or just pause the looper's harvest leg.)
+**Fresh redeploy** from this branch (decision 2026-06-10) — supersedes the live
+remediation path (no referendum / no upgrades of the old proxies; the old
+positions are abandoned with the old deployment). After deploy: registerVault ×2,
+setHarvester, setTranches, configureDca, setCompoundSlippageBps,
+harvester.addVault ×2; repoint looper `VAULT_ADDRESSES` + UI `vaults.ts`.
+`scripts/propeller-synth-ltv-lark.mjs` stays useful only if the OLD deployment
+must be revived.
 
 ## Open — product / deploy
 
@@ -81,8 +79,6 @@ pick up the A/C/E/G fixes + deLever.
   snapshots `debtShare`/`collateralOwed`/`synthShare`; Main HOLLAR debt accrued
   between request and settle stays as Main debt (covered by `maintainPeg` on
   the synth side). Small — flag for the auditor.
-- `Deploy.s.sol` post-deploy console notes still mention KEEPER_ROLE grants
-  (removed) — cosmetic.
 
 ### Dismissed (false positives)
 SubLoop first-depositor share inflation (deposit is VAULT_ROLE-gated; idle-token

@@ -21,7 +21,6 @@ contract Deploy is Script {
     address constant PRIME = 0x000000000000000000000000000000010000002B; // asset 43
     address constant ETH = 0x0000000000000000000000000000000100000022; // asset 34
 
-    uint256 constant PRIME_LIQ_THRESHOLD = 0.88e18;
     uint256 constant TARGET_HF = 1.05e18;
     uint256 constant DELEVER_TRIGGER = 1.10e18;
     uint16 constant SYNTH_LT_BPS = 9800; // synthetic reserve liquidation threshold
@@ -30,7 +29,6 @@ contract Deploy is Script {
     function run() external {
         address admin = vm.envAddress("ADMIN_ADDRESS");
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
-        address dca = vm.envAddress("DCA_SCHEDULER"); // REQ-DCA (pallet-DCA dispatch adapter)
         address swapper = vm.envAddress("SWAPPER_ADDRESS"); // REQ-SWAP (vault harvest swaps)
         address primeAToken = vm.envAddress("PRIME_ATOKEN"); // aPRIME, from getReserveData
         address hollarDebtToken = vm.envAddress("HOLLAR_DEBT_TOKEN"); // HOLLAR varDebt, from getReserveData
@@ -47,12 +45,9 @@ contract Deploy is Script {
             SubLoop.initialize,
             (
                 POOL,
-                dca,
                 HOLLAR,
                 PRIME,
                 primeAToken,
-                hollarDebtToken,
-                PRIME_LIQ_THRESHOLD,
                 TARGET_HF,
                 DELEVER_TRIGGER,
                 admin
@@ -94,8 +89,8 @@ contract Deploy is Script {
         console.log("Harvester:", address(harvester));
         console.log("NOTE: post-deploy wiring (governance/admin):");
         console.log(" - synth.grantRole(MINTER_ROLE, ethVault)");
-        console.log(" - subLoop.registerVault(ethVault); subLoop.grantRole(KEEPER_ROLE, harvester)");
-        console.log(" - ethVault.grantRole(KEEPER_ROLE, harvester)");
-        console.log(" - governance: register synth reserve, HOLLAR discount, raise caps");
+        console.log(" - subLoop: registerVault, setHarvester, setTranches, configureDca");
+        console.log(" - ethVault.setCompoundSlippageBps; harvester.addVault");
+        console.log(" - governance: register synth reserve LTV>0, HOLLAR discount, raise caps");
     }
 }

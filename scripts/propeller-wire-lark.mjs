@@ -45,7 +45,7 @@ const abi = new ethers.utils.AbiCoder();
 const wad = (x) => ethers.BigNumber.from(10).pow(18).mul(x).toString();
 const subLoopI = new ethers.utils.Interface([
   "function registerVault(address)", "function setTranches(uint256,uint256)",
-  "function configureDca(uint32,uint32,uint32,uint32,uint32,uint32)", "function setHarvester(address)",
+  "function configureDca(uint32,uint32,uint32,uint32,uint32)", "function setHarvester(address)",
 ]);
 const vaultI = new ethers.utils.Interface(["function setCompoundSlippageBps(uint16)"]);
 const synthI = new ethers.utils.Interface(["function grantRole(bytes32,address)"]);
@@ -165,7 +165,7 @@ async function main() {
       aaveMgr(SYNTH, synthI.encodeFunctionData("grantRole", [MINTER, VAULT]), g),
       aaveMgr(SUBLOOP, subLoopI.encodeFunctionData("registerVault", [VAULT]), g),
       aaveMgr(SUBLOOP, subLoopI.encodeFunctionData("setTranches", [wad(5000), wad(5000)]), g),
-      aaveMgr(SUBLOOP, subLoopI.encodeFunctionData("configureDca", [222, 43, 1043, 143, 10, 10000]), g),
+      aaveMgr(SUBLOOP, subLoopI.encodeFunctionData("configureDca", [222, 43, 1043, 143, 10000]), g),
       // keeperless: pin the harvest payout + set compound slippage (no KEEPER grants)
       aaveMgr(SUBLOOP, subLoopI.encodeFunctionData("setHarvester", [HARVESTER]), g),
       aaveMgr(VAULT, vaultI.encodeFunctionData("setCompoundSlippageBps", [100]), g),

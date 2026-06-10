@@ -6,10 +6,10 @@ pragma solidity ^0.8.22;
 ///         HF target ~1.05). Funded by every CollateralVault's borrowed HOLLAR;
 ///         tracks each vault's equity as internal shares.
 ///
-/// @dev    Deploy and unwind are **gradual and async**, driven by an unbounded
-///         DCA order (HOLLAR↔aPRIME, via IDcaScheduler) plus keeper pokes that
-///         do only the Aave debt legs (borrow on deploy, repay on unwind). No
-///         flash loans. Withdrawals are async: a vault requests an unwind, the
+/// @dev    Deploy and unwind are **gradual and async**, driven by keeper pokes:
+///         each poke does an Aave debt leg (borrow on deploy, repay on unwind)
+///         plus a synchronous HF-capped router sell (HOLLAR↔aPRIME). No flash
+///         loans. Withdrawals are async: a vault requests an unwind, the
 ///         deleveraging spiral frees equity HOLLAR over blocks, the vault pulls
 ///         it as it accrues and settles its own redemption queue.
 interface ISubLoop {

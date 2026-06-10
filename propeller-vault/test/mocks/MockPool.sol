@@ -145,21 +145,6 @@ contract MockPool is IAavePool {
         return amount;
     }
 
-    /// @notice aToken amount of `asset` that `user` can withdraw while keeping
-    ///         HF >= 1.01 (a small buffer above liquidation). Used by the unwind
-    ///         DCA to size each tranche within the HF-safe sliver.
-    function maxWithdrawable(address user, address asset) external view returns (uint256) {
-        Reserve storage r = reserves[asset];
-        uint256 bal = r.aToken.balanceOf(user);
-        (, uint256 collWithLt8, uint256 debt8,) = _account(user);
-        if (debt8 == 0) return bal;
-        uint256 needed = (debt8 * 101) / 100; // HF >= 1.01
-        if (collWithLt8 <= needed) return 0;
-        uint256 vFree8 = ((collWithLt8 - needed) * BPS) / r.ltBps; // base8 value
-        uint256 amt = (vFree8 * 1e10 * (10 ** r.decimals)) / r.priceWad; // → native
-        return amt > bal ? bal : amt;
-    }
-
     function getUserAccountData(address user)
         external
         view

@@ -9,7 +9,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IAavePool, IPoolAddressesProvider, IAaveOracle} from "./interfaces/IAavePool.sol";
-import {IDcaScheduler} from "./interfaces/IDcaScheduler.sol";
 import {ISubLoop} from "./interfaces/ISubLoop.sol";
 import {DcaDispatch} from "./lib/DcaDispatch.sol";
 
@@ -17,26 +16,24 @@ import {DcaDispatch} from "./lib/DcaDispatch.sol";
 /// @notice The single shared leveraged PRIME/HOLLAR loop (Aave isolation mode).
 ///         Deploy and unwind are **gradual and async**:
 ///
-///         DEPLOY ── unbounded DCA: HOLLAR ─▶ aPRIME (swap+supply folded via the
-///           Aave trade-executor route); keeper `pokeBorrow` borrows HOLLAR up to
-///           a safe margin above target HF and refills the DCA budget. The loop
-///           self-ramps to target HF, then the budget dries up (can't borrow more).
+///         DEPLOY ── keeper `pokeBorrow`: borrow an HF-safe HOLLAR tranche, then
+///           router-sell HOLLAR ─▶ aPRIME (swap+supply folded via the Aave
+///           trade-executor route) in the same call. The loop self-ramps to
+///           target HF over repeated pokes, then borrowing dries up.
 ///
-///         UNWIND ── the deleveraging spiral: unbounded DCA aPRIME ─▶ HOLLAR
-///           (withdraw+swap folded); keeper `pokeRepay` repays loop debt with the
-///           proceeds, raising HF and reopening the next HF-safe sliver. Most of
-///           each tranche repays the loop's own debt; the ~1/leverage equity
-///           portion is credited to the unwinding vault, which pulls it to settle
-///           its own (HDCL-style) redemption queue. de-lever uses the same spiral.
+///         UNWIND ── the deleveraging spiral: keeper `pokeRepay` router-sells an
+///           HF-safe aPRIME sliver ─▶ HOLLAR (withdraw+swap folded) and repays
+///           loop debt with the proceeds, raising HF and reopening the next
+///           sliver. Most of each tranche repays the loop's own debt; the
+///           ~1/leverage equity portion is credited to the unwinding vault,
+///           which pulls it to settle its own (HDCL-style) redemption queue.
+///           de-lever uses the same spiral with the FULL proceeds repaying debt.
 ///
-///         No flash loans. The keeper only ever touches the Aave debt legs
-///         (borrow/repay) — every swap, incl. the Aave supply/withdraw (aTokens
-///         are routable), lives in pallet-DCA for execution efficiency.
-///
-///         STATUS: structured skeleton on the agreed model. State + surface +
-///         flow are in place; precise per-tranche HF math, the deleverage split,
-///         and the DCA order lifecycle (behind IDcaScheduler) are TODO(impl),
-///         best finalized against fork tests.
+///         No flash loans. Every swap, incl. the Aave supply/withdraw (aTokens
+///         are routable), executes synchronously through pallet_route::sell via
+///         the dispatch precompile (DcaDispatch.routerSell) with an
+///         AaveOracle-fair min-out; gradualness comes from the keeper's
+///         tranche-capped poke cadence.
 contract SubLoop is
     ISubLoop,
     AccessControlUpgradeable,
@@ -63,30 +60,27 @@ contract SubLoop is
 
     // ── config ────────────────────────────────────────────────────────────
     IAavePool public pool;
-    IDcaScheduler public dca;
     IERC20 public hollar;
     IERC20 public prime;
     IERC20 public primeAToken; // collateral receipt (this loop's Aave position)
-    IERC20 public hollarDebtToken; // variable-debt receipt (this loop's debt)
+    /// @notice Recipient of harvested surplus PRIME (the Harvester). With
+    ///         harvest permissionless, the payout pins here regardless of caller.
+    address public harvester;
 
     // ── policy params ─────────────────────────────────────────────────────
-    uint256 public primeLiqThreshold; // PRIME LT, e.g. 0.88e18
     uint256 public targetHf; // e.g. 1.05e18
-    uint256 public deployHfFloor; // borrow only while HF would stay >= this (≥ target, buffer for DCA lag)
-    uint256 public unwindHfFloor; // withdraw only while HF would stay >= this
+    uint256 public deployHfFloor; // borrow only while HF would stay >= this (≥ target, swap-lag buffer)
     uint256 public deLeverTrigger; // e.g. 1.10e18
     uint256 public harvestThreshold; // WAD fraction of equity
-    uint256 public deployTranche; // HOLLAR per deploy-DCA execution
-    uint256 public unwindTranche; // aPRIME per unwind-DCA execution
+    uint256 public deployTranche; // HOLLAR per pokeBorrow lever-in
+    uint256 public unwindTranche; // aPRIME per pokeRepay sell sliver
 
-    // ── DCA route config (for the dispatch path; dca == address(0)) ─────────
-    // Substrate asset ids + stableswap pool id for HOLLAR↔aPRIME, set by admin.
+    // ── router route config (HOLLAR↔aPRIME), set by admin ───────────────────
     uint32 public hollarAssetId; // 222
     uint32 public primeAssetId; // 43
     uint32 public aPrimeAssetId; // 1043
     uint32 public primePoolId; // stableswap 143 (HOLLAR↔PRIME)
-    uint32 public dcaPeriod; // blocks between executions
-    uint32 public dcaSlippagePpm; // Permill slippage
+    uint32 public dcaSlippagePpm; // Permill slippage vs the oracle-fair min-out
 
     // ── equity shares ─────────────────────────────────────────────────────
     mapping(address => uint256) internal _sharesOf;
@@ -95,11 +89,7 @@ contract SubLoop is
     ///         net of unwinds. Equity above this is harvestable carry (yield).
     uint256 public principalEquity;
 
-    // ── deploy state ──────────────────────────────────────────────────────
-    uint256 public pendingDeployHollar; // HOLLAR queued to be levered in
-    uint256 public deployOrderId;
-
-    // ── unwind state ──────────────────────────────────────────────────────
+    // ── unwind / de-lever state ───────────────────────────────────────────
     uint256 public unwindTargetEquity; // total equity (HOLLAR, 18dp) being unwound
     mapping(address => uint256) public unwindRequested; // per-vault equity targeted (18dp)
     mapping(address => uint256) public freedHollar; // per-vault equity freed, not yet pulled (18dp)
@@ -107,6 +97,9 @@ contract SubLoop is
     uint256 public unwindOrderId;
     address[] internal _unwinders; // vaults with an open unwind request
     mapping(address => bool) internal _isUnwinding;
+    /// @notice Outstanding safety de-lever debt repay (HOLLAR 18dp). Set by
+    ///         deLever, drained by pokeRepay ahead of the proportional split.
+    uint256 public deleverDebtTarget;
 
     event LoopDeposited(address indexed vault, uint256 hollarIn, uint256 shares);
     event UnwindRequested(address indexed vault, uint256 shares, uint256 equity, uint256 unwindId);
@@ -127,12 +120,9 @@ contract SubLoop is
 
     function initialize(
         address _pool,
-        address _dca,
         address _hollar,
         address _prime,
         address _primeAToken,
-        address _hollarDebtToken,
-        uint256 _primeLiqThreshold,
         uint256 _targetHf,
         uint256 _deLeverTrigger,
         address _admin
@@ -143,17 +133,13 @@ contract SubLoop is
         __ReentrancyGuard_init();
 
         pool = IAavePool(_pool);
-        dca = IDcaScheduler(_dca);
         hollar = IERC20(_hollar);
         prime = IERC20(_prime);
         primeAToken = IERC20(_primeAToken);
-        hollarDebtToken = IERC20(_hollarDebtToken);
 
-        primeLiqThreshold = _primeLiqThreshold;
         targetHf = _targetHf;
         deLeverTrigger = _deLeverTrigger;
-        deployHfFloor = _targetHf; // borrow down to target; DCA lag keeps actual HF above
-        unwindHfFloor = _deLeverTrigger; // unwind keeps HF in [target, trigger] band
+        deployHfFloor = _targetHf; // borrow down to target; swap lag keeps actual HF above
         harvestThreshold = 1e15; // 0.1%
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
@@ -573,46 +559,33 @@ contract SubLoop is
         unwindTranche = _unwindTranche;
     }
 
-    /// @notice Configure the HOLLAR↔aPRIME DCA route (used by the dispatch path
-    ///         when `dca == address(0)`). Mainnet: 222/43/1043/143.
+    /// @notice Configure the HOLLAR↔aPRIME router route. Mainnet: 222/43/1043/143.
     function configureDca(
         uint32 _hollarAssetId,
         uint32 _primeAssetId,
         uint32 _aPrimeAssetId,
         uint32 _primePoolId,
-        uint32 _period,
         uint32 _slippagePpm
     ) external onlyRole(ADMIN_ROLE) {
         hollarAssetId = _hollarAssetId;
         primeAssetId = _primeAssetId;
         aPrimeAssetId = _aPrimeAssetId;
         primePoolId = _primePoolId;
-        dcaPeriod = _period;
         dcaSlippagePpm = _slippagePpm;
-    }
-
-    /// @notice Set the DCA backend: `address(0)` = inline `DcaDispatch` (0x0401);
-    ///         a precompile address = call it directly (future optimization).
-    function setDcaScheduler(address _dca) external onlyRole(ADMIN_ROLE) {
-        dca = IDcaScheduler(_dca);
     }
 
     function setParams(
         uint256 _targetHf,
         uint256 _deployHfFloor,
-        uint256 _unwindHfFloor,
         uint256 _deLeverTrigger,
         uint256 _harvestThreshold
     ) external onlyRole(ADMIN_ROLE) {
         targetHf = _targetHf;
         deployHfFloor = _deployHfFloor;
-        unwindHfFloor = _unwindHfFloor;
         deLeverTrigger = _deLeverTrigger;
         harvestThreshold = _harvestThreshold;
     }
 
-    /// @notice Recipient of harvested surplus PRIME. With harvest permissionless,
-    ///         the payout pins here (the Harvester) regardless of caller.
     function setHarvester(address _harvester) external onlyRole(ADMIN_ROLE) {
         harvester = _harvester;
     }
@@ -627,14 +600,5 @@ contract SubLoop is
 
     function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
 
-    // ── appended storage (permissionless-harvest upgrade) — keep last ──
-    // recipient of harvested surplus PRIME; set by ADMIN post-upgrade.
-    address public harvester;
-
-    // ── appended storage (deLever upgrade) — keep last ──
-    /// @notice Outstanding safety de-lever debt repay (HOLLAR 18dp). Set by
-    ///         deLever, drained by pokeRepay ahead of the proportional split.
-    uint256 public deleverDebtTarget;
-
-    uint256[34] private __gap;
+    uint256[40] private __gap;
 }
