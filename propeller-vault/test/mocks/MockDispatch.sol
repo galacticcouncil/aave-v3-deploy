@@ -29,6 +29,11 @@ contract MockDispatch {
     MockERC20 public prime;
     uint32 public hollarId;
     uint32 public aPrimeId;
+    /// @notice swap fee (bps) charged on the output of each leg — models the
+    ///         stableswap fee / price impact of pool-143. 0 by default
+    ///         (frictionless); must stay under the caller's slippage bound or
+    ///         the minOut check rejects the fill (as it would live).
+    uint16 public feeBps;
 
     function configure(
         address _pool,
@@ -42,6 +47,10 @@ contract MockDispatch {
         prime = MockERC20(_prime);
         hollarId = _hollarId;
         aPrimeId = _aPrimeId;
+    }
+
+    function setFeeBps(uint16 _feeBps) external {
+        feeBps = _feeBps;
     }
 
     fallback(bytes calldata input) external returns (bytes memory) {
@@ -59,6 +68,7 @@ contract MockDispatch {
             // deploy leg: HOLLAR (18dp) → aPRIME (6dp) at the oracle rate
             hollar.burn(msg.sender, amountIn);
             uint256 out6 = (amountIn * pHollar) / pPrime / 1e12;
+            out6 = (out6 * (10_000 - feeBps)) / 10_000;
             require(out6 >= minOut, "MockDispatch: minOut");
             prime.mint(address(this), out6);
             prime.approve(address(pool), out6);
@@ -69,6 +79,7 @@ contract MockDispatch {
             pool.mockWithdrawTo(address(prime), amountIn, msg.sender, address(this));
             prime.burn(address(this), amountIn);
             uint256 out18 = (amountIn * pPrime * 1e12) / pHollar;
+            out18 = (out18 * (10_000 - feeBps)) / 10_000;
             require(out18 >= minOut, "MockDispatch: minOut");
             hollar.mint(msg.sender, out18);
         } else {

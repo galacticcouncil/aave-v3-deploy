@@ -278,4 +278,66 @@ contract MultiVaultFlowTest is Test {
         // (ETH ~9.7%, tBTC ~10.4% at these rates)
         assertGt(tbtcNetUsd8 * 3_000e8 / 6_000e8, ethNetUsd8, "tBTC net %-yield > ETH net %-yield");
     }
+
+    /// Swap COSTS modeled: 5 bps on each loop router leg (stableswap pool-143
+    /// fee/impact — paid on the FULL ~6.2× levered volume at ramp and unwind)
+    /// and 30 bps on the compound swap (PRIME → collateral via the router).
+    /// The fee holes have to show up exactly where they belong:
+    ///   - ramp:    equity lands BELOW the seed basis (fee × levered volume),
+    ///              and the first carry refills that hole before harvest skims
+    ///   - compound: realized gain < frictionless gain, > 95% of it
+    ///   - exit:     settles slightly under the snapshot, still > principal
+    function test_swapCostsReduceRealizedYield() public {
+        MockDispatch(payable(DcaDispatch.DISPATCH)).setFeeBps(5); // loop legs
+        swapper.setHaircut(30); // compound swap (< the 100 bps oracle floor)
+
+        eth.mint(ETH_USER, 1e18);
+        vm.startPrank(ETH_USER);
+        eth.approve(address(ethVault), 1e18);
+        uint256 ethShares = ethVault.deposit(1e18, ETH_USER);
+        vm.stopPrank();
+        tbtc.mint(BTC_USER, 0.1e18);
+        vm.startPrank(BTC_USER);
+        tbtc.approve(address(tbtcVault), 0.1e18);
+        tbtcVault.deposit(0.1e18, BTC_USER);
+        vm.stopPrank();
+        for (uint256 i = 0; i < 40; i++) {
+            loop.pokeBorrow();
+        }
+
+        // ── ramp cost: 5 bps over ~$43.5k swapped ≈ $22 → equity < $7050 seed
+        uint256 equity = loop.totalEquity();
+        assertLt(equity, 7_050e8, "ramp fees dent the equity");
+        assertGt(equity, 7_010e8, "...by roughly fee x levered volume (~$22)");
+
+        // harvest with equity under basis is a no-op — carry must refill the
+        // fee hole first (the cost is borne by yield, not by other vaults)
+        assertEq(loop.harvest(), 0, "no skim below cost basis");
+
+        // ── 5% PRIME yield, then harvest+compound (30 bps haircut on the swap)
+        aPrime.mint(address(loop), aPrime.balanceOf(address(loop)) * 5 / 100);
+        uint256[] memory minOuts = new uint256[](2);
+        harvester.harvest(minOuts);
+
+        uint256 ethGain = aEth.balanceOf(address(ethVault)) - 1e18;
+        // frictionless gain was ~0.2316 ETH; with the ramp-fee hole (~1% of
+        // the carry) and the 30 bps compound haircut it lands just below
+        assertLt(ethGain, 0.2316e18, "swap costs reduce the realized gain");
+        assertGt(ethGain, (0.2316e18 * 95) / 100, "costs stay ~1-2%, not material");
+
+        // ── exit pays the unwind leg's fee: settles a hair under the snapshot,
+        //    but still well above the deposited principal
+        vm.prank(ETH_USER);
+        uint256 reqId = ethVault.requestRedeem(ethShares, ETH_USER);
+        for (uint256 i = 0; i < 400; i++) {
+            if (loop.unwindTargetEquity() == 0) break;
+            loop.pokeRepay();
+        }
+        ethVault.pokeSettle();
+        vm.prank(ETH_USER);
+        uint256 got = ethVault.claim(reqId, ETH_USER);
+        assertGt(got, 1e18, "principal + yield survive the round-trip costs");
+        assertLt(got, 1e18 + ethGain, "exit pays the unwind fee");
+        assertGt(got, ((1e18 + ethGain) * 99) / 100, "unwind fee ~6bps x leverage");
+    }
 }
