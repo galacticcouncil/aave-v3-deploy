@@ -171,4 +171,30 @@ theorem creditFreed_reservedFreed_le (amt : ℝ) (B : RedeemBook Vault)
   linarith
 
 end RedeemBook
+
+/-! ## Fixed-point (bytecode-arithmetic) refinement: the floored credit still can't over-credit
+
+The reals above are the spec; the EVM computes `cut` with **floored** division —
+`mulDivDown(freed, rem, target) = ⌊freed·rem/target⌋`, capped at `rem` (`SubLoop.sol`). This is the
+integer counterpart of `creditFreed_no_over_credit`: with `ℕ` division (= EVM `div`), the floored
+distribution still never exceeds `freed`, for **any** number of unwinders — so the bytecode arithmetic
+the contract runs is conservative, not just the real-valued spec.
+
+(The full ContractState-run model would require the unbounded `_creditFreed` loop *inside* the Verity
+`SubLoop` cut, which exceeds Verity v0.1.0's loop support; this proves the safety-relevant arithmetic
+the loop body executes, generalized over the whole unwinder set.) -/
+theorem floored_credit_no_over_credit {Vault : Type*}
+    (s : Finset Vault) (rem : Vault → ℕ) (freed target : ℕ)
+    (hT : 0 < target) (hmatch : (∑ v ∈ s, rem v) = target) :
+    (∑ v ∈ s, min (freed * rem v / target) (rem v)) ≤ freed := by
+  -- each capped cut ≤ the floored share ⌊freed·rem_v/target⌋
+  refine (Finset.sum_le_sum (fun v _ => min_le_left _ _)).trans ?_
+  -- Σ ⌊freed·rem_v/target⌋ ≤ ⌊(Σ freed·rem_v)/target⌋  (ℕ: sum of floors ≤ floor of sum-over-c)
+  have hsum : (∑ v ∈ s, freed * rem v / target) ≤ (∑ v ∈ s, freed * rem v) / target := by
+    rw [Nat.le_div_iff_mul_le hT, Finset.sum_mul]
+    exact Finset.sum_le_sum (fun v _ => Nat.div_mul_le_self _ _)
+  refine hsum.trans ?_
+  -- = ⌊freed·target/target⌋ = freed
+  rw [← Finset.mul_sum, hmatch, Nat.mul_div_cancel _ hT]
+
 end Propeller
