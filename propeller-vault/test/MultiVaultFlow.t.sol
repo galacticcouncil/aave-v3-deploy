@@ -203,4 +203,79 @@ contract MultiVaultFlowTest is Test {
         assertEq(tbtcVault.loopShares(), tbtcLoopSharesBefore, "tBTC loop shares untouched");
         assertGt(loop.totalEquity(), 0, "tBTC slice still in the loop");
     }
+
+    /// NET carry with the HOLLAR borrow rate modeled: one year at 6.5% PRIME
+    /// supply vs 4.4% HOLLAR borrow, accrued on ALL debt legs (the loop's debt
+    /// AND each vault's Main debt). harvest must skim only
+    /// gross − loop borrow cost, and the economic net per deposit (compounded
+    /// gain minus the vault's own accrued Main interest) must land on the model
+    ///   net ≈ mainLtv · loopLeverage · (primeYield − borrowRate)
+    /// — the number the UI quotes. tBTC's % beats ETH's (80% vs 75% LTV).
+    function test_netCarryAfterHollarBorrowCost() public {
+        uint256 PRIME_APY_BPS = 650; // 6.5% PRIME supply
+        uint256 BORROW_APY_BPS = 440; // 4.4% HOLLAR variable borrow
+
+        // supply + ramp (same as the flow test)
+        eth.mint(ETH_USER, 1e18);
+        vm.startPrank(ETH_USER);
+        eth.approve(address(ethVault), 1e18);
+        ethVault.deposit(1e18, ETH_USER);
+        vm.stopPrank();
+        tbtc.mint(BTC_USER, 0.1e18);
+        vm.startPrank(BTC_USER);
+        tbtc.approve(address(tbtcVault), 0.1e18);
+        tbtcVault.deposit(0.1e18, BTC_USER);
+        vm.stopPrank();
+        for (uint256 i = 0; i < 40; i++) {
+            loop.pokeBorrow();
+        }
+
+        (uint256 loopColl8, uint256 loopDebt8,,,,) = pool.getUserAccountData(address(loop));
+        uint256 loopLevWad = (loopColl8 * 1e18) / (loopColl8 - loopDebt8); // ~6.17e18
+
+        // ── one year passes: yield on the PRIME leg, interest on EVERY debt leg
+        aPrime.mint(address(loop), aPrime.balanceOf(address(loop)) * PRIME_APY_BPS / 10_000);
+        hollarDebt.mint(address(loop), hollarDebt.balanceOf(address(loop)) * BORROW_APY_BPS / 10_000);
+        uint256 ethMainInt = hollarDebt.balanceOf(address(ethVault)) * BORROW_APY_BPS / 10_000;
+        uint256 tbtcMainInt = hollarDebt.balanceOf(address(tbtcVault)) * BORROW_APY_BPS / 10_000;
+        hollarDebt.mint(address(ethVault), ethMainInt);
+        hollarDebt.mint(address(tbtcVault), tbtcMainInt);
+
+        // peg upkeep: synth re-tops to cover the accrued Main debt (INV-1)
+        ethVault.maintainPeg();
+        tbtcVault.maintainPeg();
+        assertGe(
+            aSynth.balanceOf(address(ethVault)) * 9800 / 1e4,
+            hollarDebt.balanceOf(address(ethVault)),
+            "synth covers accrued ETH Main debt"
+        );
+
+        // ── harvest skims gross PRIME yield MINUS the loop's borrow cost
+        uint256 expectedLoopNet8 =
+            (loopColl8 * PRIME_APY_BPS - loopDebt8 * BORROW_APY_BPS) / 10_000;
+        uint256 surplusPrime = loop.harvest(); // 6dp, $1 → 8dp USD = ×100
+        assertApproxEqRel(surplusPrime * 100, expectedLoopNet8, 0.01e18, "skim = gross - loop borrow cost");
+
+        // distribute + compound into each collateral
+        uint256[] memory minOuts = new uint256[](2);
+        harvester.harvest(minOuts);
+
+        // ── economic net per deposit = compounded gain − own Main interest,
+        //    must match mainLtv·loopLeverage·spread
+        uint256 spreadBps = PRIME_APY_BPS - BORROW_APY_BPS; // 210
+        // ETH: deposit $3000 at 75%
+        uint256 ethGainUsd8 = (aEth.balanceOf(address(ethVault)) - 1e18) * 3_000 / 1e10;
+        uint256 ethNetUsd8 = ethGainUsd8 - ethMainInt / 1e10;
+        uint256 ethModel8 = (3_000e8 * 7_500 / 10_000) * loopLevWad / 1e18 * spreadBps / 10_000;
+        assertApproxEqRel(ethNetUsd8, ethModel8, 0.02e18, "ETH net = ltv*leverage*spread");
+        // tBTC: deposit $6000 at 80%
+        uint256 tbtcGainUsd8 = (aTbtc.balanceOf(address(tbtcVault)) - 0.1e18) * 60_000 / 1e10;
+        uint256 tbtcNetUsd8 = tbtcGainUsd8 - tbtcMainInt / 1e10;
+        uint256 tbtcModel8 = (6_000e8 * 8_000 / 10_000) * loopLevWad / 1e18 * spreadBps / 10_000;
+        assertApproxEqRel(tbtcNetUsd8, tbtcModel8, 0.02e18, "tBTC net = ltv*leverage*spread");
+
+        // tBTC's net %-yield > ETH's (higher LTV), both ≈ ltv·6.17·2.1%
+        // (ETH ~9.7%, tBTC ~10.4% at these rates)
+        assertGt(tbtcNetUsd8 * 3_000e8 / 6_000e8, ethNetUsd8, "tBTC net %-yield > ETH net %-yield");
+    }
 }
