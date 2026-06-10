@@ -279,17 +279,22 @@ contract MultiVaultFlowTest is Test {
         assertGt(tbtcNetUsd8 * 3_000e8 / 6_000e8, ethNetUsd8, "tBTC net %-yield > ETH net %-yield");
     }
 
-    /// Swap COSTS modeled: 5 bps on each loop router leg (stableswap pool-143
-    /// fee/impact — paid on the FULL ~6.2× levered volume at ramp and unwind)
-    /// and 30 bps on the compound swap (PRIME → collateral via the router).
+    /// Swap COSTS modeled — calibrated against LIVE mainnet router quotes
+    /// (sdk-next getBestSell, 2026-06-10):
+    ///   loop legs HOLLAR↔aPRIME ($5k tranche): 0.04% fee + 0.02% impact
+    ///     (0.21% impact at $50k) — modeled as 5 bps, paid on the FULL ~6.2×
+    ///     levered volume at ramp and unwind
+    ///   compound PRIME→ETH $700: 0.46% fee (5-hop route via omnipool);
+    ///     PRIME→tBTC $1.5k: 0.51% + 0.17% impact — modeled as 50 bps, still
+    ///     inside the vault's 100 bps oracle floor
     /// The fee holes have to show up exactly where they belong:
     ///   - ramp:    equity lands BELOW the seed basis (fee × levered volume),
     ///              and the first carry refills that hole before harvest skims
     ///   - compound: realized gain < frictionless gain, > 95% of it
     ///   - exit:     settles slightly under the snapshot, still > principal
     function test_swapCostsReduceRealizedYield() public {
-        MockDispatch(payable(DcaDispatch.DISPATCH)).setFeeBps(5); // loop legs
-        swapper.setHaircut(30); // compound swap (< the 100 bps oracle floor)
+        MockDispatch(payable(DcaDispatch.DISPATCH)).setFeeBps(5); // measured: 4 bps + impact
+        swapper.setHaircut(50); // measured: 46-51 bps (< the 100 bps oracle floor)
 
         eth.mint(ETH_USER, 1e18);
         vm.startPrank(ETH_USER);
