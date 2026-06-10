@@ -27,6 +27,11 @@ verity_contract SubLoop where
     totalSharesSlot   : Uint256 := slot 2   -- equity shares across all vaults
     shareBalancesSlot : Address → Uint256 := slot 3   -- per-vault equity shares
     controllerSlot    : Address := slot 4   -- authorized poker (the keeper / harvester)
+    -- gradual-redemption credit book (mirrors SubLoop.sol's unwind/_creditFreed storage)
+    unwindRequestedSlot : Address → Uint256 := slot 5   -- equity targeted for unwind, per vault
+    freedHollarSlot     : Address → Uint256 := slot 6   -- credited-but-not-pulled, per vault
+    unwindTargetSlot    : Uint256 := slot 7   -- Σ outstanding equity still to free
+    reservedFreedSlot   : Uint256 := slot 8   -- Σ freedHollar held back for pulls
 
   constructor (controller : Address) := do
     setStorage primeAmtSlot 0
@@ -83,6 +88,28 @@ verity_contract SubLoop where
     require (currentSupply >= shares) "LOOP: insufficient supply"
     setMapping shareBalancesSlot sender (sub currentShares shares)
     setStorage totalSharesSlot (sub currentSupply shares)
+
+  -- `_creditFreed`, unrolled for two unwinders (Verity v0.1.0 has no in-contract loop). Credits
+  -- `freed` HOLLAR pro-rata by `rem = requested − freedHollar` (the FIX — NOT raw `requested`).
+  -- The on-chain `min(·, rem)` cap is a no-op while `freed ≤ unwindTarget` (then `raw ≤ rem`) and its
+  -- per-vault effect is the ℝ-spec's `min`; the macro has no `if`, so it's elided here. Proven in
+  -- `Proofs.lean`: `cut₁+cut₂ ≤ freed` (no over-credit) when `rem₁+rem₂ = unwindTarget`, so
+  -- `reservedFreed` never exceeds the freed HOLLAR and pulls can't revert on balance.
+  function creditFreed2 (v1 : Address, v2 : Address, freed : Uint256) : Unit := do
+    let target ← getStorage unwindTargetSlot
+    let req1 ← getMapping unwindRequestedSlot v1
+    let fr1 ← getMapping freedHollarSlot v1
+    let rem1 := sub req1 fr1
+    let cut1 := mulDivDown freed rem1 target
+    let req2 ← getMapping unwindRequestedSlot v2
+    let fr2 ← getMapping freedHollarSlot v2
+    let rem2 := sub req2 fr2
+    let cut2 := mulDivDown freed rem2 target
+    setMapping freedHollarSlot v1 (add fr1 cut1)
+    setMapping freedHollarSlot v2 (add fr2 cut2)
+    let reserved ← getStorage reservedFreedSlot
+    setStorage reservedFreedSlot (add reserved (add cut1 cut2))
+    setStorage unwindTargetSlot (sub target (add cut1 cut2))
 
   function primeAmt () : Uint256 := do
     let p ← getStorage primeAmtSlot

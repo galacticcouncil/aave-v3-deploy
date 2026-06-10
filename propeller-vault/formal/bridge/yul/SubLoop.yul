@@ -1,8 +1,3 @@
-// SubLoop — PRIME-isolation loop + deploy-side controller guard on the pokes.
-// constructor stores the controller (keeper/harvester); pokeBorrow/pokeRepay are onlyController.
-// equity-neutrality (primeAmt-subDebt invariant) proven on the authorized path; pokes revert
-// for a non-controller caller. stock verity-compiler output.
-
 object "SubLoop" {
     code {
         mstore(64, 128)
@@ -130,6 +125,23 @@ object "SubLoop" {
             }
             sstore(mappingSlot(3, sender), sub(currentShares, shares))
             sstore(2, sub(currentSupply, shares))
+            stop()
+        }
+        function internal_internal_creditFreed2(v1, v2, freed) {
+            let target := sload(7)
+            let req1 := sload(mappingSlot(5, v1))
+            let fr1 := sload(mappingSlot(6, v1))
+            let rem1 := sub(req1, fr1)
+            let cut1 := div(mul(freed, rem1), target)
+            let req2 := sload(mappingSlot(5, v2))
+            let fr2 := sload(mappingSlot(6, v2))
+            let rem2 := sub(req2, fr2)
+            let cut2 := div(mul(freed, rem2), target)
+            sstore(mappingSlot(6, v1), add(fr1, cut1))
+            sstore(mappingSlot(6, v2), add(fr2, cut2))
+            let reserved := sload(8)
+            sstore(8, add(reserved, add(cut1, cut2)))
+            sstore(7, sub(target, add(cut1, cut2)))
             stop()
         }
         function internal_internal_primeAmt() -> __ret0 {
@@ -290,6 +302,23 @@ object "SubLoop" {
                 }
                 sstore(mappingSlot(3, sender), sub(currentShares, shares))
                 sstore(2, sub(currentSupply, shares))
+                stop()
+            }
+            function internal_internal_creditFreed2(v1, v2, freed) {
+                let target := sload(7)
+                let req1 := sload(mappingSlot(5, v1))
+                let fr1 := sload(mappingSlot(6, v1))
+                let rem1 := sub(req1, fr1)
+                let cut1 := div(mul(freed, rem1), target)
+                let req2 := sload(mappingSlot(5, v2))
+                let fr2 := sload(mappingSlot(6, v2))
+                let rem2 := sub(req2, fr2)
+                let cut2 := div(mul(freed, rem2), target)
+                sstore(mappingSlot(6, v1), add(fr1, cut1))
+                sstore(mappingSlot(6, v2), add(fr2, cut2))
+                let reserved := sload(8)
+                sstore(8, add(reserved, add(cut1, cut2)))
+                sstore(7, sub(target, add(cut1, cut2)))
                 stop()
             }
             function internal_internal_primeAmt() -> __ret0 {
@@ -480,6 +509,36 @@ object "SubLoop" {
                         }
                         sstore(mappingSlot(3, sender), sub(currentShares, shares))
                         sstore(2, sub(currentSupply, shares))
+                        stop()
+                    }
+                    case 0xc8476ca2 {
+                        /* creditFreed2() */
+                        if callvalue() {
+                            revert(0, 0)
+                        }
+                        if lt(calldatasize(), 100) {
+                            revert(0, 0)
+                        }
+                        if lt(calldatasize(), 100) {
+                            revert(0, 0)
+                        }
+                        let v1 := and(calldataload(4), 0xffffffffffffffffffffffffffffffffffffffff)
+                        let v2 := and(calldataload(36), 0xffffffffffffffffffffffffffffffffffffffff)
+                        let freed := calldataload(68)
+                        let target := sload(7)
+                        let req1 := sload(mappingSlot(5, v1))
+                        let fr1 := sload(mappingSlot(6, v1))
+                        let rem1 := sub(req1, fr1)
+                        let cut1 := div(mul(freed, rem1), target)
+                        let req2 := sload(mappingSlot(5, v2))
+                        let fr2 := sload(mappingSlot(6, v2))
+                        let rem2 := sub(req2, fr2)
+                        let cut2 := div(mul(freed, rem2), target)
+                        sstore(mappingSlot(6, v1), add(fr1, cut1))
+                        sstore(mappingSlot(6, v2), add(fr2, cut2))
+                        let reserved := sload(8)
+                        sstore(8, add(reserved, add(cut1, cut2)))
+                        sstore(7, sub(target, add(cut1, cut2)))
                         stop()
                     }
                     case 0x4d1dce0a {
