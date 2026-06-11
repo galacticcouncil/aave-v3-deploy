@@ -15,7 +15,7 @@ import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import type { SubmittableExtrinsic } from "@polkadot/api/types";
 import hre from "hardhat";
 
-const LARK_WS = "wss://2.lark.hydration.cloud";
+const LARK_WS = process.env.WS_URL || "wss://2.lark.hydration.cloud";
 
 async function signAndWait(
   tx: SubmittableExtrinsic<"promise">,
@@ -76,6 +76,34 @@ async function main() {
   const signer = await hhre.ethers.getSigner(deployer);
 
   const txs: any[] = [];
+
+  // Phase 0: register stHDX (670) FIRST so the stHDX ERC20 precompile is
+  // responsive before initReserves(stHDX). Guarantees single-pass enactment —
+  // otherwise a failed stHDX init shifts every downstream proxy-address
+  // prediction and mis-wires HOLLAR's facilitator + cross-refs.
+  const STHDX = 670;
+  const GIGAHDX = 67;
+  const sthdxInfo: any = await apiInst.query.assetRegistry.assets(STHDX);
+  if (!sthdxInfo.isSome) {
+    console.log("register stHDX (670) in asset registry [hoisted first]");
+    txs.push(
+      hydrationTx.assetRegistry.register(
+        ...Object.values({
+          id: STHDX,
+          name: "stHDX",
+          assetType: "Token",
+          existentialDeposit: "0",
+          symbol: "stHDX",
+          decimals: 12,
+          location: null,
+          xcmRateLimit: null,
+          isSufficient: true,
+        })
+      )
+    );
+  } else {
+    console.log("stHDX (670) already registered — skipping");
+  }
 
   // Phase A
   await hhre.run("init-reserve", { symbol: "STHDX", batch: true });
@@ -164,7 +192,7 @@ async function main() {
 
   {
     const hollar = new hhre.ethers.Contract(HOLLAR, (await hhre.deployments.get("HOLLAR")).abi, signer);
-    const bucketCapacity = utils.parseUnits("1.0", 24);
+    const bucketCapacity = utils.parseUnits("222222", 18); // 222,222 HOLLAR
     const tx = await hollar.populateTransaction.addFacilitator(ghoATokenProxyAddress, "GIGAHDX", bucketCapacity, {
       gasLimit: 500_000,
     });
@@ -187,31 +215,9 @@ async function main() {
   txs.push(...hollarTxs);
   clearBatch();
 
-  // Phase D — asset registry (conditional)
-  const STHDX = 670;
-  const GIGAHDX = 67;
-  const sthdxInfo: any = await apiInst.query.assetRegistry.assets(STHDX);
+  // Phase D — asset registry: register GIGAHDX (67).
+  // stHDX (670) was already registered up front in Phase 0.
   const gigaInfo: any = await apiInst.query.assetRegistry.assets(GIGAHDX);
-
-  if (!sthdxInfo.isSome) {
-    txs.push(
-      hydrationTx.assetRegistry.register(
-        ...Object.values({
-          id: STHDX,
-          name: "stHDX",
-          assetType: "Token",
-          existentialDeposit: "3000000000000",
-          symbol: "stHDX",
-          decimals: 12,
-          location: null,
-          xcmRateLimit: null,
-          isSufficient: true,
-        })
-      )
-    );
-  } else {
-    console.log("stHDX (670) already registered — skipping register");
-  }
 
   if (!gigaInfo.isSome) {
     txs.push(
@@ -220,7 +226,7 @@ async function main() {
           id: GIGAHDX,
           name: "GIGAHDX",
           assetType: "Erc20",
-          existentialDeposit: "3000000000000",
+          existentialDeposit: "0",
           symbol: "GIGAHDX",
           decimals: 12,
           location: location(sthdxATokenAddress),
@@ -254,6 +260,30 @@ async function main() {
       );
     } else {
       console.log("GIGAHDX (67) already at correct location — skipping");
+    }
+  }
+
+  // Phase D2: fold set-gigahdx-pool + approve-controller into the same batch
+  // so the whole launch enacts as a single referendum (idempotent guards).
+  const poolAddress = await poolAddressesProvider.getPool();
+
+  if (hydrationTx.gigaHdx && hydrationTx.gigaHdx.setPoolContract) {
+    const currentPoolPtr: any = await apiInst.query.gigaHdx.gigaHdxPoolContract();
+    if (currentPoolPtr.toString().toLowerCase() === poolAddress.toLowerCase()) {
+      console.log("gigaHdx pool contract already set — skipping");
+    } else {
+      console.log("set gigaHdx pool contract");
+      txs.push(hydrationTx.gigaHdx.setPoolContract(poolAddress));
+    }
+  }
+
+  if ((hydrationTx as any).evmAccounts && (hydrationTx as any).evmAccounts.approveContract) {
+    const alreadyApproved: any = await apiInst.query.evmAccounts.approvedContract(poolAddress);
+    if (!alreadyApproved.isEmpty) {
+      console.log("GIGAHDX pool already approved as EVM controller — skipping");
+    } else {
+      console.log("approve GIGAHDX pool as EVM controller");
+      txs.push((hydrationTx as any).evmAccounts.approveContract(poolAddress));
     }
   }
 

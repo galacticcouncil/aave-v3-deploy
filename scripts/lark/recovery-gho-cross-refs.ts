@@ -21,7 +21,7 @@ import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import type { SubmittableExtrinsic } from "@polkadot/api/types";
 import hre from "hardhat";
 
-const LARK_WS = "wss://2.lark.hydration.cloud";
+const LARK_WS = process.env.WS_URL || "wss://2.lark.hydration.cloud";
 
 // On-chain addresses observed via .audit-phase7.js (Phase 7.5):
 const REAL_GHO_ATOKEN = "0x4eDd0d8cf03aC94F9c6D3a5424023498b9ac250c";

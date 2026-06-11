@@ -21,6 +21,7 @@ import {
   ORACLE_ID,
   POOL_ADDRESSES_PROVIDER_ID,
   POOL_DATA_PROVIDER,
+  USD_ORACLE_ADAPTER_ID,
 } from "../../helpers/deploy-ids";
 import { MARKET_NAME } from "../../helpers/env";
 import { task } from "hardhat/config";
@@ -69,6 +70,20 @@ async function initReserve(
   const reserve = { [symbol.toUpperCase()]: reserveAddress };
   {
     const chainlinkAggregators = await getChainlinkOracles(poolConfig, network);
+
+    // Prefer a freshly-deployed ${SYMBOL}-USDOracleAdapter over the hardcoded
+    // ChainlinkAggregator address, so a deployed adapter self-wires as the
+    // reserve's oracle source (e.g. GIGAHDX stHDX = USDOracleAdapter(gigahdxs,
+    // Omnipool EMA)) without a per-environment edit to the market config.
+    const usdAdapter = await deployments.getOrNull(
+      `${symbol.toUpperCase()}-${USD_ORACLE_ADAPTER_ID}`
+    );
+    if (usdAdapter) {
+      chainlinkAggregators[symbol.toUpperCase()] = usdAdapter.address;
+      console.log(
+        `using deployed ${symbol.toUpperCase()}-${USD_ORACLE_ADAPTER_ID} at ${usdAdapter.address} as oracle source`
+      );
+    }
 
     let [assets, sources] = getPairsTokenAggregator(
       reserve,

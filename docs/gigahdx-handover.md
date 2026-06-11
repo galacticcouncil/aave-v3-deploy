@@ -8,7 +8,7 @@ Operational runbook for taking GIGAHDX from this branch to mainnet. Read end-to-
 
 GIGAHDX is a second Aave v3 instance on Hydration:
 - **Collateral:** stHDX (asset 670, 12 decimals) — only collateral, uses `LockableAToken`
-- **Borrow:** HOLLAR (asset 222, 18 decimals) — only borrowable, uses `GhoAToken` facilitator pattern (1M bucket initially)
+- **Borrow:** HOLLAR (asset 222, 18 decimals) — only borrowable, uses `GhoAToken` facilitator pattern (222,222 bucket initially)
 - **Pool admin:** `0xaa7e0000000000000000000000000000000aa7e0` (Hydration governance EVM precompile)
 - **Provider ID:** 22222269
 
@@ -41,11 +41,12 @@ Before any mainnet action:
   - LTV 4000 (40%)
   - Liquidation Threshold 7000 (70%)
   - Liquidation Bonus 10800 (8%)
+  - Liquidation Protocol Fee 0 (0% — no setter emitted in the proposal)
   - Reserve Factor 2000 (20%)
-  - Supply Cap 500_000_000 (12-decimal units, so 500M stHDX)
+  - Supply Cap 0 (uncapped — Aave treats 0 as "no cap")
   - Borrow Cap 0 (collateral-only)
   - Debt Ceiling 0 (HOLLAR facilitator bucket is the cap)
-- [ ] HOLLAR facilitator bucket capacity in `tasks/proposals/gigahdx-launch.ts` line 34 (`GIGAHDX_FACILITATOR_BUCKET_CAPACITY = "1000000"`) is the agreed initial value.
+- [ ] HOLLAR facilitator bucket capacity in `tasks/proposals/gigahdx-launch.ts` (`GIGAHDX_FACILITATOR_BUCKET_CAPACITY = "222222"`) is the agreed initial value.
 - [ ] Local fork test passes: `./scripts/test-mainnet-flow.sh`.
 
 ---
@@ -162,12 +163,12 @@ submit preimages: 0x…   ← preimage hex (this is what you submit)
 2. `evm.call(initReserves([stHDX]))` with LockableAToken impl
 3. `evm.call(addRiskAdmin(ReservesSetupHelper))`
 4. `evm.call(configureReserves(stHDX risk params))`
-5. `evm.call(setLiquidationProtocolFee(stHDX, 1000))`
+5. ~~`evm.call(setLiquidationProtocolFee(stHDX, 1000))`~~ — no longer emitted; liquidation protocol fee is 0%, so `setup-liquidation-protocol-fee` skips the call
 6. `evm.call(reviewReserveFactors)` updates if needed
 7. `evm.call(initReserves([HOLLAR]))` with GhoAToken impl
 8. `evm.call(setReserveBorrowing(HOLLAR, true))`
 9. `evm.call(setAssetSources([HOLLAR], [GhoOracle]))` (`$1` fixed)
-10. `evm.call(addFacilitator(GhoAToken proxy, "GIGAHDX", 1M))` on HOLLAR
+10. `evm.call(addFacilitator(GhoAToken proxy, "GIGAHDX", 222,222))` on HOLLAR
 11. `evm.call(setVariableDebtToken/setAToken/updateGhoTreasury/updateDiscountRateStrategy/updateDiscountToken)` cross-refs
 12. `assetRegistry.register(670, "stHDX", …)` if not already registered
 13. `assetRegistry.register(67, "GIGAHDX", …)` pointing at the predicted aToken address
@@ -191,7 +192,7 @@ After enactment, verify:
 - `Pool-Proxy-GIGAHDX.getReservesList()` returns `[stHDX, HOLLAR]`.
 - `AaveOracle-GIGAHDX.getAssetPrice(stHDX)` returns a non-zero number.
 - `AaveOracle-GIGAHDX.getAssetPrice(HOLLAR) == 1e8`.
-- `HOLLAR.getFacilitator(GhoAToken proxy)` returns `bucketCapacity = 1_000_000e18`.
+- `HOLLAR.getFacilitator(GhoAToken proxy)` returns `bucketCapacity = 222_222e18`.
 - `assetRegistry.assets(67)` and `assetRegistry.assets(670)` are both `Some(...)`.
 
 ### Step 8 — Runtime wiring
@@ -247,7 +248,7 @@ If the bucket fills faster than expected, raise the cap via a follow-up gov prop
 | Hydration Market (existing) | 7M |
 | Flash Minter | 100K |
 | HSM | 18M |
-| **GIGAHDX (new)** | **1M** ← starts here, raise via proposal as needed |
+| **GIGAHDX (new)** | **222,222** ← starts here, raise via proposal as needed |
 
 ### How the stHDX price resolves on mainnet
 

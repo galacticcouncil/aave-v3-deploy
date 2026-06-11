@@ -33,10 +33,10 @@ const HOLLAR_ADDRESS = "0x531a654d1696ED52e7275A8cede955E82620f99a"; // GhoToken
 const GHO_ORACLE_ADDRESS = "0x6096C9D71F7c06024578a62F4B608a1Bb06834F8"; // GhoOracle (fixed $1)
 
 // Initial HOLLAR facilitator bucket capacity for GIGAHDX. The existing facilitator
-// allocations are: Hydration Market 7M, Flash Minter 100K, HSM 18M. 1M leaves
-// substantial headroom for ramp-up; raise via a follow-up gov proposal once
-// utilisation is observed on mainnet.
-const GIGAHDX_FACILITATOR_BUCKET_CAPACITY = "1000000"; // 1M HOLLAR (18 decimals applied below)
+// allocations are: Hydration Market 7M, Flash Minter 100K, HSM 18M. 222,222 caps
+// how much HOLLAR can be minted against GIGAHDX collateral; raise via a follow-up
+// gov proposal once utilisation is observed.
+const GIGAHDX_FACILITATOR_BUCKET_CAPACITY = "222222"; // 222,222 HOLLAR (18 decimals applied below)
 
 task(
   `gigahdx-launch`,
@@ -67,6 +67,40 @@ task(
   }
 
   const txs = [];
+
+  // ===================================================================
+  // Phase 0: Register stHDX (670) in the asset registry FIRST.
+  // The stHDX ERC20 precompile only becomes responsive once 670 is
+  // registered, so initReserves(stHDX) reverts if it runs before this.
+  // Hoisting the register to the front of the batch guarantees a
+  // single-pass enactment — otherwise a failed stHDX init consumes no
+  // nonces and shifts every downstream proxy-address prediction, mis-wiring
+  // HOLLAR's facilitator and GHO cross-references onto phantom addresses.
+  // ===================================================================
+  const STHDX = 670;
+  const GIGAHDX = 67;
+  const api = await getApi();
+  const sthdxInfo: any = await api.query.assetRegistry.assets(STHDX);
+  if (!sthdxInfo.isSome) {
+    console.log("---------> register stHDX (670) in asset registry [hoisted first]");
+    txs.push(
+      hydrationTx.assetRegistry.register(
+        ...Object.values({
+          id: STHDX,
+          name: "stHDX",
+          assetType: "Token",
+          existentialDeposit: "0", // no ED for stHDX
+          symbol: "stHDX",
+          decimals: 12,
+          location: null,
+          xcmRateLimit: null,
+          isSufficient: true,
+        })
+      )
+    );
+  } else {
+    console.log("---------> stHDX (670) already in asset registry — skipping register");
+  }
 
   // ===================================================================
   // Phase A: stHDX reserve initialization (standard Aave flow)
@@ -306,38 +340,11 @@ task(
   clearBatch();
 
   // ===================================================================
-  // Phase D: Substrate root transactions — asset registry
+  // Phase D: Substrate root transaction — register GIGAHDX (67).
+  // stHDX (670) was already registered up front in Phase 0.
   // ===================================================================
 
-  const STHDX = 670;
-  const GIGAHDX = 67;
-
-  // Check existing registrations. batchAll reverts the whole batch if any call
-  // fails, so registering already-existing assets would brick the proposal.
-  const api = await getApi();
-  const sthdxInfo: any = await api.query.assetRegistry.assets(STHDX);
   const gigaInfo: any = await api.query.assetRegistry.assets(GIGAHDX);
-
-  if (!sthdxInfo.isSome) {
-    console.log("---------> register stHDX in asset registry");
-    txs.push(
-      hydrationTx.assetRegistry.register(
-        ...Object.values({
-          id: STHDX,
-          name: "stHDX",
-          assetType: "Token",
-          existentialDeposit: "3000000000000", // 3 stHDX (12 decimals)
-          symbol: "stHDX",
-          decimals: 12,
-          location: null,
-          xcmRateLimit: null,
-          isSufficient: true,
-        })
-      )
-    );
-  } else {
-    console.log("---------> stHDX (670) already in asset registry — skipping register");
-  }
 
   if (!gigaInfo.isSome) {
     console.log("---------> register GIGAHDX (asset 67) pointing at stHDX aToken");
@@ -347,7 +354,7 @@ task(
           id: GIGAHDX,
           name: "GIGAHDX",
           assetType: "Erc20",
-          existentialDeposit: "3000000000000",
+          existentialDeposit: "0", // no ED for GIGAHDX
           symbol: "GIGAHDX",
           decimals: 12,
           location: location(sthdxATokenAddress),
@@ -400,6 +407,40 @@ task(
     )
   );
   */
+
+  // ===================================================================
+  // Phase D2: Runtime wiring — fold the former standalone governance calls
+  // (set-gigahdx-pool, approve-gigahdx-as-controller) into the launch batch
+  // so the whole launch enacts as a single referendum.
+  // ===================================================================
+  const poolAddress = await poolAddressesProvider.getPool();
+
+  // Point pallet-gigahdx at the GIGAHDX pool. Idempotent: skip if already set.
+  if (hydrationTx.gigaHdx && hydrationTx.gigaHdx.setPoolContract) {
+    const currentPoolPtr: any = await api.query.gigaHdx.gigaHdxPoolContract();
+    if (currentPoolPtr.toString().toLowerCase() === poolAddress.toLowerCase()) {
+      console.log("---------> gigaHdx pool contract already set — skipping");
+    } else {
+      console.log("---------> set gigaHdx pool contract");
+      txs.push(hydrationTx.gigaHdx.setPoolContract(poolAddress));
+    }
+  } else {
+    console.log("---------> gigaHdx pallet not present on this chain — skipping setPoolContract");
+  }
+
+  // Approve the GIGAHDX pool as an EVM controller so HOLLAR.transferFrom inside
+  // liquidationCall returns max allowance. Idempotent: skip if already approved.
+  if (hydrationTx.evmAccounts && hydrationTx.evmAccounts.approveContract) {
+    const alreadyApproved: any = await api.query.evmAccounts.approvedContract(poolAddress);
+    if (!alreadyApproved.isEmpty) {
+      console.log("---------> GIGAHDX pool already approved as EVM controller — skipping");
+    } else {
+      console.log("---------> approve GIGAHDX pool as EVM controller");
+      txs.push(hydrationTx.evmAccounts.approveContract(poolAddress));
+    }
+  } else {
+    console.log("---------> evmAccounts.approveContract not present — skipping");
+  }
 
   // ===================================================================
   // Phase E: Generate proposal preimage

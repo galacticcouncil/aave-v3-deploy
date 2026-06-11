@@ -127,12 +127,12 @@ The proposal does (atomically):
 3. Init HOLLAR reserve with GhoAToken/GhoVariableDebtToken impls
 4. Enable HOLLAR borrowing
 5. Set HOLLAR oracle ($1) in GIGAHDX AaveOracle
-6. Register GIGAHDX GhoAToken as HOLLAR facilitator (1M bucket)
+6. Register GIGAHDX GhoAToken as HOLLAR facilitator (222,222 bucket)
 7. Set GHO cross-references (aToken ↔ variableDebtToken, treasury, ZeroDiscountRateStrategy)
 
 **Substrate calls:**
-8. Register stHDX (asset 670) in Hydration asset registry (ED: 3 stHDX)
-9. Register GIGAHDX (asset 67) as Erc20 pointing to aToken (ED: 3 GIGAHDX)
+8. Register stHDX (asset 670) in Hydration asset registry (ED: 0)
+9. Register GIGAHDX (asset 67) as Erc20 pointing to aToken (ED: 0)
 
 ### Phase 6: Set GIGAHDX pool address in runtime
 
@@ -151,7 +151,7 @@ Submit the generated preimage to Hydration governance via referendum.
 1. `Pool-Proxy-GIGAHDX` registered in PoolAddressesProviderRegistry (id 222223)
 2. stHDX reserve active — supply only, LockableAToken, no borrowing
 3. HOLLAR reserve active — GhoAToken, borrow only, no collateral value
-4. GIGAHDX GhoAToken registered as facilitator on GhoToken (1M bucket)
+4. GIGAHDX GhoAToken registered as facilitator on GhoToken (222,222 bucket)
 5. Test: supply stHDX → borrow HOLLAR → repay → withdraw
 6. Test: giga_stake HDX → get GIGAHDX → vote → liquidation clears locks
 7. Existing Hydration Market pool unaffected
@@ -176,8 +176,9 @@ Submit the generated preimage to Hydration governance via referendum.
 | LTV | 40% |
 | Liquidation Threshold | 70% |
 | Liquidation Bonus | 8% |
+| Liquidation Protocol Fee | 0% |
 | Reserve Factor | 20% |
-| Supply Cap | 500,000,000 |
+| Supply Cap | 0 (uncapped — Aave treats 0 as "no cap") |
 | Borrow Cap | 0 (collateral only) |
 | Debt Ceiling | 0 (facilitator bucket limits HOLLAR) |
 | Decimals | 12 |
@@ -190,4 +191,4 @@ Submit the generated preimage to Hydration governance via referendum.
 | Hydration Market (existing) | 7M |
 | Flash Minter | 100K |
 | HSM | 18M |
-| **GIGAHDX (new)** | **1M** |
+| **GIGAHDX (new)** | **222,222** |
