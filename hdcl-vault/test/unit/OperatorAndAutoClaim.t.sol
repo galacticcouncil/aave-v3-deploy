@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 
 /// @title ERC-7540 Operator + CLAIM_OPERATOR_ROLE (W2c)
 /// @notice Verifies the three claim auth paths:
@@ -37,7 +37,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
     }
 
     function test_setOperator_revertsOnZeroOperator() public {
-        vm.expectRevert(HDCLVault.ZeroAddress.selector);
+        vm.expectRevert(BILVault.ZeroAddress.selector);
         vm.prank(alice);
         vault.setOperator(address(0), true);
     }
@@ -47,14 +47,14 @@ contract OperatorAndAutoClaimTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_requestRedeem_byOperator_succeeds() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
 
         vm.prank(alice);
         vault.setOperator(bob, true);
 
         // Bob initiates a redemption on alice's behalf
         vm.prank(bob);
-        uint256 reqId = vault.requestRedeem(aliceHdcl / 4, alice, alice);
+        uint256 reqId = vault.requestRedeem(aliceBil / 4, alice, alice);
 
         // Alice's hDCL was escrowed, request is alice's
         (address controller, , , ,) = vault.getRedemptionRequest(reqId);
@@ -62,12 +62,12 @@ contract OperatorAndAutoClaimTest is BaseTest {
     }
 
     function test_requestRedeem_byNonOperator_reverts() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
 
         // Bob is NOT an operator. Cannot initiate on alice's behalf.
         vm.prank(bob);
-        vm.expectRevert(HDCLVault.NotAuthorized.selector);
-        vault.requestRedeem(aliceHdcl / 4, alice, alice);
+        vm.expectRevert(BILVault.NotAuthorized.selector);
+        vault.requestRedeem(aliceBil / 4, alice, alice);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -75,10 +75,10 @@ contract OperatorAndAutoClaimTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function _settleAlice() internal returns (uint256 settledShares) {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
-        settledShares = aliceHdcl / 4;
+        settledShares = aliceBil / 4;
         _requestRedeem(alice, settledShares);
         vault.pokeQueue();
     }
@@ -103,7 +103,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
 
         // Bob is not an operator and not the controller. Reverts.
         vm.prank(bob);
-        vm.expectRevert(HDCLVault.NotAuthorized.selector);
+        vm.expectRevert(BILVault.NotAuthorized.selector);
         vault.redeem(settled, alice, alice);
     }
 
@@ -178,7 +178,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
 
         // Alice did NOT opt in.
         vm.prank(keeperBot);
-        vm.expectRevert(HDCLVault.NotAuthorized.selector);
+        vm.expectRevert(BILVault.NotAuthorized.selector);
         vault.redeem(settled, alice, alice);
     }
 
@@ -193,7 +193,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
         // Keeper has role + alice opted in, BUT tries to redirect HOLLAR to bob.
         // Must revert: receiver == controller is load-bearing.
         vm.prank(keeperBot);
-        vm.expectRevert(HDCLVault.NotAuthorized.selector);
+        vm.expectRevert(BILVault.NotAuthorized.selector);
         vault.redeem(settled, bob, alice);
     }
 
@@ -211,8 +211,8 @@ contract OperatorAndAutoClaimTest is BaseTest {
         vault.redeem(settled1, alice, alice);
 
         // Set up a second request + settle
-        uint256 aliceHdcl = vault.balanceOf(alice);
-        _requestRedeem(alice, aliceHdcl / 4);
+        uint256 aliceBil = vault.balanceOf(alice);
+        _requestRedeem(alice, aliceBil / 4);
         vault.pokeQueue();
 
         // Alice opts out
@@ -224,7 +224,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
         (,, uint256 settled2,,) = vault.getRedemptionRequest(reqId);
         if (settled2 > 0) {
             vm.prank(keeperBot);
-            vm.expectRevert(HDCLVault.NotAuthorized.selector);
+            vm.expectRevert(BILVault.NotAuthorized.selector);
             vault.redeem(settled2, alice, alice);
         }
     }
@@ -237,7 +237,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
 
         // keeperBot does NOT hold CLAIM_OPERATOR_ROLE
         vm.prank(keeperBot);
-        vm.expectRevert(HDCLVault.NotAuthorized.selector);
+        vm.expectRevert(BILVault.NotAuthorized.selector);
         vault.redeem(settled, alice, alice);
     }
 
@@ -246,21 +246,21 @@ contract OperatorAndAutoClaimTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_cancel_byOperator_refundsToController() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 reqId = _requestRedeem(alice, aliceHdcl / 4);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 reqId = _requestRedeem(alice, aliceBil / 4);
 
         vm.prank(alice);
         vault.setOperator(bob, true);
 
-        uint256 aliceHdclBefore = vault.balanceOf(alice);
-        uint256 bobHdclBefore = vault.balanceOf(bob);
+        uint256 aliceBilBefore = vault.balanceOf(alice);
+        uint256 bobBilBefore = vault.balanceOf(bob);
 
         // Bob cancels alice's request
         vm.prank(bob);
         vault.cancelRedeem(reqId);
 
         // Refund goes to alice (controller), not bob (operator)
-        assertGt(vault.balanceOf(alice), aliceHdclBefore, "alice got hDCL refund");
-        assertEq(vault.balanceOf(bob), bobHdclBefore, "bob (operator) got nothing");
+        assertGt(vault.balanceOf(alice), aliceBilBefore, "alice got hDCL refund");
+        assertEq(vault.balanceOf(bob), bobBilBefore, "bob (operator) got nothing");
     }
 }

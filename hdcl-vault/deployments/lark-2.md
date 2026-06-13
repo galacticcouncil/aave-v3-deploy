@@ -1,7 +1,7 @@
-# HDCL Vault — Deployment on `2.lark.hydration.cloud`
+# BIL Vault — Deployment on `2.lark.hydration.cloud`
 
 **Date:** 2026-05-20
-**Commit:** `555abc7` (`feat/hdcl-vault`)
+**Commit:** `555abc7` (`feat/bil-vault`)
 **Network:** Hydration lark testnet (`2.lark.hydration.cloud`, chain id 222222)
 **Status:** Live and keeper-attended. UI development can target this.
 
@@ -14,7 +14,7 @@
 | **Vault (proxy)** | `0xbDAFEB92440d8696d6C143bc7e6B086d461e3502` | Canonical entry-point — UI integrates here |
 | Vault impl | `0x45e10B05c6504Db3941366FC70B23DAEB0942F28` | UUPS implementation; behind proxy |
 | QueueLib | `0xbd22a4a1a0941a9f5da0c6eb92d45f3009a11e3c` | Library — referenced by impl bytecode |
-| WDCLOracle | `0x8DFD81241E0fDc06A05AB9f8f6E3eeCba6CC93Fa` | Chainlink-compatible 8-decimal feed |
+| BILOracle | `0x8DFD81241E0fDc06A05AB9f8f6E3eeCba6CC93Fa` | Chainlink-compatible 8-decimal feed |
 | HOLLAR (underlying) | `0x531a654d1696ED52e7275A8cede955E82620f99a` | Existing Hydration HOLLAR token |
 | Decentral Pool | `0x207a626c07b73E76134177D1f44B0f32e94ADB5a` | Initial / active deposit pool |
 | Pool NFT (PoolToken) | `0xC91808c129C9766b13D22c9f0cD53Db459c0bc48` | NFTs minted to vault on each Decentral deposit |
@@ -52,11 +52,11 @@ All roles currently granted to Alice (`0x222222B60cA97a4998B7D07b99034Fa4d933953
 
 ## Keeper
 
-Running on the lark Docker Swarm cluster as stack `hdcl-keeper`, service `hdcl-keeper_keeper`. Manageable via swarmpit at https://swarmpit.lark.hydration.cloud.
+Running on the lark Docker Swarm cluster as stack `bil-keeper`, service `bil-keeper_keeper`. Manageable via swarmpit at https://swarmpit.lark.hydration.cloud.
 
 | | |
 |---|---|
-| Image | `galacticcouncil/hdcl-keeper:555abc7` (Docker Hub) |
+| Image | `galacticcouncil/bil-keeper:555abc7` (Docker Hub) |
 | Replicas | 1 (single-replica enforced — shared key, no nonce race) |
 | Poll interval | 12 s |
 | Restart policy | `condition: any`, unbounded attempts |
@@ -66,7 +66,7 @@ Cycles every 12 s. Calls `pokeDecentral` on matured positions, `pokeQueue` after
 **Stack file** (committed at `keeper/docker-stack.yml`):
 ```sh
 # To redeploy with updated env or image:
-docker stack deploy -c hdcl-vault/keeper/docker-stack.yml hdcl-keeper
+docker stack deploy -c bil-vault/keeper/docker-stack.yml bil-keeper
 ```
 
 **During UI dev workflows that send admin txs from the same key** (e.g. running `script/e2e-test.ts`): scale the keeper to 0 to avoid nonce races, then restore. See "Useful one-liners" below.
@@ -128,7 +128,7 @@ function autoClaimEnabled(address controller) view returns (bool);
 function totalAssets() view returns (uint256);                       // HOLLAR equivalent
 function exchangeRate() view returns (uint256);                      // 1e18-scaled
 function getRedemptionRequest(uint256 reqId) view returns (
-    address user, uint256 hdclAmount, uint256 hdclSettled, uint256 hollarOwed, bool active
+    address user, uint256 bilAmount, uint256 bilSettled, uint256 hollarOwed, bool active
 );
 function getPosition(uint256 idx) view returns (
     uint256 tokenId, uint256 principal, uint256 apyWad,
@@ -140,12 +140,12 @@ function getEstimatedWaitTime(uint256 reqId) view returns (uint256 estimatedSeco
 ### Events to index
 
 - `Deposit(sender, owner, assets, shares)` — canonical ERC-4626
-- `Deposited(user, hollarAmount, hdclMinted, tokenId)` — vault-specific
+- `Deposited(user, hollarAmount, bilMinted, tokenId)` — vault-specific
 - `RedeemRequest(controller, owner, requestId, sender, shares)` — ERC-7540 canonical
-- `RedemptionRequested(requestId, user, hdclAmount)` — vault-specific
-- `RedemptionFulfilled(requestId, user, hollarAmount, hdclBurned)` — full settle
+- `RedemptionRequested(requestId, user, bilAmount)` — vault-specific
+- `RedemptionFulfilled(requestId, user, hollarAmount, bilBurned)` — full settle
 - `RedemptionPartiallyFulfilled(...)` — partial settle
-- `RedemptionCancelled(requestId, hdclReturned)`
+- `RedemptionCancelled(requestId, bilReturned)`
 - `Withdraw(sender, receiver, owner, assets, shares)` — canonical ERC-4626/7540 claim
 - `OperatorSet(controller, operator, approved)`
 - `AutoClaimSet(controller, enabled)`
@@ -188,7 +188,7 @@ function getEstimatedWaitTime(uint256 reqId) view returns (uint256 estimatedSeco
 cast call 0xbDAFEB92440d8696d6C143bc7e6B086d461e3502 'exchangeRate()(uint256)' --rpc-url https://2.lark.hydration.cloud
 
 # Keeper management (via swarmpit at https://swarmpit.lark.hydration.cloud)
-#   Service ID: hdcl-keeper_keeper   |   Stack: hdcl-keeper
+#   Service ID: bil-keeper_keeper   |   Stack: bil-keeper
 #   View logs / scale / restart in the UI, OR via the swarmpit-lark MCP tools.
 
 # Toggle auto-claim for a user (Alice's key)

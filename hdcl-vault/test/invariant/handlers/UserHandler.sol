@@ -2,12 +2,12 @@
 pragma solidity ^0.8.22;
 
 import "forge-std/Test.sol";
-import {HDCLVault} from "../../../src/HDCLVault.sol";
+import {BILVault} from "../../../src/BILVault.sol";
 import {MockHollar} from "../../mocks/MockHollar.sol";
 
 /// @notice Simulates random user actions: deposit, requestRedeem, cancelRedeem.
 contract UserHandler is Test {
-    HDCLVault public vault;
+    BILVault public vault;
     MockHollar public hollar;
 
     address[] public actors;
@@ -16,7 +16,7 @@ contract UserHandler is Test {
 
     // Ghost variables for cross-checking
     uint256 public ghost_totalDeposited;
-    uint256 public ghost_totalHdclMinted;
+    uint256 public ghost_totalBilMinted;
     uint256 public ghost_depositCount;
     uint256 public ghost_redeemRequestCount;
     uint256 public ghost_claimCount;
@@ -24,7 +24,7 @@ contract UserHandler is Test {
     uint256 public ghost_autoClaimToggles;
     uint256 public ghost_operatorSets;
 
-    constructor(HDCLVault _vault, MockHollar _hollar, address[] memory _actors) {
+    constructor(BILVault _vault, MockHollar _hollar, address[] memory _actors) {
         vault = _vault;
         hollar = _hollar;
         actors = _actors;
@@ -51,10 +51,10 @@ contract UserHandler is Test {
         }
 
         vm.prank(actor);
-        uint256 hdcl = vault.deposit(amount, actor);
+        uint256 bil = vault.deposit(amount, actor);
 
         ghost_totalDeposited += amount;
-        ghost_totalHdclMinted += hdcl;
+        ghost_totalBilMinted += bil;
         ghost_depositCount++;
     }
 
@@ -63,11 +63,11 @@ contract UserHandler is Test {
     function requestRedeem(uint256 actorSeed, uint256 amount) external {
         address actor = actors[actorSeed % actors.length];
 
-        uint256 hdclBal = vault.balanceOf(actor);
+        uint256 bilBal = vault.balanceOf(actor);
         uint256 minRedeem = vault.minRedeemAmount();
-        if (hdclBal < minRedeem) return;
+        if (bilBal < minRedeem) return;
 
-        amount = bound(amount, minRedeem, hdclBal);
+        amount = bound(amount, minRedeem, bilBal);
 
         vm.prank(actor);
         try vault.requestRedeem(amount, actor, actor) returns (uint256 requestId) {

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 
 /// @title previewDeposit Edge Case Coverage
 /// @notice Verifies previewDeposit reverts on the same math edges that the
@@ -17,28 +17,28 @@ contract PreviewDepositTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_previewDeposit_firstDepositZeroAmount_reverts() public {
-        vm.expectRevert(HDCLVault.ZeroAmount.selector);
+        vm.expectRevert(BILVault.ZeroAmount.selector);
         vault.previewDeposit(0);
     }
 
     function test_previewDeposit_firstDepositBelowDeadShares_reverts() public {
         // amount <= DEAD_SHARES reverts in deposit → must revert in preview too.
-        vm.expectRevert(HDCLVault.DepositTooSmall.selector);
+        vm.expectRevert(BILVault.DepositTooSmall.selector);
         vault.previewDeposit(1);
-        vm.expectRevert(HDCLVault.DepositTooSmall.selector);
+        vm.expectRevert(BILVault.DepositTooSmall.selector);
         vault.previewDeposit(500);
-        vm.expectRevert(HDCLVault.DepositTooSmall.selector);
+        vm.expectRevert(BILVault.DepositTooSmall.selector);
         vault.previewDeposit(DEAD_SHARES - 1);
     }
 
     function test_previewDeposit_firstDepositAtDeadShares_reverts() public {
-        vm.expectRevert(HDCLVault.DepositTooSmall.selector);
+        vm.expectRevert(BILVault.DepositTooSmall.selector);
         vault.previewDeposit(DEAD_SHARES);
     }
 
     function test_previewDeposit_firstDepositJustAboveDeadShares_returnsOne() public view {
-        // hollarAmount = DEAD_SHARES + 1 → deposit succeeds with 1 HDCL minted
-        assertEq(vault.previewDeposit(DEAD_SHARES + 1), 1, "DEAD_SHARES + 1 -> 1 HDCL");
+        // hollarAmount = DEAD_SHARES + 1 → deposit succeeds with 1 BIL minted
+        assertEq(vault.previewDeposit(DEAD_SHARES + 1), 1, "DEAD_SHARES + 1 -> 1 BIL");
     }
 
     function test_previewDeposit_firstDepositNormalAmount_matchesActual() public {
@@ -70,7 +70,7 @@ contract PreviewDepositTest is BaseTest {
 
     function test_previewDeposit_zeroAmountAfterFirstDeposit_reverts() public {
         _deposit(alice, 10_000e18);
-        vm.expectRevert(HDCLVault.ZeroAmount.selector);
+        vm.expectRevert(BILVault.ZeroAmount.selector);
         vault.previewDeposit(0);
     }
 }

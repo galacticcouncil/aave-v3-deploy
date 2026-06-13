@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 import {IDecentralPool} from "../../src/interfaces/IDecentralPool.sol";
 import {MockDecentralPool} from "../mocks/MockDecentralPool.sol";
 import {MockPoolToken} from "../mocks/MockPoolToken.sol";
@@ -140,7 +140,7 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
 
     function test_accrual_exchangeRateAppreciatesProportionally() public {
         // T=0: alice deposits at 18% (rate ≈ 1.0)
-        uint256 aliceHdcl = _deposit(alice, 10_000e18);
+        uint256 aliceBil = _deposit(alice, 10_000e18);
         assertApproxEqRel(vault.exchangeRate(), 1e18, 0.001e18, "rate ~1.0 at first deposit");
 
         // T=30d: rate has appreciated from 30d × 18% accrual on alice's 10k
@@ -150,11 +150,11 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
 
         // Activate pool 22 and have bob deposit at the appreciated rate
         _registerAndActivatePool22();
-        uint256 bobHdcl = _deposit(bob, 10_000e18);
+        uint256 bobBil = _deposit(bob, 10_000e18);
 
         // Bob's hDCL count reflects buying in at appreciated rate (he gets fewer
         // shares than alice did per HOLLAR).
-        assertLt(bobHdcl, aliceHdcl, "bob bought in at appreciated rate, fewer hDCL per HOLLAR");
+        assertLt(bobBil, aliceBil, "bob bought in at appreciated rate, fewer hDCL per HOLLAR");
 
         // T=60d: rate appreciates further — weighted blend of 18% + 22%
         _warpDays(30);
@@ -254,8 +254,8 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         _processPositionFull(0);
 
         // Bob requests redemption of all his hDCL
-        uint256 bobHdcl = vault.balanceOf(bob);
-        uint256 bobReq = _requestRedeem(bob, bobHdcl);
+        uint256 bobBil = vault.balanceOf(bob);
+        uint256 bobReq = _requestRedeem(bob, bobBil);
 
         // Capture the rate at which the queue will settle
         uint256 rateAtSettle = vault.exchangeRate();
@@ -293,11 +293,11 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         _processPositionFull(0);
 
         // Bob and alice both queue redemptions (alice has hDCL too)
-        uint256 bobHdcl = vault.balanceOf(bob);
-        uint256 aliceHdcl = vault.balanceOf(alice);
+        uint256 bobBil = vault.balanceOf(bob);
+        uint256 aliceBil = vault.balanceOf(alice);
 
-        _requestRedeem(alice, aliceHdcl / 2); // req 0
-        _requestRedeem(bob, bobHdcl / 2);     // req 1
+        _requestRedeem(alice, aliceBil / 2); // req 0
+        _requestRedeem(bob, bobBil / 2);     // req 1
 
         uint256 idleSnapshot = vault.idleHollar();
 
@@ -306,7 +306,7 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         // FIFO: alice (req 0) settles first. If idle covers her in full, her
         // claimable should equal her requested amount. If not, partial.
         (, , uint256 aliceSettled, , ) = vault.getRedemptionRequest(0);
-        if (aliceSettled == aliceHdcl / 2) {
+        if (aliceSettled == aliceBil / 2) {
             // alice fully settled — bob may be partial or fully settled too
             assertGt(idleSnapshot, 0, "had idle to settle alice fully");
         } else {
@@ -336,8 +336,8 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         _processPositionFull(0);
 
         // Alice queues her full hDCL balance
-        uint256 aliceHdcl = vault.balanceOf(alice);
-        _requestRedeem(alice, aliceHdcl);
+        uint256 aliceBil = vault.balanceOf(alice);
+        _requestRedeem(alice, aliceBil);
         vault.pokeQueue();
         _claimAll(alice);
 
@@ -359,8 +359,8 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         _processPositionFullVia(1, pool22);
 
         // Bob queues his full hDCL
-        uint256 bobHdcl = vault.balanceOf(bob);
-        _requestRedeem(bob, bobHdcl);
+        uint256 bobBil = vault.balanceOf(bob);
+        _requestRedeem(bob, bobBil);
         vault.pokeQueue();
         _claimAll(bob);
         // Alice claims any leftover that settled in the second pokeQueue
@@ -375,7 +375,7 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         // Sanity: the system is solvent after all redemptions.
         // Remaining hDCL is just the DEAD_SHARES; remaining HOLLAR (if any)
         // is the rounding residue from the pull-redemption math.
-        assertEq(vault.totalQueuedHdcl(), 0, "queue cleared");
+        assertEq(vault.totalQueuedBil(), 0, "queue cleared");
         assertEq(vault.totalReservedHollar(), 0, "no reserved HOLLAR left");
     }
 
@@ -551,7 +551,7 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         assertGt(charlieRecovered, 10_000e18, "charlie exits with positive yield despite rate cut");
 
         // System solvent after all three exit
-        assertEq(vault.totalQueuedHdcl(), 0, "queue cleared");
+        assertEq(vault.totalQueuedBil(), 0, "queue cleared");
         assertEq(vault.totalReservedHollar(), 0, "no reserved HOLLAR left");
     }
 }

@@ -10,7 +10,7 @@ import {PoolToken} from "decentral-contracts/PoolToken.sol";
 import {DecentralFactory} from "decentral-contracts/DecentralFactory.sol";
 
 // Vault under test
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 import {IDecentralPool} from "../../src/interfaces/IDecentralPool.sol";
 import {IPoolToken} from "../../src/interfaces/IPoolToken.sol";
 import {MockHollar} from "../mocks/MockHollar.sol";
@@ -39,7 +39,7 @@ contract RealDecentralPoolTest is Test {
     PoolToken poolToken;
     DecentralFactory factory;
     DecentralPool pool; // proxy
-    HDCLVault vault; // proxy
+    BILVault vault; // proxy
 
     // ─── Pool parameters ──────────────────────────────────────────────────
     uint256 constant DEPOSIT = 100e18;
@@ -99,10 +99,10 @@ contract RealDecentralPoolTest is Test {
         );
         pool = DecentralPool(poolAddr);
 
-        // ─── 6. HDCLVault behind a proxy ─────────────────────────────────
-        HDCLVault vaultImpl = new HDCLVault();
+        // ─── 6. BILVault behind a proxy ─────────────────────────────────
+        BILVault vaultImpl = new BILVault();
         bytes memory vInit = abi.encodeWithSelector(
-            HDCLVault.initialize.selector,
+            BILVault.initialize.selector,
             poolAddr,
             address(poolToken),
             address(hollar),
@@ -110,7 +110,7 @@ contract RealDecentralPoolTest is Test {
             ADMIN
         );
         ERC1967Proxy vProxy = new ERC1967Proxy(address(vaultImpl), vInit);
-        vault = HDCLVault(address(vProxy));
+        vault = BILVault(address(vProxy));
 
         // ─── 7. Pre-fund pool with HOLLAR to cover yield payouts on execute
         //       (the pool model assumes the borrower repays before yield is

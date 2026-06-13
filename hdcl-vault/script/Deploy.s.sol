@@ -3,8 +3,8 @@ pragma solidity ^0.8.22;
 
 import "forge-std/Script.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {HDCLVault} from "../src/HDCLVault.sol";
-import {WDCLOracle} from "../src/WDCLOracle.sol";
+import {BILVault} from "../src/BILVault.sol";
+import {BILOracle} from "../src/BILOracle.sol";
 
 contract Deploy is Script {
     // Hydration mainnet addresses
@@ -27,8 +27,8 @@ contract Deploy is Script {
         );
 
         console.log("Implementation:", impl);
-        console.log("Proxy (HDCL Vault):", proxy);
-        console.log("WDCLOracle:", oracle);
+        console.log("Proxy (BIL Vault):", proxy);
+        console.log("BILOracle:", oracle);
     }
 
     /// @notice Deploy + wire oracle in one shot. Returns the three deployed addresses.
@@ -52,19 +52,19 @@ contract Deploy is Script {
 
         vm.startBroadcast(deployerKey);
 
-        HDCLVault implementation = new HDCLVault();
+        BILVault implementation = new BILVault();
         bytes memory initData = abi.encodeCall(
-            HDCLVault.initialize,
+            BILVault.initialize,
             (decentralPool, poolToken, hollarToken, tvlCap, admin)
         );
         ERC1967Proxy proxyContract = new ERC1967Proxy(
             address(implementation),
             initData
         );
-        HDCLVault vault = HDCLVault(address(proxyContract));
+        BILVault vault = BILVault(address(proxyContract));
 
         // Deploy the price feed and wire it into the vault.
-        WDCLOracle oracleContract = new WDCLOracle(address(vault));
+        BILOracle oracleContract = new BILOracle(address(vault));
         vault.setOracle(address(oracleContract));
 
         // Sanity check: getOraclePrice must succeed end-to-end before we

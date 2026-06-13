@@ -2,17 +2,17 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {WDCLOracle} from "../../src/WDCLOracle.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILOracle} from "../../src/BILOracle.sol";
+import {BILVault} from "../../src/BILVault.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract OracleTest is BaseTest {
-    WDCLOracle public oracle;
+    BILOracle public oracle;
 
     function setUp() public override {
         super.setUp();
         // Deploy oracle pointing at the vault
-        oracle = new WDCLOracle(address(vault));
+        oracle = new BILOracle(address(vault));
         // Seed the vault with a deposit so totalSupply > 0 and exchange rate is meaningful
         _deposit(alice, TEN_THOUSAND_HOLLAR);
     }
@@ -63,7 +63,7 @@ contract OracleTest is BaseTest {
     }
 
     function test_oracleDescription() public view {
-        assertEq(oracle.description(), "wDCL / HOLLAR", "oracle description should be 'wDCL / HOLLAR'");
+        assertEq(oracle.description(), "BIL / HOLLAR", "oracle description should be 'BIL / HOLLAR'");
     }
 
     function test_oracleVersion() public view {
@@ -100,22 +100,22 @@ contract OracleTest is BaseTest {
 
     function test_constructor_revertsOnZeroVault() public {
         vm.expectRevert("Zero vault");
-        new WDCLOracle(address(0));
+        new BILOracle(address(0));
     }
 
     // ─── Zero supply (no deposits) ────────────────────────────────────────
 
     function test_latestRoundData_zeroSupply_returnsOneToOne() public {
         // Deploy a brand new vault with no deposits
-        HDCLVault impl = new HDCLVault();
+        BILVault impl = new BILVault();
         bytes memory initData = abi.encodeCall(
-            HDCLVault.initialize,
+            BILVault.initialize,
             (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, admin)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
-        HDCLVault emptyVault = HDCLVault(address(proxy));
+        BILVault emptyVault = BILVault(address(proxy));
 
-        WDCLOracle emptyOracle = new WDCLOracle(address(emptyVault));
+        BILOracle emptyOracle = new BILOracle(address(emptyVault));
 
         (, int256 answer,,,) = emptyOracle.latestRoundData();
         // rate = 1e18 when supply=0, answer = 1e18 / 1e10 = 1e8

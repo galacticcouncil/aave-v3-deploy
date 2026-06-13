@@ -1,8 +1,8 @@
 # Spec-Conformance Fixes (#4, #17, #13)
 
-> Status: **[DONE]** — landed in `41037fc` on `feat/hdcl-vault`. 350/350 tests pass; vault bytecode 24,540 B (36 B buffer under EIP-170 at `optimizer_runs=30`).
+> Status: **[DONE]** — landed in `41037fc` on `feat/bil-vault`. 350/350 tests pass; vault bytecode 24,540 B (36 B buffer under EIP-170 at `optimizer_runs=30`).
 >
-> Branch: `feat/hdcl-vault`
+> Branch: `feat/bil-vault`
 > Target: three findings from the audit pass — two ERC-4626/7540 conformance, one mid-severity DoS amplifier on multi-pool deployments.
 
 All three are storage-layout safe (no slot changes) so they ship as a single UUPS upgrade. Order doesn't matter; they're independent. Suggest doing them in **#13 → #4 → #17** order (cheapest mechanical change first, biggest test churn last).
@@ -13,7 +13,7 @@ All three are storage-layout safe (no slot changes) so they ship as a single UUP
 
 ### Problem
 
-`_advancePositionHead` (`HDCLVault.sol:1479-1486`) is an **unbounded** `while`:
+`_advancePositionHead` (`BILVault.sol:1479-1486`) is an **unbounded** `while`:
 
 ```solidity
 function _advancePositionHead() internal {
@@ -95,7 +95,7 @@ Low. Bounded sweep is the same pattern used in `cancelRedeem` head sweep (line 5
 
 ### Problem
 
-`previewDeposit` (`HDCLVault.sol:1018-1034`) returns 0 on three conditions where the actual `deposit` reverts:
+`previewDeposit` (`BILVault.sol:1018-1034`) returns 0 on three conditions where the actual `deposit` reverts:
 
 | Input | `previewDeposit` returns | `deposit` reverts with |
 |---|---|---|
@@ -129,7 +129,7 @@ But it must **honor**:
 Replace the swallow-and-return-0 conditions with reverts that exactly match `deposit`'s math path:
 
 ```solidity
-function previewDeposit(uint256 hollarAmount) external view returns (uint256 hdclAmount) {
+function previewDeposit(uint256 hollarAmount) external view returns (uint256 bilAmount) {
     if (hollarAmount == 0) revert ZeroAmount();
     uint256 supply = totalSupply();
     if (supply == 0) {
@@ -138,8 +138,8 @@ function previewDeposit(uint256 hollarAmount) external view returns (uint256 hdc
     }
     uint256 assets = totalAssets();
     if (assets == 0) revert VaultEmpty();
-    hdclAmount = (hollarAmount * supply) / assets;
-    if (hdclAmount == 0) revert DepositTooSmall();
+    bilAmount = (hollarAmount * supply) / assets;
+    if (bilAmount == 0) revert DepositTooSmall();
 }
 ```
 
@@ -173,7 +173,7 @@ Low. Spec-aligning change. The only consumer category that breaks is "integrator
 
 ### Problem
 
-`maxRedeem` (`HDCLVault.sol:990-993`) and `maxWithdraw` (`HDCLVault.sol:985-987`, in the earlier section) both hardcode `return 0` with the comment "async-only."
+`maxRedeem` (`BILVault.sol:990-993`) and `maxWithdraw` (`BILVault.sol:985-987`, in the earlier section) both hardcode `return 0` with the comment "async-only."
 
 Per ERC-7540 (which we explicitly conform to — `supportsInterface(IERC7540Redeem)` returns true):
 
@@ -184,7 +184,7 @@ Returning 0 routes 4626-aware integrators away from settled funds (they'd skip t
 
 ### Existing infrastructure that makes this cheap
 
-The DoS fix in `0a3618c` added `_settledByController` — a per-controller index of request IDs with `hdclSettled > 0`. The list is bounded by the user's own activity (cancel-spam can't bloat it). Walking it for max-* is O(user's own settled requests).
+The DoS fix in `0a3618c` added `_settledByController` — a per-controller index of request IDs with `bilSettled > 0`. The list is bounded by the user's own activity (cancel-spam can't bloat it). Walking it for max-* is O(user's own settled requests).
 
 ### Fix
 
@@ -196,7 +196,7 @@ function maxRedeem(address controller) external view returns (uint256 max) {
         QueueLib.Request storage r = redemptionQueue[ids[i]];
         // Defensive: index can temporarily hold stale entries that
         // claim hasn't swap-popped yet. r.user filter handles cancel/drain.
-        if (r.user == controller) max += r.hdclSettled;
+        if (r.user == controller) max += r.bilSettled;
     }
 }
 
@@ -219,7 +219,7 @@ Both lose their `pure` modifier (need to read storage); they become `view`. ERC-
 Probably:
 - Rename to `test_maxRedeem_maxWithdraw_matchClaimable`
 - Setup: alice deposits, requests redeem, pokeQueue settles
-- Assert `maxRedeem(alice) == aliceHdclAmount`
+- Assert `maxRedeem(alice) == aliceBilAmount`
 - Assert `maxWithdraw(alice) == aliceHollarOwed`
 - Assert both return 0 for an unrelated address
 - Assert both return 0 before pokeQueue settles
@@ -275,4 +275,4 @@ Low. The bound is the user's own activity (already proven by the DoS fix's invar
 
 ## Why not also #16 (oracle roundId) here?
 
-Different file (`WDCLOracle.sol`), different audience (Chainlink consumers, not vault users). Worth doing but cleaner as its own commit so an upgrade can ship without it if oracle integration timing differs.
+Different file (`BILOracle.sol`), different audience (Chainlink consumers, not vault users). Worth doing but cleaner as its own commit so an upgrade can ship without it if oracle integration timing differs.

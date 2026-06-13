@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {HDCLVault} from "../../../src/HDCLVault.sol";
+import {BILVault} from "../../../src/BILVault.sol";
 
 /// @notice Helper to read NFTPosition fields from the vault's public array getter.
 ///         Avoids assembly by using Solidity tuple destructuring in a separate contract.
 contract PositionReader {
-    HDCLVault public immutable vault;
+    BILVault public immutable vault;
 
-    constructor(HDCLVault _vault) {
+    constructor(BILVault _vault) {
         vault = _vault;
     }
 

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 
 contract DepositTest is BaseTest {
     /// @dev Matches the vault's Deposited event (4 params).
@@ -10,7 +10,7 @@ contract DepositTest is BaseTest {
     event Deposited(
         address indexed user,
         uint256 hollarAmount,
-        uint256 hdclMinted,
+        uint256 bilMinted,
         uint256 tokenId
     );
 
@@ -23,7 +23,7 @@ contract DepositTest is BaseTest {
         vm.prank(admin);
         vault.pauseDeposits();
 
-        vm.expectRevert(HDCLVault.DepositsArePaused.selector);
+        vm.expectRevert(BILVault.DepositsArePaused.selector);
         _deposit(alice, TEN_THOUSAND_HOLLAR);
     }
 
@@ -38,7 +38,7 @@ contract DepositTest is BaseTest {
 
     /// @notice Spec §4.2 step 2: Require hollarAmount > 0
     function test_deposit_reverts_whenZeroAmount() public {
-        vm.expectRevert(HDCLVault.ZeroAmount.selector);
+        vm.expectRevert(BILVault.ZeroAmount.selector);
         _deposit(alice, 0);
     }
 
@@ -47,7 +47,7 @@ contract DepositTest is BaseTest {
         vm.prank(admin);
         vault.setTvlCap(HUNDRED_HOLLAR);
 
-        vm.expectRevert(HDCLVault.ExceedsTvlCap.selector);
+        vm.expectRevert(BILVault.ExceedsTvlCap.selector);
         _deposit(alice, HUNDRED_HOLLAR + ONE_HOLLAR);
     }
 
@@ -57,8 +57,8 @@ contract DepositTest is BaseTest {
         vault.setTvlCap(TEN_THOUSAND_HOLLAR);
 
         // Exact cap — should succeed
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        assertGt(hdcl, 0);
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        assertGt(bil, 0);
     }
 
     /// @notice Spec §4.2 step 3: one wei past cap reverts
@@ -66,7 +66,7 @@ contract DepositTest is BaseTest {
         vm.prank(admin);
         vault.setTvlCap(TEN_THOUSAND_HOLLAR);
 
-        vm.expectRevert(HDCLVault.ExceedsTvlCap.selector);
+        vm.expectRevert(BILVault.ExceedsTvlCap.selector);
         _deposit(alice, TEN_THOUSAND_HOLLAR + 1);
     }
 
@@ -82,7 +82,7 @@ contract DepositTest is BaseTest {
         _warpDays(365 * 6);
 
         // Depositing 1 wei → 1 * supply / totalAssets rounds to 0
-        vm.expectRevert(HDCLVault.DepositTooSmall.selector);
+        vm.expectRevert(BILVault.DepositTooSmall.selector);
         _deposit(bob, 1);
     }
 
@@ -90,7 +90,7 @@ contract DepositTest is BaseTest {
     function test_deposit_reverts_whenFirstDepositTooSmall() public {
         pool.setMinimumInvestmentAmount(1);
 
-        vm.expectRevert(HDCLVault.DepositTooSmall.selector);
+        vm.expectRevert(BILVault.DepositTooSmall.selector);
         _deposit(alice, 1000); // exactly DEAD_SHARES
     }
 
@@ -108,9 +108,9 @@ contract DepositTest is BaseTest {
 
     /// @notice Spec §4.2 step 4 (totalSupply==0): wdclMinted = hollarAmount - DEAD_SHARES
     function test_firstDeposit_mintsAtOneToOneMinusDeadShares() public {
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
 
-        assertEq(hdcl, TEN_THOUSAND_HOLLAR - 1000);
+        assertEq(bil, TEN_THOUSAND_HOLLAR - 1000);
         assertEq(vault.balanceOf(alice), TEN_THOUSAND_HOLLAR - 1000);
     }
 
@@ -134,30 +134,30 @@ contract DepositTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice Spec §4.2 step 4 (totalSupply>0): wdclMinted = hollarAmount * totalSupply / totalAssets
-    function test_deposit_mintsCorrectHdclAtCurrentRate() public {
+    function test_deposit_mintsCorrectBilAtCurrentRate() public {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(30);
 
         uint256 supplyBefore = vault.totalSupply();
         uint256 assetsBefore = vault.totalAssets();
 
-        uint256 bobHdcl = _deposit(bob, TEN_THOUSAND_HOLLAR);
+        uint256 bobBil = _deposit(bob, TEN_THOUSAND_HOLLAR);
 
         uint256 expected = (TEN_THOUSAND_HOLLAR * supplyBefore) / assetsBefore;
-        assertEq(bobHdcl, expected, "HDCL minted should match rate formula");
+        assertEq(bobBil, expected, "BIL minted should match rate formula");
     }
 
-    /// @notice Spec: exchange rate appreciates → later depositors get fewer HDCL per HOLLAR
+    /// @notice Spec: exchange rate appreciates → later depositors get fewer BIL per HOLLAR
     function test_deposit_laterDepositorGetsFewer_whenRateAppreciated() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
 
         _warpDays(30);
         assertGt(vault.exchangeRate(), 1e18, "Rate should be > 1 after yield accrual");
 
-        uint256 bobHdcl = _deposit(bob, TEN_THOUSAND_HOLLAR);
+        uint256 bobBil = _deposit(bob, TEN_THOUSAND_HOLLAR);
 
-        assertLt(bobHdcl, aliceHdcl, "Bob gets fewer HDCL at higher rate");
-        assertLt(bobHdcl, TEN_THOUSAND_HOLLAR, "HDCL minted < HOLLAR deposited at rate > 1");
+        assertLt(bobBil, aliceBil, "Bob gets fewer BIL at higher rate");
+        assertLt(bobBil, TEN_THOUSAND_HOLLAR, "BIL minted < HOLLAR deposited at rate > 1");
     }
 
     /// @notice Deposit must not change the exchange rate (no dilution / inflation)
@@ -201,14 +201,14 @@ contract DepositTest is BaseTest {
         assertEq(balBefore - balAfter, TEN_THOUSAND_HOLLAR, "User HOLLAR decreased by deposit amount");
     }
 
-    /// @notice Spec §4.2 step 6: HDCL minted to depositor (not to vault or other address)
-    function test_deposit_mintsHdclToDepositor() public {
-        assertEq(vault.balanceOf(alice), 0, "Alice starts with 0 HDCL");
+    /// @notice Spec §4.2 step 6: BIL minted to depositor (not to vault or other address)
+    function test_deposit_mintsBilToDepositor() public {
+        assertEq(vault.balanceOf(alice), 0, "Alice starts with 0 BIL");
 
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
 
-        assertEq(vault.balanceOf(alice), hdcl, "HDCL minted directly to depositor");
-        assertGt(hdcl, 0);
+        assertEq(vault.balanceOf(alice), bil, "BIL minted directly to depositor");
+        assertGt(bil, 0);
     }
 
     /// @notice Spec §4.2 step 7: entire hollarAmount deposited into Decentral.
@@ -273,7 +273,7 @@ contract DepositTest is BaseTest {
     ///         today, but prevents storage/event spam.
     function test_onERC721Received_rejectsForeignCaller() public {
         vm.prank(alice);
-        vm.expectRevert(HDCLVault.OnlyPoolNFTs.selector);
+        vm.expectRevert(BILVault.OnlyPoolNFTs.selector);
         vault.onERC721Received(alice, alice, 0, "");
     }
 
@@ -321,14 +321,14 @@ contract DepositTest is BaseTest {
     /// @notice Spec §4.2 edge case: redemption queue is NOT processed during deposits
     function test_deposit_doesNotProcessQueue() public {
         // Setup: Alice deposits, matures, processes, then queues redemption
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
 
-        uint256 redeemAmount = aliceHdcl / 2;
+        uint256 redeemAmount = aliceBil / 2;
         _requestRedeem(alice, redeemAmount);
 
-        uint256 queuedBefore = vault.totalQueuedHdcl();
+        uint256 queuedBefore = vault.totalQueuedBil();
         assertEq(queuedBefore, redeemAmount, "Queue has Alice's request");
 
         uint256 idleBefore = vault.idleHollar();
@@ -336,7 +336,7 @@ contract DepositTest is BaseTest {
         // Bob deposits — queue must remain untouched
         _deposit(bob, TEN_THOUSAND_HOLLAR);
 
-        assertEq(vault.totalQueuedHdcl(), queuedBefore, "Queue unchanged after deposit");
+        assertEq(vault.totalQueuedBil(), queuedBefore, "Queue unchanged after deposit");
         // idleHollar should also remain the same (deposit doesn't add to idle)
         assertEq(vault.idleHollar(), idleBefore, "Idle HOLLAR unchanged by deposit");
     }
@@ -348,7 +348,7 @@ contract DepositTest is BaseTest {
     /// @notice Spec §4.2 step 9: Deposited(msg.sender, hollarAmount, wdclMinted, tokenId)
     function test_deposit_emitsDepositedEvent() public {
         vm.expectEmit(true, false, false, true);
-        // We don't know exact hdclMinted and tokenId ahead of time, so check topic1 (user)
+        // We don't know exact bilMinted and tokenId ahead of time, so check topic1 (user)
         // and verify data fields match after the call.
         emit Deposited(alice, TEN_THOUSAND_HOLLAR, TEN_THOUSAND_HOLLAR - 1000, 1);
 

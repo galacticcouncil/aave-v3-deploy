@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-/// @title IHDCLVault
-/// @notice Interface for the HDCL Vault — a tokenized vault that wraps
-///         Decentral Protocol lending positions into a fungible HDCL token
+/// @title IBILVault
+/// @notice Interface for the BIL Vault — a tokenized vault that wraps
+///         Decentral Protocol lending positions into a fungible BIL token
 ///         with async redemption (ERC-7540 + ERC-4626 conformant).
-interface IHDCLVault {
+interface IBILVault {
     // ──────────────────────────────────────────────
     //  Structs & Enums
     // ──────────────────────────────────────────────
@@ -26,17 +26,17 @@ interface IHDCLVault {
     event Deposited(
         address indexed user,
         uint256 hollarAmount,
-        uint256 hdclMinted,
+        uint256 bilMinted,
         uint256 tokenId
     );
-    event RedemptionRequested(uint256 indexed requestId, address indexed user, uint256 hdclAmount);
-    event RedemptionCancelled(uint256 indexed requestId, uint256 hdclReturned);
-    event RedemptionFulfilled(uint256 indexed requestId, address indexed user, uint256 hollarAmount, uint256 hdclBurned);
+    event RedemptionRequested(uint256 indexed requestId, address indexed user, uint256 bilAmount);
+    event RedemptionCancelled(uint256 indexed requestId, uint256 bilReturned);
+    event RedemptionFulfilled(uint256 indexed requestId, address indexed user, uint256 hollarAmount, uint256 bilBurned);
     event RedemptionPartiallyFulfilled(
         uint256 indexed requestId,
         address indexed user,
         uint256 hollarAmount,
-        uint256 hdclBurned
+        uint256 bilBurned
     );
     event Reinvested(uint256 hollarAmount, uint256 tokenId);
     event PositionProcessed(uint256 indexed positionIndex, uint256 tokenId, uint8 newState);
@@ -123,8 +123,8 @@ interface IHDCLVault {
         view
         returns (
             address user,
-            uint256 hdclAmount,
-            uint256 hdclSettled,
+            uint256 bilAmount,
+            uint256 bilSettled,
             uint256 hollarOwed,
             bool active
         );
@@ -141,7 +141,7 @@ interface IHDCLVault {
         );
     function getPositionCount() external view returns (uint256);
     function getPositionHead() external view returns (uint256);
-    function getTotalQueuedHdcl() external view returns (uint256);
+    function getTotalQueuedBil() external view returns (uint256);
     function getIdleHollar() external view returns (uint256);
     function getPoolCount() external view returns (uint256);
     function getOraclePrice() external view returns (uint256);

@@ -2,19 +2,19 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 import {Vm} from "forge-std/Vm.sol";
 
 /// @title Partial Redemption Rounding — Regression Coverage
 /// @notice Verifies that partial fills pay only the HOLLAR equivalent of the
-///         burned HDCL — i.e. `hollarOut <= hdclBurned * rate / WAD`.
+///         burned BIL — i.e. `hollarOut <= bilBurned * rate / WAD`.
 ///         Pre-fix, the partial-fill branch transferred the full `available`
-///         HOLLAR while burning a rounded-down `hdclToBurn`, so the redeemer
-///         walked away with `available - (hdclBurned * rate / WAD)` extra wei
+///         HOLLAR while burning a rounded-down `bilToBurn`, so the redeemer
+///         walked away with `available - (bilBurned * rate / WAD)` extra wei
 ///         per fill.
 contract PartialRedeemRoundingTest is BaseTest {
     /// @dev RedemptionPartiallyFulfilled(uint256 indexed requestId, address indexed user,
-    ///                                   uint256 hollarAmount, uint256 hdclBurned)
+    ///                                   uint256 hollarAmount, uint256 bilBurned)
     /// keccak256 of the canonical signature.
     bytes32 internal constant PARTIAL_FILL_TOPIC =
         keccak256("RedemptionPartiallyFulfilled(uint256,address,uint256,uint256)");
@@ -23,7 +23,7 @@ contract PartialRedeemRoundingTest is BaseTest {
         uint256 requestId;
         address user;
         uint256 hollarAmount;
-        uint256 hdclBurned;
+        uint256 bilBurned;
     }
 
     /// @dev Decode all RedemptionPartiallyFulfilled events from the recorded log buffer.
@@ -42,7 +42,7 @@ contract PartialRedeemRoundingTest is BaseTest {
         uint256 idx;
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics.length > 0 && logs[i].topics[0] == PARTIAL_FILL_TOPIC) {
-                (uint256 hollarAmount, uint256 hdclBurned) = abi.decode(
+                (uint256 hollarAmount, uint256 bilBurned) = abi.decode(
                     logs[i].data,
                     (uint256, uint256)
                 );
@@ -50,14 +50,14 @@ contract PartialRedeemRoundingTest is BaseTest {
                     requestId: uint256(logs[i].topics[1]),
                     user: address(uint160(uint256(logs[i].topics[2]))),
                     hollarAmount: hollarAmount,
-                    hdclBurned: hdclBurned
+                    bilBurned: bilBurned
                 });
             }
         }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //   EXACT: hollarAmount == hdclBurned * rate / WAD (down to the wei)
+    //   EXACT: hollarAmount == bilBurned * rate / WAD (down to the wei)
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice Strict version: capture the rate at the EXACT moment of the
@@ -75,15 +75,15 @@ contract PartialRedeemRoundingTest is BaseTest {
         // can only be partially fulfilled by the existing idle.
         _deposit(bob, 5 * TEN_THOUSAND_HOLLAR);
 
-        uint256 bobHdcl = vault.balanceOf(bob);
-        _requestRedeem(bob, bobHdcl);
+        uint256 bobBil = vault.balanceOf(bob);
+        _requestRedeem(bob, bobBil);
 
         // Snapshot the rate at the exact moment pokeQueue will see it.
         uint256 rateAtFill = vault.exchangeRate();
 
         // Confirm setup: queue has work AND idle is too small for full fill
         uint256 idleAtFill = vault.idleHollar();
-        uint256 fullCost = (bobHdcl * rateAtFill) / 1e18;
+        uint256 fullCost = (bobBil * rateAtFill) / 1e18;
         require(idleAtFill < fullCost, "test setup: should require partial fill");
 
         vm.recordLogs();
@@ -92,14 +92,14 @@ contract PartialRedeemRoundingTest is BaseTest {
         PartialFill[] memory fills = _collectPartialFills();
         assertGt(fills.length, 0, "expected at least one partial fill");
 
-        // Strict invariant: hollarAmount == hdclBurned * rate / WAD (down to wei).
+        // Strict invariant: hollarAmount == bilBurned * rate / WAD (down to wei).
         // Pre-fix: hollarAmount = available, off by `(available * WAD) % rate / WAD` wei.
         for (uint256 i = 0; i < fills.length; i++) {
-            uint256 expected = (fills[i].hdclBurned * rateAtFill) / 1e18;
+            uint256 expected = (fills[i].bilBurned * rateAtFill) / 1e18;
             assertEq(
                 fills[i].hollarAmount,
                 expected,
-                "Partial fill must pay EXACTLY hdclBurned * rate / WAD"
+                "Partial fill must pay EXACTLY bilBurned * rate / WAD"
             );
         }
     }
@@ -109,7 +109,7 @@ contract PartialRedeemRoundingTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice The RedemptionPartiallyFulfilled event must report the actual
-    ///         HOLLAR amount transferred, which equals `hdclBurned * rate / WAD`.
+    ///         HOLLAR amount transferred, which equals `bilBurned * rate / WAD`.
     function test_partialFill_eventReportsExactTransfer() public {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
@@ -133,8 +133,8 @@ contract PartialRedeemRoundingTest is BaseTest {
         for (uint256 i = 0; i < fills.length; i++) {
             assertEq(
                 fills[i].hollarAmount,
-                (fills[i].hdclBurned * rateAtFill) / 1e18,
-                "Event hollarAmount must equal hdclSettled * rate / WAD"
+                (fills[i].bilBurned * rateAtFill) / 1e18,
+                "Event hollarAmount must equal bilSettled * rate / WAD"
             );
             if (fills[i].user == bob) totalFromEvents += fills[i].hollarAmount;
         }
@@ -202,10 +202,10 @@ contract PartialRedeemRoundingTest is BaseTest {
 
         _warpDays(61);
 
-        uint256 aliceHdcl = vault.balanceOf(alice);
-        if (aliceHdcl < vault.minRedeemAmount()) return;
+        uint256 aliceBil = vault.balanceOf(alice);
+        if (aliceBil < vault.minRedeemAmount()) return;
 
-        redeemAmount = uint96(bound(redeemAmount, vault.minRedeemAmount(), aliceHdcl));
+        redeemAmount = uint96(bound(redeemAmount, vault.minRedeemAmount(), aliceBil));
         _requestRedeem(alice, redeemAmount);
 
         vm.recordLogs();
@@ -217,10 +217,10 @@ contract PartialRedeemRoundingTest is BaseTest {
         uint256 rateNow = vault.exchangeRate();
         for (uint256 i = 0; i < fills.length; i++) {
             // Fair-rate invariant in inequality form to tolerate small post-fill
-            // rate drift: hollarAmount * WAD must be <= hdclBurned * rate.
+            // rate drift: hollarAmount * WAD must be <= bilBurned * rate.
             assertLe(
                 fills[i].hollarAmount * 1e18,
-                fills[i].hdclBurned * rateNow,
+                fills[i].bilBurned * rateNow,
                 "fuzz: fair-rate invariant violated"
             );
         }

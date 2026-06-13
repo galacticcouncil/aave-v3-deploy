@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 
 /// @title Yield Request-to-Execute Window — Regression Coverage
 /// @notice Verifies that totalAssets and the exchange rate stay flat across

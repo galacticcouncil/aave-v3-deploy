@@ -2,12 +2,12 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 
 /// @title getEstimatedWaitTime — View Liveness
 contract EstimatedWaitTimeTest is BaseTest {
     function _readYieldStartTime(uint256 idx) internal view returns (uint256 yst) {
-        // NFTPosition layout offsets (see HDCLVault struct):
+        // NFTPosition layout offsets (see BILVault struct):
         //   slot 0: tokenId, 1: principal, 2: apyWad, 3: depositTime,
         //   slot 4: maturityTime, 5: yieldStartTime, ...
         (bool ok, bytes memory data) = address(vault).staticcall(
@@ -35,9 +35,9 @@ contract EstimatedWaitTimeTest is BaseTest {
         // Bob queues a redemption. Idle HOLLAR is 0, so the walk goes through
         // alice's still-Active position 0.
         _deposit(bob, 1_000e18);
-        uint256 bobHdcl = vault.balanceOf(bob);
+        uint256 bobBil = vault.balanceOf(bob);
         vm.prank(bob);
-        uint256 reqId = vault.requestRedeem(bobHdcl, bob, bob);
+        uint256 reqId = vault.requestRedeem(bobBil, bob, bob);
 
         // View must not revert and should return a non-zero ETA (position 0
         // is still pre-maturity).
@@ -50,9 +50,9 @@ contract EstimatedWaitTimeTest is BaseTest {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
         _deposit(bob, 1_000e18);
-        uint256 bobHdcl = vault.balanceOf(bob);
+        uint256 bobBil = vault.balanceOf(bob);
         vm.prank(bob);
-        uint256 reqId = vault.requestRedeem(bobHdcl, bob, bob);
+        uint256 reqId = vault.requestRedeem(bobBil, bob, bob);
 
         // For a freshly-deposited position, yieldStartTime == depositTime <
         // maturityTime. The ternary picks the original arithmetic branch.

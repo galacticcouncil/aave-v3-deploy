@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ============================================================
-# E2E deploy script for HDCL Vault on Hydration Lark testnet.
+# E2E deploy script for BIL Vault on Hydration Lark testnet.
 # Designed to be re-run after each lark reset.
 #
 # Usage:
@@ -30,7 +30,7 @@ WETH_AMOUNT="${WETH_AMOUNT:-1}"   # WETH for EVM gas (18 decimals)
 HDX_AMOUNT="${HDX_AMOUNT:-100}"   # HDX for Substrate fees (12 decimals)
 
 echo "============================================"
-echo " HDCL Vault deploy → ${LARK_NUM}.lark"
+echo " BIL Vault deploy → ${LARK_NUM}.lark"
 echo "============================================"
 echo "RPC HTTP: $RPC_HTTP"
 echo "RPC WS:   $RPC_WS"
@@ -72,10 +72,10 @@ else
 fi
 
 # ----------------------------------------------------------
-# Step 2: Deploy HDCL Vault
+# Step 2: Deploy BIL Vault
 # ----------------------------------------------------------
 echo ""
-echo "--- Step 2: Deploy HDCL Vault ---"
+echo "--- Step 2: Deploy BIL Vault ---"
 
 cd "$VAULT_DIR"
 
@@ -89,12 +89,12 @@ forge script script/Deploy.s.sol:Deploy \
   --legacy \
   --slow \
   --gas-estimate-multiplier 200 \
-  2>&1 | tee /tmp/hdcl-deploy-output.txt
+  2>&1 | tee /tmp/bil-deploy-output.txt
 
 # Extract deployed addresses
-IMPL_ADDR=$(grep "Implementation:" /tmp/hdcl-deploy-output.txt | awk '{print $NF}')
-PROXY_ADDR=$(grep "Proxy (HDCL Vault):" /tmp/hdcl-deploy-output.txt | awk '{print $NF}')
-ORACLE_ADDR=$(grep "WDCLOracle:" /tmp/hdcl-deploy-output.txt | awk '{print $NF}')
+IMPL_ADDR=$(grep "Implementation:" /tmp/bil-deploy-output.txt | awk '{print $NF}')
+PROXY_ADDR=$(grep "Proxy (BIL Vault):" /tmp/bil-deploy-output.txt | awk '{print $NF}')
+ORACLE_ADDR=$(grep "BILOracle:" /tmp/bil-deploy-output.txt | awk '{print $NF}')
 
 echo ""
 echo "============================================"
@@ -103,7 +103,7 @@ echo "============================================"
 echo "Network:        ${LARK_NUM}.lark (chain 222222)"
 echo "Implementation: $IMPL_ADDR"
 echo "Proxy (Vault):  $PROXY_ADDR"
-echo "WDCLOracle:     $ORACLE_ADDR"
+echo "BILOracle:     $ORACLE_ADDR"
 echo "Admin:          $ALICE_ADDR"
 echo ""
 echo "Keeper config:"

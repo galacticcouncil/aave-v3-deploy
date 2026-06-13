@@ -11,7 +11,7 @@
     </filter>
   </defs>
   <rect width="340" height="196" fill="#F8F9FB" rx="3"/>
-  <text x="170" y="11" text-anchor="middle" font-size="6" font-weight="700" fill="#1E293B">HDCL Vault Architecture</text>
+  <text x="170" y="11" text-anchor="middle" font-size="6" font-weight="700" fill="#1E293B">BIL Vault Architecture</text>
   <rect x="95" y="16" width="150" height="10" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
   <rect x="100" y="18.5" width="5" height="5" rx="2.5" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
   <text x="108" y="22.5" font-size="3.5" fill="#1E293B">Actor</text>
@@ -22,7 +22,7 @@
   <rect x="189" y="19.5" width="0.8" height="3" rx="0.4" fill="#F59E0B"/>
   <text x="196" y="22.5" font-size="3.5" fill="#1E293B">External</text>
   <rect x="78.4" y="84.0" width="180.4" height="40.0" rx="5" fill="#EDEEF2"/>
-  <text x="255.8" y="89.0" text-anchor="end" font-size="3.5" fill="#94A3B8" font-weight="500">HDCL System</text>
+  <text x="255.8" y="89.0" text-anchor="end" font-size="3.5" fill="#94A3B8" font-weight="500">BIL System</text>
   <path d="M76.0,46.0 C76.0,70.0 123.6,70.0 123.6,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
   <path d="M179.2,46.0 C179.2,70.0 123.6,70.0 123.6,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
   <path d="M264.4,46.0 C264.4,70.0 123.6,70.0 123.6,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
@@ -46,13 +46,13 @@
   <g filter="url(#shadow)">
     <rect x="88.4" y="94.0" width="70.4" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
     <rect x="91.4" y="97.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
-    <text x="123.6" y="103.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">HDCLVault</text>
+    <text x="123.6" y="103.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">BILVault</text>
     <text x="123.6" y="108.5" text-anchor="middle" font-size="3.5" fill="#64748B">Vault + ERC-20</text>
   </g>
   <g filter="url(#shadow)">
     <rect x="180.8" y="94.0" width="68.0" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
     <rect x="183.8" y="97.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
-    <text x="214.8" y="103.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">WDCLOracle</text>
+    <text x="214.8" y="103.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">BILOracle</text>
     <text x="214.8" y="108.5" text-anchor="middle" font-size="3.5" fill="#64748B">Price Feed</text>
   </g>
   <g filter="url(#shadow)">

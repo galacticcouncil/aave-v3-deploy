@@ -3,8 +3,8 @@ pragma solidity ^0.8.22;
 
 import "forge-std/Test.sol";
 import {Deploy} from "../../script/Deploy.s.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
-import {WDCLOracle} from "../../src/WDCLOracle.sol";
+import {BILVault} from "../../src/BILVault.sol";
+import {BILOracle} from "../../src/BILOracle.sol";
 import {MockHollar} from "../mocks/MockHollar.sol";
 import {MockDecentralPool} from "../mocks/MockDecentralPool.sol";
 import {MockPoolToken} from "../mocks/MockPoolToken.sol";
@@ -12,7 +12,7 @@ import {MockPoolToken} from "../mocks/MockPoolToken.sol";
 /// @title Deploy Script Regression Coverage
 /// @notice Verifies the deploy script wires the oracle end-to-end.
 ///         Pre-fix, the script deployed the vault but never deployed/set the
-///         WDCLOracle, so `getOraclePrice()` reverted in production until
+///         BILOracle, so `getOraclePrice()` reverted in production until
 ///         someone manually completed the wiring.
 contract DeployTest is Test {
     Deploy internal deployScript;
@@ -60,8 +60,8 @@ contract DeployTest is Test {
         assertTrue(impl != proxy, "impl != proxy");
         assertTrue(proxy != oracle, "proxy != oracle");
 
-        HDCLVault vault = HDCLVault(proxy);
-        WDCLOracle wdcl = WDCLOracle(oracle);
+        BILVault vault = BILVault(proxy);
+        BILOracle wdcl = BILOracle(oracle);
 
         // Oracle wired into the vault
         assertEq(address(vault.oracle()), oracle, "vault.oracle() points at the deployed oracle");
@@ -97,7 +97,7 @@ contract DeployTest is Test {
             TVL_CAP
         );
 
-        HDCLVault vault = HDCLVault(proxy);
+        BILVault vault = BILVault(proxy);
         uint256 price = vault.getOraclePrice();
         assertGt(price, 0, "getOraclePrice must return > 0 after deploy");
         // At zero supply the rate is 1e18 (1:1); getOraclePrice scales 8d → 18d.
@@ -140,17 +140,17 @@ contract DeployTest is Test {
             TVL_CAP
         );
 
-        HDCLVault vault = HDCLVault(proxy);
+        BILVault vault = BILVault(proxy);
 
-        // A fresh user deposits and gets HDCL back
+        // A fresh user deposits and gets BIL back
         address alice = makeAddr("alice");
         hollar.mint(alice, 10_000e18);
         vm.prank(alice);
         hollar.approve(address(vault), type(uint256).max);
 
         vm.prank(alice);
-        uint256 hdclMinted = vault.deposit(10_000e18, alice);
-        assertGt(hdclMinted, 0, "first deposit mints HDCL");
+        uint256 bilMinted = vault.deposit(10_000e18, alice);
+        assertGt(bilMinted, 0, "first deposit mints BIL");
 
         // Oracle still works after a real deposit
         uint256 price = vault.getOraclePrice();

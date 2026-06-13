@@ -1,6 +1,6 @@
-# Library Split Plan — Get HDCLVault Under EIP-170 / Deployable on Hydration
+# Library Split Plan — Get BILVault Under EIP-170 / Deployable on Hydration
 
-> Branch: `feat/hdcl-vault` @ `9ff358f`
+> Branch: `feat/bil-vault` @ `9ff358f`
 > Date: 2026-05-19
 > Companion docs: `DEPLOYMENT.md`, `x-ray/x-ray.md`
 
@@ -10,8 +10,8 @@
 
 | Metric | Current | Limit | Excess |
 |---|---|---|---|
-| `HDCLVault` deployed bytecode | **26,968** | **24,576** (EIP-170) | +2,392 B |
-| `HDCLVault` impl deploy tx gas | **17,932,114** | **15,000,000** (Hydration mainnet block limit) | +2,932,114 |
+| `BILVault` deployed bytecode | **26,968** | **24,576** (EIP-170) | +2,392 B |
+| `BILVault` impl deploy tx gas | **17,932,114** | **15,000,000** (Hydration mainnet block limit) | +2,932,114 |
 
 Both ceilings are external — not enforced by forge, but by the EVM (EIP-170) and the chain (per-block gas cap). The contract **cannot deploy to Hydration mainnet** as it stands; nothing about the deploy machinery can work around this.
 
@@ -47,7 +47,7 @@ The contract has 22 `require(cond, "string")` calls. Each string literal costs ~
    // ... etc
    ```
 3. Replace `require(cond, "msg")` → `if (!cond) revert FooError();`.
-4. Update any test that matched on `vm.expectRevert("string")` to `vm.expectRevert(HDCLVault.FooError.selector)`.
+4. Update any test that matched on `vm.expectRevert("string")` to `vm.expectRevert(BILVault.FooError.selector)`.
 
 ### Risk
 
@@ -73,7 +73,7 @@ Three dense functions are pure queue mechanics with self-contained logic:
 | `_claimByShares` (683–711) | 29 | ~600 – 900 B |
 | `_claimByAssets` (716–744) | 29 | ~600 – 900 B |
 
-All three operate on the same state: `redemptionQueue` mapping, `queueHead`, `queueTail`, `totalQueuedHdcl`, `totalReservedHollar`, `idleHollar`. None of them touch position state, role checks, or pool state. **Clean extraction boundary.**
+All three operate on the same state: `redemptionQueue` mapping, `queueHead`, `queueTail`, `totalQueuedBil`, `totalReservedHollar`, `idleHollar`. None of them touch position state, role checks, or pool state. **Clean extraction boundary.**
 
 ### Library shape
 
@@ -82,15 +82,15 @@ All three operate on the same state: `redemptionQueue` mapping, `queueHead`, `qu
 library QueueLib {
     struct Request {
         address user;
-        uint256 hdclAmount;
-        uint256 hdclSettled;
+        uint256 bilAmount;
+        uint256 bilSettled;
         uint256 hollarOwed;
     }
 
     error InsufficientClaimable();
 
-    event RedemptionFulfilled(uint256 indexed requestId, address indexed user, uint256 hollarAmount, uint256 hdclBurned);
-    event RedemptionPartiallyFulfilled(uint256 indexed requestId, address indexed user, uint256 hollarAmount, uint256 hdclBurned);
+    event RedemptionFulfilled(uint256 indexed requestId, address indexed user, uint256 hollarAmount, uint256 bilBurned);
+    event RedemptionPartiallyFulfilled(uint256 indexed requestId, address indexed user, uint256 hollarAmount, uint256 bilBurned);
 
     /// Pass storage refs explicitly; everything else by value. Library
     /// returns the deltas the caller needs to apply to its own globals
@@ -108,7 +108,7 @@ library QueueLib {
     ) public returns (
         uint256 newQueueHead,
         uint256 hollarUsed,
-        uint256 hdclLocked
+        uint256 bilLocked
     );
 
     function claimByShares(
@@ -137,21 +137,21 @@ library QueueLib {
 
 4. **Single struct definition** — move `RedemptionRequest` → `QueueLib.Request`. The vault imports it via `using QueueLib for ...` or references the qualified name.
 
-5. **Vault keeps the storage variables** — `redemptionQueue`, `queueHead`, `queueTail`, etc. **stay as `HDCLVault` storage slots, unchanged.** Storage layout is preserved for UUPS upgrade safety.
+5. **Vault keeps the storage variables** — `redemptionQueue`, `queueHead`, `queueTail`, etc. **stay as `BILVault` storage slots, unchanged.** Storage layout is preserved for UUPS upgrade safety.
 
-### Call-site changes in `HDCLVault.sol`
+### Call-site changes in `BILVault.sol`
 
 ```solidity
 // Before: internal call
 function _processQueueWithHollar(uint256 available, uint256 rate)
-    internal returns (uint256 hollarUsed, uint256 hdclLocked) { /* 100 lines */ }
+    internal returns (uint256 hollarUsed, uint256 bilLocked) { /* 100 lines */ }
 
 // After: thin dispatcher
 function _processQueueWithHollar(uint256 available, uint256 rate)
-    internal returns (uint256 hollarUsed, uint256 hdclLocked)
+    internal returns (uint256 hollarUsed, uint256 bilLocked)
 {
     uint256 newHead;
-    (newHead, hollarUsed, hdclLocked) = QueueLib.processQueue(
+    (newHead, hollarUsed, bilLocked) = QueueLib.processQueue(
         redemptionQueue,
         queueHead,
         queueTail,
@@ -172,7 +172,7 @@ function _processQueueWithHollar(uint256 available, uint256 rate)
 
 ### Risk areas (audit attention)
 
-1. **Pro-rata math in claim functions** — `(take * r.hollarOwed) / r.hdclSettled` and friends. Moving across library boundary doesn't change semantics, but every test that exercises partial settles + multi-claim must pass.
+1. **Pro-rata math in claim functions** — `(take * r.hollarOwed) / r.bilSettled` and friends. Moving across library boundary doesn't change semantics, but every test that exercises partial settles + multi-claim must pass.
 2. **`MAX_QUEUE_ITERATIONS` and `MAX_QUEUE_SKIPS`** — passed as args. The vault keeps the constants; library is parameterized for testability.
 3. **Cursor invariants in `processQueue`** — the `cursor == queueHead` co-located advance pattern, the partial-settle break, and the catastrophic-rate guard (`hollarValue == 0` break) all need to land verbatim.
 4. **`InsufficientClaimable` revert** — was a string `require`. After Phase 1 it'll already be a custom error; just move the error declaration into the library.
@@ -248,7 +248,7 @@ Bytecode ≤ 22,500 B → ship.
 [ ] Phase 2: QueueLib
     [ ] Create src/libraries/QueueLib.sol with Request struct + 3 public functions
     [ ] Move event declarations into library
-    [ ] Update HDCLVault.sol to use QueueLib (storage refs unchanged)
+    [ ] Update BILVault.sol to use QueueLib (storage refs unchanged)
     [ ] Add library deploy step to Deploy.s.sol (deploy QueueLib first, link into vault impl)
     [ ] forge build && check bytecode
     [ ] forge test (344 tests pass)
@@ -268,13 +268,13 @@ Bytecode ≤ 22,500 B → ship.
 ## Verification at each phase
 
 ```sh
-cd hdcl-vault
+cd bil-vault
 
 # Build with same flags as production
 forge build
 
 # Measure deployed bytecode
-jq -r '.deployedBytecode.object | length / 2' out/HDCLVault.sol/HDCLVault.json
+jq -r '.deployedBytecode.object | length / 2' out/BILVault.sol/BILVault.json
 # Target: ≤ 22,500 B
 
 # Estimate impl deploy gas via dry-run script (or just check forge's broadcast log

@@ -1,12 +1,12 @@
 #!/usr/bin/env npx tsx
 /**
- * E2E test for HDCLVault on Hydration lark testnet.
+ * E2E test for BILVault on Hydration lark testnet.
  *
  * Pre-requisites: run ./script/deploy-lark.sh first.
  *
  * Flow:
  *   1. Setup: fund WETH, mint HOLLAR via governance
- *   2. deposit(assets, receiver)     — ERC-4626 — check HDCL balance, exchangeRate, totalAssets
+ *   2. deposit(assets, receiver)     — ERC-4626 — check BIL balance, exchangeRate, totalAssets
  *   3. requestRedeem(shares, controller, owner)  — ERC-7540 async — check queue state + 5-tuple shape
  *   4. cancelRedeem(requestId)       — unsettled-only refund (fresh request, refunds in full)
  *   5. pokeDecentral(0)              — try to advance position state
@@ -59,7 +59,7 @@ const GOV_ADDR = '0xaa7e0000000000000000000000000000000aa7e0' as Address;
 
 const WETH_ASSET_ID = 20;
 const DEPOSIT_AMOUNT = parseEther('1000');
-const REDEEM_FRACTION = 4n; // redeem 1/4 of HDCL
+const REDEEM_FRACTION = 4n; // redeem 1/4 of BIL
 
 // ─── ABIs ───────────────────────────────────────────────────────────────────
 
@@ -78,15 +78,15 @@ const VAULT_ABI = parseAbi([
   'function totalAssets() external view returns (uint256)',
   'function exchangeRate() external view returns (uint256)',
   'function previewDeposit(uint256 hollarAmount) external view returns (uint256)',
-  'function previewRedeem(uint256 hdclAmount) external view returns (uint256)',
+  'function previewRedeem(uint256 bilAmount) external view returns (uint256)',
   'function pendingRedeemRequest(uint256 requestId, address controller) external view returns (uint256)',
   'function claimableRedeemRequest(uint256 requestId, address controller) external view returns (uint256)',
   'function getPositionCount() external view returns (uint256)',
   'function getPositionHead() external view returns (uint256)',
   'function getPosition(uint256 positionIndex) external view returns (uint256 tokenId, uint256 principal, uint256 apyWad, uint256 depositTime, uint256 maturityTime, uint8 state)',
-  'function getRedemptionRequest(uint256 requestId) external view returns (address user, uint256 hdclAmount, uint256 hdclSettled, uint256 hollarOwed, bool active)',
+  'function getRedemptionRequest(uint256 requestId) external view returns (address user, uint256 bilAmount, uint256 bilSettled, uint256 hollarOwed, bool active)',
   'function getRedemptionQueueLength() external view returns (uint256)',
-  'function getTotalQueuedHdcl() external view returns (uint256)',
+  'function getTotalQueuedBil() external view returns (uint256)',
   'function getIdleHollar() external view returns (uint256)',
   'function autoClaimEnabled(address) external view returns (bool)',
   'function balanceOf(address) external view returns (uint256)',
@@ -351,10 +351,10 @@ async function testVaultMetadata() {
 async function testDeposit(): Promise<bigint> {
   console.log('\n── Deposit ──');
 
-  const previewHdcl = await publicClient.readContract({
+  const previewBil = await publicClient.readContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'previewDeposit', args: [DEPOSIT_AMOUNT],
   }) as bigint;
-  console.log(`  Preview: ${formatEther(DEPOSIT_AMOUNT)} HOLLAR → ${formatEther(previewHdcl)} HDCL`);
+  console.log(`  Preview: ${formatEther(DEPOSIT_AMOUNT)} HOLLAR → ${formatEther(previewBil)} BIL`);
 
   const hollarBefore = await publicClient.readContract({
     address: HOLLAR, abi: ERC20_ABI, functionName: 'balanceOf', args: [ALICE_ADDR],
@@ -365,7 +365,7 @@ async function testDeposit(): Promise<bigint> {
   });
   await send(hash);
 
-  const [hdclBal, hollarAfter, totalAssets, exchangeRate, totalSupply, positionCount, idleHollar] =
+  const [bilBal, hollarAfter, totalAssets, exchangeRate, totalSupply, positionCount, idleHollar] =
     await Promise.all([
       publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'balanceOf', args: [ALICE_ADDR] }) as Promise<bigint>,
       publicClient.readContract({ address: HOLLAR, abi: ERC20_ABI, functionName: 'balanceOf', args: [ALICE_ADDR] }) as Promise<bigint>,
@@ -376,18 +376,18 @@ async function testDeposit(): Promise<bigint> {
       publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getIdleHollar' }) as Promise<bigint>,
     ]);
 
-  console.log(`  HDCL balance: ${formatEther(hdclBal)}`);
+  console.log(`  BIL balance: ${formatEther(bilBal)}`);
   console.log(`  HOLLAR spent: ${formatEther(hollarBefore - hollarAfter)}`);
   console.log(`  Total assets: ${formatEther(totalAssets)}  Exchange rate: ${formatEther(exchangeRate)}`);
   console.log(`  Total supply: ${formatEther(totalSupply)}  Positions: ${positionCount}  Idle: ${formatEther(idleHollar)}`);
 
-  assert(hdclBal > 0n, 'HDCL balance > 0 after deposit');
+  assert(bilBal > 0n, 'BIL balance > 0 after deposit');
   assert(hollarBefore - hollarAfter === DEPOSIT_AMOUNT, 'correct HOLLAR deducted');
   assert(totalAssets >= DEPOSIT_AMOUNT, 'totalAssets >= deposit');
   assert(exchangeRate > 0n, 'exchangeRate > 0');
   assert(positionCount >= 1n, 'at least 1 position');
 
-  return hdclBal;
+  return bilBal;
 }
 
 async function testGetPosition() {
@@ -408,11 +408,11 @@ async function testGetPosition() {
   assert(maturityTime > depositTime, 'maturity > deposit time');
 }
 
-async function testRequestRedeem(hdclBal: bigint): Promise<bigint> {
+async function testRequestRedeem(bilBal: bigint): Promise<bigint> {
   console.log('\n── Request Redeem ──');
 
-  const redeemAmount = hdclBal / REDEEM_FRACTION;
-  console.log(`  Requesting redeem of ${formatEther(redeemAmount)} HDCL...`);
+  const redeemAmount = bilBal / REDEEM_FRACTION;
+  console.log(`  Requesting redeem of ${formatEther(redeemAmount)} BIL...`);
 
   // The new request's id is the current queueTail (which getRedemptionQueueLength
   // returns). Cache it BEFORE the tx so we don't depend on the test running
@@ -428,42 +428,42 @@ async function testRequestRedeem(hdclBal: bigint): Promise<bigint> {
   });
   await send(hash);
 
-  const [user, hdclAmount, hdclSettled, hollarOwed, active] = await publicClient.readContract({
+  const [user, bilAmount, bilSettled, hollarOwed, active] = await publicClient.readContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getRedemptionRequest', args: [requestId],
   }) as [string, bigint, bigint, bigint, boolean];
 
-  const [totalQueued, hdclAfter] = await Promise.all([
-    publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getTotalQueuedHdcl' }) as Promise<bigint>,
+  const [totalQueued, bilAfter] = await Promise.all([
+    publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getTotalQueuedBil' }) as Promise<bigint>,
     publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'balanceOf', args: [ALICE_ADDR] }) as Promise<bigint>,
   ]);
 
-  console.log(`  Request #${requestId}: user=${user} amount=${formatEther(hdclAmount)} settled=${formatEther(hdclSettled)} owed=${formatEther(hollarOwed)} active=${active}`);
-  console.log(`  Total queued HDCL: ${formatEther(totalQueued)}`);
-  console.log(`  HDCL balance after: ${formatEther(hdclAfter)}`);
+  console.log(`  Request #${requestId}: user=${user} amount=${formatEther(bilAmount)} settled=${formatEther(bilSettled)} owed=${formatEther(hollarOwed)} active=${active}`);
+  console.log(`  Total queued BIL: ${formatEther(totalQueued)}`);
+  console.log(`  BIL balance after: ${formatEther(bilAfter)}`);
 
   assert(active === true, 'redemption request is active');
   assert(user.toLowerCase() === ALICE_ADDR.toLowerCase(), 'request user is Alice');
-  assert(hdclAmount === redeemAmount, 'request amount matches');
-  assert(hdclSettled === 0n, 'fresh request has zero settled');
+  assert(bilAmount === redeemAmount, 'request amount matches');
+  assert(bilSettled === 0n, 'fresh request has zero settled');
   assert(totalQueued > 0n, 'total queued > 0');
-  assert(hdclAfter < hdclBal, 'HDCL balance decreased after requestRedeem');
+  assert(bilAfter < bilBal, 'BIL balance decreased after requestRedeem');
 
   return requestId;
 }
 
-async function testCancelRedeem(requestId: bigint, hdclBefore: bigint) {
+async function testCancelRedeem(requestId: bigint, bilBefore: bigint) {
   console.log('\n── Cancel Redeem ──');
 
   // Snapshot totalQueued BEFORE cancel so we can assert on the delta rather
   // than absolute zero — vault may already have unrelated queue entries from
   // prior test runs against the same deployment.
   const totalQueuedBefore = (await publicClient.readContract({
-    address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getTotalQueuedHdcl',
+    address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getTotalQueuedBil',
   })) as bigint;
-  const [, hdclAmountBefore, hdclSettledBefore, , ] = await publicClient.readContract({
+  const [, bilAmountBefore, bilSettledBefore, , ] = await publicClient.readContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getRedemptionRequest', args: [requestId],
   }) as [string, bigint, bigint, bigint, boolean];
-  const expectedUnsettled = hdclAmountBefore - hdclSettledBefore;
+  const expectedUnsettled = bilAmountBefore - bilSettledBefore;
 
   const hash = await writeContract({
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'cancelRedeem', args: [requestId],
@@ -474,13 +474,13 @@ async function testCancelRedeem(requestId: bigint, hdclBefore: bigint) {
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getRedemptionRequest', args: [requestId],
   }) as [string, bigint, bigint, bigint, boolean];
 
-  const [hdclAfter, totalQueuedAfter] = await Promise.all([
+  const [bilAfter, totalQueuedAfter] = await Promise.all([
     publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'balanceOf', args: [ALICE_ADDR] }) as Promise<bigint>,
-    publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getTotalQueuedHdcl' }) as Promise<bigint>,
+    publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getTotalQueuedBil' }) as Promise<bigint>,
   ]);
 
   console.log(`  Request #${requestId} active: ${active}`);
-  console.log(`  HDCL balance restored: ${formatEther(hdclAfter)}`);
+  console.log(`  BIL balance restored: ${formatEther(bilAfter)}`);
   console.log(`  Total queued before/after: ${formatEther(totalQueuedBefore)} → ${formatEther(totalQueuedAfter)}`);
 
   assert(active === false, 'request no longer active (fully unsettled at cancel time)');
@@ -529,11 +529,11 @@ async function testPokeQueue() {
 
     const [idleAfter, totalQueued] = await Promise.all([
       publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getIdleHollar' }) as Promise<bigint>,
-      publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getTotalQueuedHdcl' }) as Promise<bigint>,
+      publicClient.readContract({ address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getTotalQueuedBil' }) as Promise<bigint>,
     ]);
 
     console.log(`  Idle HOLLAR: ${formatEther(idleBefore)} → ${formatEther(idleAfter)}`);
-    console.log(`  Queued HDCL: ${formatEther(totalQueued)}`);
+    console.log(`  Queued BIL: ${formatEther(totalQueued)}`);
     assert(true, 'pokeQueue executed');
   } catch (err: any) {
     console.log(`  pokeQueue() reverted: ${err.message?.slice(0, 80)}`);
@@ -637,8 +637,8 @@ async function testPreviewFunctions() {
     address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'previewRedeem', args: [parseEther('1000')],
   }) as bigint;
 
-  console.log(`  previewDeposit(1000 HOLLAR) = ${formatEther(previewDep)} HDCL`);
-  console.log(`  previewRedeem(1000 HDCL) = ${formatEther(previewRed)} HOLLAR`);
+  console.log(`  previewDeposit(1000 HOLLAR) = ${formatEther(previewDep)} BIL`);
+  console.log(`  previewRedeem(1000 BIL) = ${formatEther(previewRed)} HOLLAR`);
 
   assert(previewDep > 0n, 'previewDeposit returns > 0');
   assert(previewRed > 0n, 'previewRedeem returns > 0');
@@ -653,7 +653,7 @@ async function main() {
   }
 
   console.log('═══════════════════════════════════════════════');
-  console.log('  HDCL Vault E2E Test');
+  console.log('  BIL Vault E2E Test');
   console.log('═══════════════════════════════════════════════');
   console.log(`  RPC:   ${RPC_HTTP}`);
   console.log(`  Vault: ${VAULT_ADDRESS}`);
@@ -669,11 +669,11 @@ async function main() {
 
   // ── Run tests ──
   await testVaultMetadata();
-  const hdclBal = await testDeposit();
+  const bilBal = await testDeposit();
   await testGetPosition();
   await testPreviewFunctions();
-  const requestId = await testRequestRedeem(hdclBal);
-  await testCancelRedeem(requestId, hdclBal);
+  const requestId = await testRequestRedeem(bilBal);
+  await testCancelRedeem(requestId, bilBal);
   await testPokeDecentral();
   await testPokeQueue();
   await testSecondDeposit();

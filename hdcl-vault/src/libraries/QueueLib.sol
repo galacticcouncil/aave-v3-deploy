@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 /// @title QueueLib
-/// @notice FIFO redemption queue mechanics extracted from HDCLVault to keep
+/// @notice FIFO redemption queue mechanics extracted from BILVault to keep
 ///         the vault under EIP-170. All three functions are `public` so they
 ///         deploy as a separate library contract and the vault DELEGATECALLs
 ///         them — saving ~3 KB on the vault's deployed bytecode.
@@ -14,8 +14,8 @@ library QueueLib {
     /// @notice A queued redemption request.
     struct Request {
         address user;          // controller (= owner under standard flow)
-        uint256 hdclAmount;    // total hDCL queued (decreases on cancel/claim)
-        uint256 hdclSettled;   // rate-locked, ready to claim
+        uint256 bilAmount;    // total hDCL queued (decreases on cancel/claim)
+        uint256 bilSettled;   // rate-locked, ready to claim
         uint256 hollarOwed;    // HOLLAR reserved for the settled portion
     }
 
@@ -25,24 +25,24 @@ library QueueLib {
         uint256 indexed requestId,
         address indexed user,
         uint256 hollarAmount,
-        uint256 hdclBurned
+        uint256 bilBurned
     );
     event RedemptionPartiallyFulfilled(
         uint256 indexed requestId,
         address indexed user,
         uint256 hollarAmount,
-        uint256 hdclBurned
+        uint256 bilBurned
     );
 
     /// @notice Settle pending requests in FIFO order using `available` HOLLAR
     ///         at the supplied `rate`. Locks HOLLAR into request.hollarOwed
-    ///         and marks hdclSettled — but does NOT decrement vault-level
+    ///         and marks bilSettled — but does NOT decrement vault-level
     ///         idleHollar or increment totalReservedHollar; the caller must
     ///         apply `hollarUsed` to those globals.
     ///
     ///         Maintains a per-controller index of request IDs with non-zero
-    ///         hdclSettled. Pushes a request's cursor onto its controller's
-    ///         list the first time hdclSettled becomes non-zero — making
+    ///         bilSettled. Pushes a request's cursor onto its controller's
+    ///         list the first time bilSettled becomes non-zero — making
     ///         later claim walks bounded by the controller's own activity
     ///         instead of the all-time queueTail (cancel-spam DoS fix).
     function processQueue(
@@ -57,7 +57,7 @@ library QueueLib {
         uint256 wad
     )
         public
-        returns (uint256 newQueueHead, uint256 hollarUsed, uint256 hdclLocked)
+        returns (uint256 newQueueHead, uint256 hollarUsed, uint256 bilLocked)
     {
         newQueueHead = queueHead_;
         uint256 iterations;
@@ -81,7 +81,7 @@ library QueueLib {
                 continue;
             }
 
-            if (request.hdclSettled == request.hdclAmount) {
+            if (request.bilSettled == request.bilAmount) {
                 // Already fully settled — no more processing needed. Advance
                 // queueHead past it too if co-located; the entry stays in
                 // the mapping for claim walkers to find.
@@ -97,30 +97,30 @@ library QueueLib {
 
             iterations++;
 
-            uint256 pending = request.hdclAmount - request.hdclSettled;
+            uint256 pending = request.bilAmount - request.bilSettled;
             uint256 hollarValue = (pending * rate) / wad;
 
             // Catastrophic-rate guard: if rate has degraded so far that the
-            // outstanding HDCL is worth zero HOLLAR, settling it would lock
+            // outstanding BIL is worth zero HOLLAR, settling it would lock
             // value with no payout. Stop the loop — admin intervention is
             // needed before this entry can be safely processed.
             if (hollarValue == 0) break;
 
             // Capture pre-update state so we can detect the first-time-settle
             // transition without an extra storage read after the writes.
-            bool firstSettle = (request.hdclSettled == 0);
+            bool firstSettle = (request.bilSettled == 0);
             address user = request.user;
 
             if (available >= hollarValue) {
                 // Fully settle — leave the entry in place for claim, but
                 // advance queueHead/cursor past it.
-                request.hdclSettled = request.hdclAmount;
+                request.bilSettled = request.bilAmount;
                 request.hollarOwed += hollarValue;
 
                 if (firstSettle) settledByController[user].push(cursor);
 
                 hollarUsed += hollarValue;
-                hdclLocked += pending;
+                bilLocked += pending;
                 available -= hollarValue;
 
                 emit RedemptionFulfilled(cursor, user, hollarValue, pending);
@@ -131,29 +131,29 @@ library QueueLib {
                 unchecked { cursor++; }
             } else {
                 // Partially settle
-                uint256 hdclToSettle = (available * wad) / rate;
-                if (hdclToSettle == 0) break; // Dust amount, stop
+                uint256 bilToSettle = (available * wad) / rate;
+                if (bilToSettle == 0) break; // Dust amount, stop
 
-                // Lock only the HOLLAR equivalent of the rate-locked HDCL at
+                // Lock only the HOLLAR equivalent of the rate-locked BIL at
                 // the current rate, not the full `available`. The truncation
                 // residue (sub-wei vs `rate`) stays in idleHollar — it
                 // benefits the vault, not the redeemer.
-                uint256 hollarToReserve = (hdclToSettle * rate) / wad;
+                uint256 hollarToReserve = (bilToSettle * rate) / wad;
 
-                request.hdclSettled += hdclToSettle;
+                request.bilSettled += bilToSettle;
                 request.hollarOwed += hollarToReserve;
 
                 if (firstSettle) settledByController[user].push(cursor);
 
                 hollarUsed += hollarToReserve;
-                hdclLocked += hdclToSettle;
+                bilLocked += bilToSettle;
                 available = 0;
 
                 emit RedemptionPartiallyFulfilled(
                     cursor,
                     user,
                     hollarToReserve,
-                    hdclToSettle
+                    bilToSettle
                 );
                 // Entry stays at cursor (more pending to settle next call).
                 // Don't increment cursor — break out via available == 0 check.
@@ -162,7 +162,7 @@ library QueueLib {
     }
 
     /// @notice Walk the controller's own settled requests, drawing down
-    ///         hdclSettled (and pro-rata hollarOwed) until `shares` is
+    ///         bilSettled (and pro-rata hollarOwed) until `shares` is
     ///         exhausted. Reverts if the controller's total claimable is
     ///         less. Iteration is bounded by the controller's own activity —
     ///         immune to cancel-spam DoS that bloats queueTail.
@@ -182,29 +182,29 @@ library QueueLib {
             uint256 i = ids[j];
             Request storage r = queue[i];
 
-            if (r.user != controller || r.hdclSettled == 0) {
+            if (r.user != controller || r.bilSettled == 0) {
                 // Stale (cancelled hole / already drained) — evict and skip.
                 _swapPop(ids, j);
                 continue;
             }
 
-            uint256 take = r.hdclSettled <= remaining ? r.hdclSettled : remaining;
+            uint256 take = r.bilSettled <= remaining ? r.bilSettled : remaining;
             // Pro-rata of this request's locked HOLLAR
-            uint256 hollarTake = (take * r.hollarOwed) / r.hdclSettled;
+            uint256 hollarTake = (take * r.hollarOwed) / r.bilSettled;
 
-            r.hdclSettled -= take;
+            r.bilSettled -= take;
             r.hollarOwed -= hollarTake;
-            r.hdclAmount -= take;
+            r.bilAmount -= take;
 
             remaining -= take;
             assets += hollarTake;
 
             // Fully drained: nothing pending, nothing claimable → delete slot
             // AND evict from controller's index.
-            if (r.hdclAmount == 0) {
+            if (r.bilAmount == 0) {
                 delete queue[i];
                 _swapPop(ids, j);
-            } else if (r.hdclSettled == 0) {
+            } else if (r.bilSettled == 0) {
                 // Nothing claimable left on this entry (only unsettled
                 // remainder); remove from index.
                 _swapPop(ids, j);
@@ -215,7 +215,7 @@ library QueueLib {
     }
 
     /// @notice Walk the controller's own settled requests, drawing down
-    ///         hollarOwed (and pro-rata hdclSettled) until `assets` is
+    ///         hollarOwed (and pro-rata bilSettled) until `assets` is
     ///         exhausted. Returns the share count consumed. Same DoS-safe
     ///         per-controller index pattern as claimByShares.
     function claimByAssets(
@@ -240,20 +240,20 @@ library QueueLib {
 
             uint256 take = r.hollarOwed <= remaining ? r.hollarOwed : remaining;
             // Pro-rata of this request's settled hDCL
-            uint256 sharesTake = (take * r.hdclSettled) / r.hollarOwed;
+            uint256 sharesTake = (take * r.bilSettled) / r.hollarOwed;
 
             r.hollarOwed -= take;
-            r.hdclSettled -= sharesTake;
-            r.hdclAmount -= sharesTake;
+            r.bilSettled -= sharesTake;
+            r.bilAmount -= sharesTake;
 
             remaining -= take;
             shares += sharesTake;
             actualAssets += take;
 
-            if (r.hdclAmount == 0) {
+            if (r.bilAmount == 0) {
                 delete queue[i];
                 _swapPop(ids, j);
-            } else if (r.hdclSettled == 0) {
+            } else if (r.bilSettled == 0) {
                 _swapPop(ids, j);
             }
         }

@@ -3,7 +3,7 @@ pragma solidity ^0.8.22;
 
 import "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 import {MockHollar} from "../mocks/MockHollar.sol";
 import {MockDecentralPool} from "../mocks/MockDecentralPool.sol";
 import {MockPoolToken} from "../mocks/MockPoolToken.sol";
@@ -12,10 +12,10 @@ import {UserHandler} from "./handlers/UserHandler.sol";
 import {KeeperHandler} from "./handlers/KeeperHandler.sol";
 import {PositionReader} from "./helpers/PositionReader.sol";
 
-/// @title HDCLVault Invariant Tests
+/// @title BILVault Invariant Tests
 /// @notice Verifies spec invariants (Section 6.3) hold under random call sequences.
 contract InvariantVaultTest is Test {
-    HDCLVault public vault;
+    BILVault public vault;
     MockHollar public hollar;
     MockDecentralPool public pool;
     MockPoolToken public nft;
@@ -42,13 +42,13 @@ contract InvariantVaultTest is Test {
         hollar.mint(address(pool), 10_000_000e18);
 
         // Deploy vault via proxy
-        HDCLVault impl = new HDCLVault();
+        BILVault impl = new BILVault();
         bytes memory initData = abi.encodeCall(
-            HDCLVault.initialize,
+            BILVault.initialize,
             (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, admin)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
-        vault = HDCLVault(address(proxy));
+        vault = BILVault(address(proxy));
 
         // Create actors with HOLLAR balances and approvals
         for (uint256 i = 0; i < 5; i++) {
@@ -104,10 +104,10 @@ contract InvariantVaultTest is Test {
     //            SPEC INVARIANT 3: Queue Escrow Consistent
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice totalQueuedHdcl <= vault's own HDCL balance (escrowed)
+    /// @notice totalQueuedBil <= vault's own BIL balance (escrowed)
     function invariant_queueEscrowConsistent() public view {
         assertLe(
-            vault.totalQueuedHdcl(),
+            vault.totalQueuedBil(),
             vault.balanceOf(address(vault)),
             "INV-3: queue escrow inconsistent"
         );
@@ -231,11 +231,11 @@ contract InvariantVaultTest is Test {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //       ACCOUNTING INVARIANT 11: totalQueuedHdcl accuracy
+    //       ACCOUNTING INVARIANT 11: totalQueuedBil accuracy
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice totalQueuedHdcl == sum of hdclAmount across all non-deleted requests.
-    function invariant_totalQueuedHdclAccurate() public view {
+    /// @notice totalQueuedBil == sum of bilAmount across all non-deleted requests.
+    function invariant_totalQueuedBilAccurate() public view {
         uint256 tail = vault.getRedemptionQueueLength();
         uint256 sum = 0;
         for (uint256 i = 0; i < tail; i++) {
@@ -243,9 +243,9 @@ contract InvariantVaultTest is Test {
             if (u != address(0)) sum += amt;
         }
         assertEq(
-            vault.totalQueuedHdcl(),
+            vault.totalQueuedBil(),
             sum,
-            "INV-11: totalQueuedHdcl mismatch"
+            "INV-11: totalQueuedBil mismatch"
         );
     }
 
@@ -269,8 +269,8 @@ contract InvariantVaultTest is Test {
     //         ACCOUNTING INVARIANT 13: Per-request consistency
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice For every live request: hdclSettled <= hdclAmount, and
-    ///         hollarOwed > 0 only if hdclSettled > 0 (no HOLLAR locked for
+    /// @notice For every live request: bilSettled <= bilAmount, and
+    ///         hollarOwed > 0 only if bilSettled > 0 (no HOLLAR locked for
     ///         zero shares).
     function invariant_perRequestConsistency() public view {
         uint256 tail = vault.getRedemptionQueueLength();
@@ -278,7 +278,7 @@ contract InvariantVaultTest is Test {
             (address u, uint256 amt, uint256 settled, uint256 owed, ) =
                 vault.getRedemptionRequest(i);
             if (u == address(0)) continue;
-            assertLe(settled, amt, "INV-13a: hdclSettled > hdclAmount");
+            assertLe(settled, amt, "INV-13a: bilSettled > bilAmount");
             if (settled == 0) {
                 assertEq(owed, 0, "INV-13b: HOLLAR locked for zero shares");
             }
@@ -324,6 +324,6 @@ contract InvariantVaultTest is Test {
         console.log("Total assets:     ", vault.totalAssets());
         console.log("Idle HOLLAR:      ", vault.idleHollar());
         console.log("Reserved HOLLAR:  ", vault.totalReservedHollar());
-        console.log("Queued HDCL:      ", vault.totalQueuedHdcl());
+        console.log("Queued BIL:      ", vault.totalQueuedBil());
     }
 }

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 import {IERC4626} from "../../src/interfaces/IERC4626.sol";
 import {IERC7540Operator, IERC7540Redeem} from "../../src/interfaces/IERC7540.sol";
 
@@ -13,17 +13,17 @@ contract ERC7540ViewsTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_pending_freshRequest_isFull() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 reqId = _requestRedeem(alice, aliceHdcl / 4);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 reqId = _requestRedeem(alice, aliceBil / 4);
 
         // Right after requestRedeem, everything is pending; nothing claimable.
-        assertEq(vault.pendingRedeemRequest(reqId, alice), aliceHdcl / 4, "all pending");
+        assertEq(vault.pendingRedeemRequest(reqId, alice), aliceBil / 4, "all pending");
         assertEq(vault.claimableRedeemRequest(reqId, alice), 0, "nothing claimable");
     }
 
     function test_pending_wrongController_returnsZero() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 reqId = _requestRedeem(alice, aliceHdcl / 4);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 reqId = _requestRedeem(alice, aliceBil / 4);
 
         // Bob asking about alice's request gets 0 (he's not the controller).
         assertEq(vault.pendingRedeemRequest(reqId, bob), 0, "bob sees nothing pending");
@@ -31,16 +31,16 @@ contract ERC7540ViewsTest is BaseTest {
     }
 
     function test_claimable_afterFullSettle() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
-        uint256 reqId = _requestRedeem(alice, aliceHdcl / 4);
+        uint256 reqId = _requestRedeem(alice, aliceBil / 4);
 
         vault.pokeQueue();
 
         // Fully rate-locked: pending == 0, claimable == redeemAmount
         assertEq(vault.pendingRedeemRequest(reqId, alice), 0, "fully settled - nothing pending");
-        assertEq(vault.claimableRedeemRequest(reqId, alice), aliceHdcl / 4, "all claimable");
+        assertEq(vault.claimableRedeemRequest(reqId, alice), aliceBil / 4, "all claimable");
     }
 
     function test_partialSettle_splitsPendingAndClaimable() public {
@@ -50,8 +50,8 @@ contract ERC7540ViewsTest is BaseTest {
         _processPositionFull(0); // idle ≈ 10,300
 
         _deposit(bob, 50_000e18); // creates position 1; idle unchanged
-        uint256 bobHdcl = vault.balanceOf(bob);
-        uint256 reqId = _requestRedeem(bob, bobHdcl);
+        uint256 bobBil = vault.balanceOf(bob);
+        uint256 reqId = _requestRedeem(bob, bobBil);
 
         vault.pokeQueue();
 
@@ -60,14 +60,14 @@ contract ERC7540ViewsTest is BaseTest {
 
         assertGt(claimable, 0, "partial settle made some claimable");
         assertGt(pending, 0, "rest stays pending");
-        assertEq(pending + claimable, bobHdcl, "pending + claimable == original");
+        assertEq(pending + claimable, bobBil, "pending + claimable == original");
     }
 
     function test_claimable_dropsAfterRedeem() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
-        uint256 reqId = _requestRedeem(alice, aliceHdcl / 4);
+        uint256 reqId = _requestRedeem(alice, aliceBil / 4);
         vault.pokeQueue();
 
         uint256 claimableBefore = vault.claimableRedeemRequest(reqId, alice);
@@ -82,10 +82,10 @@ contract ERC7540ViewsTest is BaseTest {
     }
 
     function test_pending_dropsAfterCancel() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 reqId = _requestRedeem(alice, aliceHdcl / 4);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 reqId = _requestRedeem(alice, aliceBil / 4);
 
-        assertEq(vault.pendingRedeemRequest(reqId, alice), aliceHdcl / 4);
+        assertEq(vault.pendingRedeemRequest(reqId, alice), aliceBil / 4);
 
         vm.prank(alice);
         vault.cancelRedeem(reqId);

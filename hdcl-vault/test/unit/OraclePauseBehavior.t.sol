@@ -2,21 +2,21 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {WDCLOracle} from "../../src/WDCLOracle.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILOracle} from "../../src/BILOracle.sol";
+import {BILVault} from "../../src/BILVault.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /// @title Oracle Pause Behavior — Regression Coverage
-/// @notice Verifies that WDCLOracle continues to serve the current exchange rate
+/// @notice Verifies that BILOracle continues to serve the current exchange rate
 ///         while the vault is paused. Pre-fix, `latestRoundData` and `getRoundData`
 ///         reverted on pause, which could have cascaded into downstream lending
 ///         markets (blocked liquidations, unprice-able collateral, bad debt).
 contract OraclePauseBehaviorTest is BaseTest {
-    WDCLOracle public oracle;
+    BILOracle public oracle;
 
     function setUp() public override {
         super.setUp();
-        oracle = new WDCLOracle(address(vault));
+        oracle = new BILOracle(address(vault));
         vm.prank(admin);
         vault.setOracle(address(oracle));
         // Seed the vault so totalSupply > 0 and exchangeRate is meaningful.
@@ -139,7 +139,7 @@ contract OraclePauseBehaviorTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice Pre-fix, this scenario would have caused bad debt: vault paused
-    ///         during an emergency, downstream lending market couldn't price HDCL,
+    ///         during an emergency, downstream lending market couldn't price BIL,
     ///         couldn't liquidate underwater positions, accumulated bad debt.
     ///         Post-fix, the oracle stays alive and consumers can still operate.
     function test_downstreamConsumer_canPriceCollateralWhilePaused() public {
@@ -197,14 +197,14 @@ contract OraclePauseBehaviorTest is BaseTest {
     ///         oracle returns the canonical 1:1 rate — no revert.
     function test_oracle_freshVaultPausedReturnsOneToOne() public {
         // Deploy a brand new vault with no deposits.
-        HDCLVault impl = new HDCLVault();
+        BILVault impl = new BILVault();
         bytes memory initData = abi.encodeCall(
-            HDCLVault.initialize,
+            BILVault.initialize,
             (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, admin)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
-        HDCLVault freshVault = HDCLVault(address(proxy));
-        WDCLOracle freshOracle = new WDCLOracle(address(freshVault));
+        BILVault freshVault = BILVault(address(proxy));
+        BILOracle freshOracle = new BILOracle(address(freshVault));
 
         // Pause the fresh vault
         vm.prank(admin);

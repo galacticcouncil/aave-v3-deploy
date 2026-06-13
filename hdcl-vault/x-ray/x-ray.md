@@ -1,8 +1,8 @@
 # X-Ray Report
 
-> HDCL Vault (Hydrated Decentral) | `feat/hdcl-vault` @ `9d49425` | Foundry
+> BIL Vault (Brazilian Invoice Loans) | `feat/bil-vault` @ `9d49425` | Foundry
 > Date: 2026-05-19
-> Spec: `.claude/HDCL-vault-specification.md`; in-tree design: `PLAN-multi-pool.md`
+> Spec: `.claude/BIL-vault-specification.md`; in-tree design: `PLAN-multi-pool.md`
 
 ---
 
@@ -19,8 +19,8 @@
 
 | Subsystem | Contract | Role |
 |-----------|----------|------|
-| Vault Core | `HDCLVault.sol` (1701 lines) | ERC-20 + ERC-4626 + ERC-7540, multi-pool routing, position lifecycle, redemption queue with rate-lock |
-| Oracle | `WDCLOracle.sol` (106 lines) | Chainlink-compatible feed for external consumers (Aave hub) |
+| Vault Core | `BILVault.sol` (1701 lines) | ERC-20 + ERC-4626 + ERC-7540, multi-pool routing, position lifecycle, redemption queue with rate-lock |
+| Oracle | `BILOracle.sol` (106 lines) | Chainlink-compatible feed for external consumers (Aave hub) |
 
 ### Key Mechanisms
 
@@ -68,9 +68,9 @@
 | INV-1..8  | Position state monotonicity; supply / totalAssets relationships; idle-HOLLAR ≤ vault balance; queue total ≤ vault hDCL balance; rate monotonicity in normal operation |
 | INV-9     | (updated) Per-position pool-registry integrity |
 | INV-10    | `totalReservedHollar == Σ request.hollarOwed` |
-| INV-11    | `totalQueuedHdcl == Σ (request.hdclAmount − request.hdclSettled)` for live requests |
+| INV-11    | `totalQueuedBil == Σ (request.bilAmount − request.bilSettled)` for live requests |
 | INV-12    | `hollar.balanceOf(vault) >= idleHollar + totalReservedHollar` |
-| INV-13    | Per-request consistency (`hdclSettled ≤ hdclAmount`; `hollarOwed > 0 ⟹ hdclSettled > 0`) |
+| INV-13    | Per-request consistency (`bilSettled ≤ bilAmount`; `hollarOwed > 0 ⟹ bilSettled > 0`) |
 | INV-14    | Non-Redeemed position ⟹ `positionPool[i]` is in pool registry |
 
 ### Stated invariants (per spec)
@@ -89,12 +89,12 @@
 | Test files | 25 unit + 1 invariant |
 | Test functions | 350 unit + invariant + handler |
 | Total tests passing | 350 / 350 |
-| Line coverage (HDCLVault) | **97.12%** (438/451) |
+| Line coverage (BILVault) | **97.12%** (438/451) |
 | Statement coverage | 92.55% |
 | Branch coverage | 70.59% |
 | Function coverage | **100%** (69/69) |
 | QueueLib | 93.88% lines / 100% functions |
-| WDCLOracle | **100%** lines / functions |
+| BILOracle | **100%** lines / functions |
 
 Remaining uncovered lines are catch-arm internals and view-side error paths (`getEstimatedWaitTime` overflow fallback, `previewWithdraw` 0-sentinel). Branch coverage drop reflects the new error paths in `previewDeposit` and the bounded head-sweep — both have happy-path coverage; the explicit revert paths are exercised in the spec-fix tests but lcov's branch attribution is coarse on `--ir-minimum`.
 
@@ -149,7 +149,7 @@ redeem / withdraw  → burn settled hDCL, transfer HOLLAR from reserved
 
 ## 6. Spec Deviations (deltas from original spec)
 
-These are *intentional* and supersede the original `.claude/HDCL-vault-specification.md`:
+These are *intentional* and supersede the original `.claude/BIL-vault-specification.md`:
 
 | # | Change | Driver |
 |---|--------|--------|
@@ -184,7 +184,7 @@ These are *intentional* and supersede the original `.claude/HDCL-vault-specifica
 
 **Structural facts:**
 
-1. ~1900 lines of in-scope source (HDCLVault + QueueLib + WDCLOracle)
+1. ~1900 lines of in-scope source (BILVault + QueueLib + BILOracle)
 2. 350 tests across 25 unit files + 1 invariant file, all green at `41037fc`
 3. UUPS upgradeable with `__gap[49]` (one slot consumed by `_settledByController`); no on-chain timelock
 4. Pull-redemption + rate-lock (7540-conformant), with role-gated auto-claim as a UX layer on top

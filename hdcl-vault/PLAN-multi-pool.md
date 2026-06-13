@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make HDCL a long-running yield-bearing vault that persists across Decentral pool rotations. Users hold one fungible hDCL token; new deposits route to whichever DecentralPool the admin has set as active. Old positions wind down in their original pool via the existing keeper lifecycle.
+Make BIL a long-running yield-bearing vault that persists across Decentral pool rotations. Users hold one fungible hDCL token; new deposits route to whichever DecentralPool the admin has set as active. Old positions wind down in their original pool via the existing keeper lifecycle.
 
 ## Trust model
 
@@ -160,7 +160,7 @@ The guardian's ability to unpause is what makes this useful. If only admin could
 
 ## ERC-7540 + ERC-4626 conformance
 
-HDCL is a yield-bearing vault with async redemption. The natural standards are **ERC-4626** (base tokenized vault interface) and **ERC-7540** (async tokenized vault extension). Conformance unlocks integration with vault-aware tooling (Aave 3 collateral wrappers, Morpho strategies, Yearn aggregators, indexer support, audited router contracts) and is now in scope.
+BIL is a yield-bearing vault with async redemption. The natural standards are **ERC-4626** (base tokenized vault interface) and **ERC-7540** (async tokenized vault extension). Conformance unlocks integration with vault-aware tooling (Aave 3 collateral wrappers, Morpho strategies, Yearn aggregators, indexer support, audited router contracts) and is now in scope.
 
 ### Surface to add
 
@@ -178,7 +178,7 @@ Change `deposit(uint256)` signature to ERC-4626: `deposit(uint256 assets, addres
 
 **ERC-7540 async redemption:**
 - `requestRedeem(uint256 shares, address controller, address owner)` → returns `uint256 requestId`
-  - Current `requestRedeem(uint256 hdclAmount)` needs the extra params.
+  - Current `requestRedeem(uint256 bilAmount)` needs the extra params.
   - `owner` must approve `msg.sender` to spend shares (or be `msg.sender`).
   - `controller` is who can manage and claim the request (often == owner).
 - `pendingRedeemRequest(uint256 requestId, address controller)` view — shares still in queue
@@ -223,10 +223,10 @@ The original push-based design's "UX optimization" survives — just relocated f
 ### Rate-lock semantics under pull
 
 Today, `pokeQueue` computes `rate = exchangeRate()` once per call, then settles each entry at that rate. Under pull:
-- When processing a request, lock the rate by recording `(hdclConsumed, hollarOwed)` on the request struct.
-- `claimableRedeemRequest` returns `hdclConsumed` (or equivalent assets via the locked rate).
+- When processing a request, lock the rate by recording `(bilConsumed, hollarOwed)` on the request struct.
+- `claimableRedeemRequest` returns `bilConsumed` (or equivalent assets via the locked rate).
 - `redeem(shares, receiver, controller)` pays `hollarOwed` for the locked shares; burns the hDCL from escrow.
-- Partial fulfillment naturally extends: a request can have multiple `(hdcl, hollar)` lock entries.
+- Partial fulfillment naturally extends: a request can have multiple `(bil, hollar)` lock entries.
 
 The shift moves HOLLAR-out from `pokeQueue` to `redeem`. The pendingYield/pendingPrincipal flow into `idleHollar` unchanged.
 
@@ -235,8 +235,8 @@ Concrete struct + state changes:
 ```solidity
 struct RedemptionRequest {
     address user;
-    uint256 hdclAmount;     // total hDCL queued
-    uint256 hdclSettled;    // rate-locked, ready to claim
+    uint256 bilAmount;     // total hDCL queued
+    uint256 bilSettled;    // rate-locked, ready to claim
     uint256 hollarOwed;     // HOLLAR reserved for this request, ready to claim
 }
 
@@ -299,7 +299,7 @@ Standard 7540 paths (`msg.sender == controller`, or per-user `isOperator`) keep 
 1. Admin grants `CLAIM_OPERATOR_ROLE` to the keeper bot at deploy.
 2. User opts in via `setAutoClaim(true)` (one tx, gas paid by user).
 3. Protocol-owned positions call `setAutoClaim(true)` from their own contract logic.
-4. After every `pokeQueue` run, keeper bot walks newly-settled requests; for each request whose `user` has `autoClaimEnabled == true`, keeper calls `redeem(r.hdclSettled, r.user, r.user)`. HOLLAR lands in the user's wallet.
+4. After every `pokeQueue` run, keeper bot walks newly-settled requests; for each request whose `user` has `autoClaimEnabled == true`, keeper calls `redeem(r.bilSettled, r.user, r.user)`. HOLLAR lands in the user's wallet.
 5. Users who haven't opted in self-claim by calling `redeem` directly.
 6. Anyone can opt back out by calling `setAutoClaim(false)`.
 
@@ -339,7 +339,7 @@ Standard 7540 paths (`msg.sender == controller`, or per-user `isOperator`) keep 
 
 ## Implementation order (when greenlit)
 
-> **Status (2026-05-19, `9d49425`):** Workstreams 0, 1, 2 are all **landed and merged on `feat/hdcl-vault`**. 344 / 344 tests passing, 99.20% line coverage on `HDCLVault.sol`. Heterogeneous-APY tests cover 18% / 22% / 16% (incl. rate-cut scenario). 15 invariants × 12,800 fuzz calls each. See `x-ray/x-ray.md` for the current state.
+> **Status (2026-05-19, `9d49425`):** Workstreams 0, 1, 2 are all **landed and merged on `feat/bil-vault`**. 344 / 344 tests passing, 99.20% line coverage on `BILVault.sol`. Heterogeneous-APY tests cover 18% / 22% / 16% (incl. rate-cut scenario). 15 invariants × 12,800 fuzz calls each. See `x-ray/x-ray.md` for the current state.
 
 Three workstreams in dependency order. Land each as a separate commit (or PR) to keep the diff reviewable.
 
@@ -371,7 +371,7 @@ Three workstreams in dependency order. Land each as a separate commit (or PR) to
 8. Add `asset()`, `convertToShares`, `convertToAssets`, `maxDeposit`, `maxMint`, `maxWithdraw`, `maxRedeem`, `previewMint`.
 9. Change `deposit(uint256)` → `deposit(uint256 assets, address receiver)`; add `mint(uint256 shares, address receiver)`. Emit canonical `Deposit(sender, owner, assets, shares)` event.
 10. Change `requestRedeem(uint256)` → `requestRedeem(uint256 shares, address controller, address owner)`. Implement owner-allowance check.
-11. **Switch redemption from push to pull.** Modify `_processQueueWithHollar` to record `hdclSettled` / `hollarOwed` on each request and move HOLLAR from `idleHollar` into `totalReservedHollar` instead of pushing. Update `totalAssets()` to include `totalReservedHollar`. Implement `redeem(shares, receiver, controller)` and `withdraw(assets, receiver, controller)` for users to claim.
+11. **Switch redemption from push to pull.** Modify `_processQueueWithHollar` to record `bilSettled` / `hollarOwed` on each request and move HOLLAR from `idleHollar` into `totalReservedHollar` instead of pushing. Update `totalAssets()` to include `totalReservedHollar`. Implement `redeem(shares, receiver, controller)` and `withdraw(assets, receiver, controller)` for users to claim.
 12. Add operator pattern: `setOperator(address, bool)`, `isOperator(address, address)`, `OperatorSet` event. Permit operator-initiated `requestRedeem`, `redeem`, `withdraw`.
 13. Add `CLAIM_OPERATOR_ROLE` + `autoClaimEnabled` mapping + `setAutoClaim(bool)` function. Extend `redeem`/`withdraw` auth check with the role-based path (constrained to `receiver == controller`).
 14. Add view functions: `pendingRedeemRequest(requestId, controller)`, `claimableRedeemRequest(requestId, controller)`.

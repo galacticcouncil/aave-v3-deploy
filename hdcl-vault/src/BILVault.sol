@@ -16,12 +16,12 @@ import {IERC4626} from "./interfaces/IERC4626.sol";
 import {IERC7540Operator, IERC7540Redeem} from "./interfaces/IERC7540.sol";
 import {QueueLib} from "./libraries/QueueLib.sol";
 
-/// @title HDCLVault
+/// @title BILVault
 /// @notice Fungible yield-bearing ERC-20 wrapper around Decentral Protocol NFT positions.
 /// @dev Single contract that is the ERC-20 token, vault logic, and Chainlink-compatible oracle.
-///      Users deposit HOLLAR → vault deposits into Decentral → vault mints HDCL.
+///      Users deposit HOLLAR → vault deposits into Decentral → vault mints BIL.
 ///      Exchange rate appreciates over time as yield accrues (non-rebasing model).
-contract HDCLVault is
+contract BILVault is
     ERC20Upgradeable,
     AccessControlUpgradeable,
     UUPSUpgradeable,
@@ -153,9 +153,9 @@ contract HDCLVault is
     bool public depositsPaused;
     /// @notice Minimum HOLLAR for reinvestment
     uint256 public minReinvestAmount;
-    /// @notice Minimum HDCL to request redemption
+    /// @notice Minimum BIL to request redemption
     uint256 public minRedeemAmount;
-    /// @notice Chainlink-compatible oracle for wDCL/HOLLAR price
+    /// @notice Chainlink-compatible oracle for BIL/HOLLAR price
     IAggregatorV3Interface public oracle;
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -199,8 +199,8 @@ contract HDCLVault is
     uint256 public queueHead;
     /// @notice Index of the next request to be created
     uint256 public queueTail;
-    /// @notice Total HDCL across all active queue entries
-    uint256 public totalQueuedHdcl;
+    /// @notice Total BIL across all active queue entries
+    uint256 public totalQueuedBil;
 
     // ═══════════════════════════════════════════════════════════════════════
     //                  ERC-7540 OPERATOR + AUTO-CLAIM
@@ -224,7 +224,7 @@ contract HDCLVault is
     event Deposited(
         address indexed user,
         uint256 hollarAmount,
-        uint256 hdclMinted,
+        uint256 bilMinted,
         uint256 tokenId
     );
     /// @notice ERC-4626 canonical deposit event. Emitted in addition to
@@ -265,9 +265,9 @@ contract HDCLVault is
     event RedemptionRequested(
         uint256 indexed requestId,
         address indexed user,
-        uint256 hdclAmount
+        uint256 bilAmount
     );
-    event RedemptionCancelled(uint256 indexed requestId, uint256 hdclReturned);
+    event RedemptionCancelled(uint256 indexed requestId, uint256 bilReturned);
     // RedemptionFulfilled / RedemptionPartiallyFulfilled moved to QueueLib.
     // They're emitted under DELEGATECALL so logs still appear at the vault's
     // address and tests' expectEmit matches by topic+data regardless.
@@ -368,7 +368,7 @@ contract HDCLVault is
         if (_hollar == address(0)) revert ZeroAddress();
         if (_admin == address(0)) revert ZeroAddress();
 
-        __ERC20_init("Hydrated Decentral", "HDCL");
+        __ERC20_init("Brazilian Invoice Loans", "BIL");
         __AccessControl_init();
         __UUPSUpgradeable_init();
         __Pausable_init();
@@ -380,7 +380,7 @@ contract HDCLVault is
         emit ActiveDepositPoolSet(_decentralPool);
         tvlCap = _tvlCap;
         minReinvestAmount = 10e18; // 10 HOLLAR
-        minRedeemAmount = 1e18; // 1 HDCL
+        minRedeemAmount = 1e18; // 1 BIL
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(ADMIN_ROLE, _admin);
@@ -413,7 +413,7 @@ contract HDCLVault is
             totalReservedHollar;
     }
 
-    /// @notice Current HDCL/HOLLAR exchange rate (18 decimals)
+    /// @notice Current BIL/HOLLAR exchange rate (18 decimals)
     /// @return Rate in WAD (1e18 = 1:1)
     function exchangeRate() public view returns (uint256) {
         uint256 supply = totalSupply();
@@ -518,19 +518,19 @@ contract HDCLVault is
         if (owner == address(0)) revert ZeroAddress();
         if (msg.sender != owner && !isOperator[owner][msg.sender]) revert NotAuthorized();
 
-        // Escrow HDCL from owner. The vault's per-user operator approval
+        // Escrow BIL from owner. The vault's per-user operator approval
         // covers this — no per-token allowance needed.
         _transfer(owner, address(this), shares);
 
         requestId = queueTail;
         redemptionQueue[requestId] = QueueLib.Request({
             user: controller,
-            hdclAmount: shares,
-            hdclSettled: 0,
+            bilAmount: shares,
+            bilSettled: 0,
             hollarOwed: 0
         });
         queueTail++;
-        totalQueuedHdcl += shares;
+        totalQueuedBil += shares;
 
         emit RedemptionRequested(requestId, controller, shares);
         emit RedeemRequest(controller, owner, requestId, msg.sender, shares);
@@ -564,7 +564,7 @@ contract HDCLVault is
 
     /// @notice Cancel the still-unsettled portion of a redemption request.
     /// @dev    Refunds the unsettled hDCL back to the user. Any already-settled
-    ///         portion (hdclSettled > 0) stays alive as a claim — the user
+    ///         portion (bilSettled > 0) stays alive as a claim — the user
     ///         must call `redeem` / `withdraw` to receive the HOLLAR. If the
     ///         request was fully unsettled at cancel time, it's deleted from
     ///         the queue entirely.
@@ -576,10 +576,10 @@ contract HDCLVault is
         if (msg.sender != controller && !isOperator[controller][msg.sender])
             revert NotRequestOwner();
 
-        uint256 unsettled = request.hdclAmount - request.hdclSettled;
+        uint256 unsettled = request.bilAmount - request.bilSettled;
         if (unsettled > 0) {
-            totalQueuedHdcl -= unsettled;
-            request.hdclAmount = request.hdclSettled; // shrink to settled portion
+            totalQueuedBil -= unsettled;
+            request.bilAmount = request.bilSettled; // shrink to settled portion
             // Refund the unsettled hDCL to the controller. When an operator
             // cancels, the funds still go to the controller, not the operator.
             _transfer(address(this), controller, unsettled);
@@ -588,7 +588,7 @@ contract HDCLVault is
 
         // If nothing was settled, the request has nothing left — delete it
         // and try to compact the queue head.
-        if (request.hdclSettled == 0) {
+        if (request.bilSettled == 0) {
             delete redemptionQueue[requestId];
 
             // Head sweep — same logic as before, bounded by MAX_QUEUE_ITERATIONS
@@ -618,7 +618,7 @@ contract HDCLVault is
 
     /// @notice Claim hDCL → HOLLAR for previously-settled redemption requests.
     /// @dev    Walks the controller's settled requests in FIFO order, drawing
-    ///         down `hdclSettled` and `hollarOwed` pro-rata until the
+    ///         down `bilSettled` and `hollarOwed` pro-rata until the
     ///         requested `shares` is exhausted. Burns the escrowed hDCL and
     ///         transfers HOLLAR to `receiver`.
     ///
@@ -645,7 +645,7 @@ contract HDCLVault is
         assets = QueueLib.claimByShares(redemptionQueue, _settledByController, controller, shares);
 
         _burn(address(this), shares);
-        totalQueuedHdcl -= shares;
+        totalQueuedBil -= shares;
         totalReservedHollar -= assets;
         hollar.safeTransfer(receiver, assets);
 
@@ -666,7 +666,7 @@ contract HDCLVault is
         (shares, assets) = QueueLib.claimByAssets(redemptionQueue, _settledByController, controller, assets);
 
         _burn(address(this), shares);
-        totalQueuedHdcl -= shares;
+        totalQueuedBil -= shares;
         totalReservedHollar -= assets;
         hollar.safeTransfer(receiver, assets);
 
@@ -829,7 +829,7 @@ contract HDCLVault is
                 );
 
                 // Distribute available HOLLAR to queue
-                if (totalQueuedHdcl > 0 && idleHollar > 0) {
+                if (totalQueuedBil > 0 && idleHollar > 0) {
                     uint256 rate = exchangeRate();
                     _processQueueWithHollar(idleHollar, rate);
                 }
@@ -899,7 +899,7 @@ contract HDCLVault is
         } else {
             uint256 totalA = totalAssets();
             // Catastrophic state: shares exist but no backing. Refuse to
-            // deposit at a zero rate — the depositor would receive no HDCL
+            // deposit at a zero rate — the depositor would receive no BIL
             // and lose their HOLLAR. Solidity 0.8+ would panic on the
             // division below; this gives a clear revert reason instead.
             if (totalA == 0) revert VaultEmpty();
@@ -1022,7 +1022,7 @@ contract HDCLVault is
         uint256 len = ids.length;
         for (uint256 i = 0; i < len; i++) {
             QueueLib.Request storage r = redemptionQueue[ids[i]];
-            if (r.user == controller) max += r.hdclSettled;
+            if (r.user == controller) max += r.bilSettled;
         }
     }
 
@@ -1044,10 +1044,10 @@ contract HDCLVault is
     //                       VAULT-SPECIFIC VIEWS
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice Preview how much HDCL a HOLLAR deposit would mint.
+    /// @notice Preview how much BIL a HOLLAR deposit would mint.
     /// @dev    Returns 0 for inputs that would revert in `deposit` (zero amount,
     ///         first-deposit dust below DEAD_SHARES). Lets off-chain callers
-    ///         distinguish "would succeed with N HDCL" from "would revert"
+    ///         distinguish "would succeed with N BIL" from "would revert"
     ///         without forcing them to catch a Solidity revert.
     /// @notice ERC-4626 `previewDeposit`. Returns the hDCL that `deposit`
     ///         would mint for `hollarAmount` HOLLAR at the current rate.
@@ -1059,7 +1059,7 @@ contract HDCLVault is
     ///         eventual unpaused deposit.
     function previewDeposit(
         uint256 hollarAmount
-    ) external view returns (uint256 hdclAmount) {
+    ) external view returns (uint256 bilAmount) {
         if (hollarAmount == 0) revert ZeroAmount();
         uint256 supply = totalSupply();
         if (supply == 0) {
@@ -1070,17 +1070,17 @@ contract HDCLVault is
         // Catastrophic state: shares exist but no backing. `deposit` would
         // revert with VaultEmpty before the divide; mirror that here.
         if (assets == 0) revert VaultEmpty();
-        hdclAmount = (hollarAmount * supply) / assets;
-        if (hdclAmount == 0) revert DepositTooSmall();
+        bilAmount = (hollarAmount * supply) / assets;
+        if (bilAmount == 0) revert DepositTooSmall();
     }
 
-    /// @notice Preview the HOLLAR value of a HDCL redemption at current rate
+    /// @notice Preview the HOLLAR value of a BIL redemption at current rate
     function previewRedeem(
-        uint256 hdclAmount
+        uint256 bilAmount
     ) external view returns (uint256 hollarAmount) {
         uint256 supply = totalSupply();
         if (supply == 0) return 0;
-        return (hdclAmount * totalAssets()) / supply;
+        return (bilAmount * totalAssets()) / supply;
     }
 
     /// @notice ERC-4626 sync withdraw preview — async-only vault returns 0.
@@ -1101,7 +1101,7 @@ contract HDCLVault is
     {
         QueueLib.Request storage r = redemptionQueue[requestId];
         if (r.user != controller) return 0;
-        return r.hdclAmount - r.hdclSettled;
+        return r.bilAmount - r.bilSettled;
     }
 
     /// @notice Shares of `requestId` that have been rate-locked and are
@@ -1113,7 +1113,7 @@ contract HDCLVault is
     {
         QueueLib.Request storage r = redemptionQueue[requestId];
         if (r.user != controller) return 0;
-        return r.hdclSettled;
+        return r.bilSettled;
     }
 
     /// @notice Get estimated wait time for a redemption request
@@ -1131,8 +1131,8 @@ contract HDCLVault is
         for (uint256 i = queueHead; i <= requestId; i++) {
             QueueLib.Request storage r = redemptionQueue[i];
             if (r.user == address(0)) continue;
-            uint256 remainingHdcl = r.hdclAmount - r.hdclSettled;
-            hollarNeeded += (remainingHdcl * rate) / WAD;
+            uint256 remainingBil = r.bilAmount - r.bilSettled;
+            hollarNeeded += (remainingBil * rate) / WAD;
         }
 
         // Subtract currently available idle HOLLAR
@@ -1174,14 +1174,14 @@ contract HDCLVault is
         view
         returns (
             address user,
-            uint256 hdclAmount,
-            uint256 hdclSettled,
+            uint256 bilAmount,
+            uint256 bilSettled,
             uint256 hollarOwed,
             bool active
         )
     {
         QueueLib.Request storage r = redemptionQueue[requestId];
-        return (r.user, r.hdclAmount, r.hdclSettled, r.hollarOwed, r.user != address(0));
+        return (r.user, r.bilAmount, r.bilSettled, r.hollarOwed, r.user != address(0));
     }
 
     /// @notice Get NFT position details
@@ -1220,9 +1220,9 @@ contract HDCLVault is
         return positionHead;
     }
 
-    /// @notice Total HDCL currently queued for redemption
-    function getTotalQueuedHdcl() external view returns (uint256) {
-        return totalQueuedHdcl;
+    /// @notice Total BIL currently queued for redemption
+    function getTotalQueuedBil() external view returns (uint256) {
+        return totalQueuedBil;
     }
 
     /// @notice HOLLAR available for queue fulfillment or reinvestment
@@ -1250,8 +1250,8 @@ contract HDCLVault is
         return queueHead;
     }
 
-    /// @notice Get wDCL/HOLLAR price from the oracle, returned in 18 decimals.
-    /// @dev    Defensive Chainlink-style checks. `WDCLOracle` is always-fresh
+    /// @notice Get BIL/HOLLAR price from the oracle, returned in 18 decimals.
+    /// @dev    Defensive Chainlink-style checks. `BILOracle` is always-fresh
     ///         by construction, so these are mostly inert today, but
     ///         `setOracle` allows rotation to a heartbeat-style feed (e.g.,
     ///         Chainlink) where staleness becomes critical. Each check below
@@ -1333,8 +1333,8 @@ contract HDCLVault is
 
     /// @notice Update minimum redemption amount.
     /// @dev    Rejects `amount == 0`. A zero floor would let anyone post
-    ///         zero-HDCL redemption requests that pass `requestRedeem`'s
-    ///         `hdclAmount < minRedeemAmount` check, escrow zero HDCL,
+    ///         zero-BIL redemption requests that pass `requestRedeem`'s
+    ///         `bilAmount < minRedeemAmount` check, escrow zero BIL,
     ///         and still consume one iteration of `_processQueueWithHollar`'s
     ///         work budget per spam entry — a cheap queue grief.
     function setMinRedeemAmount(uint256 amount) external onlyRole(ADMIN_ROLE) {
@@ -1492,13 +1492,13 @@ contract HDCLVault is
     /// @param available HOLLAR available to rate-lock
     /// @param rate Current exchange rate (WAD)
     /// @return hollarUsed Total HOLLAR moved from idle into reserved
-    /// @return hdclLocked Total hDCL rate-locked across requests this call
+    /// @return bilLocked Total hDCL rate-locked across requests this call
     function _processQueueWithHollar(
         uint256 available,
         uint256 rate
-    ) internal returns (uint256 hollarUsed, uint256 hdclLocked) {
+    ) internal returns (uint256 hollarUsed, uint256 bilLocked) {
         uint256 newHead;
-        (newHead, hollarUsed, hdclLocked) = QueueLib.processQueue(
+        (newHead, hollarUsed, bilLocked) = QueueLib.processQueue(
             redemptionQueue,
             _settledByController,
             queueHead,
@@ -1595,7 +1595,7 @@ contract HDCLVault is
             super.supportsInterface(interfaceId);
     }
 
-    /// @dev Per-controller index of request IDs that have non-zero hdclSettled.
+    /// @dev Per-controller index of request IDs that have non-zero bilSettled.
     ///      Populated by QueueLib.processQueue on the 0 → >0 settle transition,
     ///      popped by QueueLib.claimByShares / claimByAssets when an entry is
     ///      fully claimed or stale. Replaces the previous full-queue linear

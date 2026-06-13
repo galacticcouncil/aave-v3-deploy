@@ -2,13 +2,13 @@
 pragma solidity ^0.8.22;
 
 import "forge-std/Test.sol";
-import {HDCLVault} from "../../../src/HDCLVault.sol";
+import {BILVault} from "../../../src/BILVault.sol";
 import {MockDecentralPool} from "../../mocks/MockDecentralPool.sol";
 
 /// @notice Simulates keeper bot actions: time warps, pokeDecentral, pokeQueue.
 ///         Also simulates the Decentral approver (yield/principal approvals).
 contract KeeperHandler is Test {
-    HDCLVault public vault;
+    BILVault public vault;
     MockDecentralPool public pool;
 
     // Track the last exchange rate for monotonicity checks
@@ -20,7 +20,7 @@ contract KeeperHandler is Test {
     uint256 public ghost_timeWarps;
     uint256 public ghost_shortfallsConfigured;
 
-    constructor(HDCLVault _vault, MockDecentralPool _pool) {
+    constructor(BILVault _vault, MockDecentralPool _pool) {
         vault = _vault;
         pool = _pool;
         lastExchangeRate = vault.exchangeRate();

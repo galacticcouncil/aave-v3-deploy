@@ -3,7 +3,7 @@ pragma solidity ^0.8.22;
 
 import "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 import {MockHollar} from "../mocks/MockHollar.sol";
 import {MockDecentralPool} from "../mocks/MockDecentralPool.sol";
 import {MockPoolToken} from "../mocks/MockPoolToken.sol";
@@ -11,7 +11,7 @@ import {Constants} from "./Constants.sol";
 import {Events} from "./Events.sol";
 
 contract BaseTest is Test, Constants, Events {
-    HDCLVault public vault;
+    BILVault public vault;
     MockHollar public hollar;
     MockDecentralPool public pool;
     MockPoolToken public nft;
@@ -35,13 +35,13 @@ contract BaseTest is Test, Constants, Events {
         hollar.mint(address(pool), 10_000_000e18);
 
         // Deploy vault via proxy
-        HDCLVault implementation = new HDCLVault();
+        BILVault implementation = new BILVault();
         bytes memory initData = abi.encodeCall(
-            HDCLVault.initialize,
+            BILVault.initialize,
             (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, admin)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
-        vault = HDCLVault(address(proxy));
+        vault = BILVault(address(proxy));
 
         // Mint HOLLAR to test users
         hollar.mint(alice, 100_000e18);
@@ -59,7 +59,7 @@ contract BaseTest is Test, Constants, Events {
 
     // ─── Test Helpers ───
 
-    function _deposit(address user, uint256 amount) internal returns (uint256 hdclMinted) {
+    function _deposit(address user, uint256 amount) internal returns (uint256 bilMinted) {
         vm.prank(user);
         return vault.deposit(amount, user);
     }
@@ -78,8 +78,8 @@ contract BaseTest is Test, Constants, Events {
         uint256 totalSettled;
         uint256 tail = vault.getRedemptionQueueLength();
         for (uint256 i = 0; i < tail; i++) {
-            (address u,, uint256 hdclSettled,,) = vault.getRedemptionRequest(i);
-            if (u == user) totalSettled += hdclSettled;
+            (address u,, uint256 bilSettled,,) = vault.getRedemptionRequest(i);
+            if (u == user) totalSettled += bilSettled;
         }
         if (totalSettled == 0) return 0;
         vm.prank(user);

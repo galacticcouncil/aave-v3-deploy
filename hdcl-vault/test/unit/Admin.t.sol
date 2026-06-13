@@ -2,8 +2,8 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
-import {WDCLOracle} from "../../src/WDCLOracle.sol";
+import {BILVault} from "../../src/BILVault.sol";
+import {BILOracle} from "../../src/BILOracle.sol";
 import {IDecentralPool} from "../../src/interfaces/IDecentralPool.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
@@ -45,7 +45,7 @@ contract AdminTest is BaseTest {
 
     function test_initialize_setsDefaults() public view {
         assertEq(vault.minReinvestAmount(), 10e18, "Default minReinvestAmount = 10 HOLLAR");
-        assertEq(vault.minRedeemAmount(), 1e18, "Default minRedeemAmount = 1 HDCL");
+        assertEq(vault.minRedeemAmount(), 1e18, "Default minRedeemAmount = 1 BIL");
         assertFalse(vault.depositsPaused());
     }
 
@@ -56,39 +56,39 @@ contract AdminTest is BaseTest {
     }
 
     function test_initialize_setsTokenMetadata() public view {
-        assertEq(vault.name(), "Hydrated Decentral");
-        assertEq(vault.symbol(), "HDCL");
+        assertEq(vault.name(), "Brazilian Invoice Loans");
+        assertEq(vault.symbol(), "BIL");
         assertEq(vault.decimals(), 18);
     }
 
     function test_initialize_revertsOnZeroAddresses() public {
-        HDCLVault impl = new HDCLVault();
+        BILVault impl = new BILVault();
 
         // Zero decentralPool
-        vm.expectRevert(HDCLVault.ZeroAddress.selector);
+        vm.expectRevert(BILVault.ZeroAddress.selector);
         new ERC1967Proxy(address(impl), abi.encodeCall(
-            HDCLVault.initialize,
+            BILVault.initialize,
             (address(0), address(nft), address(hollar), INITIAL_TVL_CAP, admin)
         ));
 
         // Zero poolToken
-        vm.expectRevert(HDCLVault.ZeroAddress.selector);
+        vm.expectRevert(BILVault.ZeroAddress.selector);
         new ERC1967Proxy(address(impl), abi.encodeCall(
-            HDCLVault.initialize,
+            BILVault.initialize,
             (address(pool), address(0), address(hollar), INITIAL_TVL_CAP, admin)
         ));
 
         // Zero hollar
-        vm.expectRevert(HDCLVault.ZeroAddress.selector);
+        vm.expectRevert(BILVault.ZeroAddress.selector);
         new ERC1967Proxy(address(impl), abi.encodeCall(
-            HDCLVault.initialize,
+            BILVault.initialize,
             (address(pool), address(nft), address(0), INITIAL_TVL_CAP, admin)
         ));
 
         // Zero admin
-        vm.expectRevert(HDCLVault.ZeroAddress.selector);
+        vm.expectRevert(BILVault.ZeroAddress.selector);
         new ERC1967Proxy(address(impl), abi.encodeCall(
-            HDCLVault.initialize,
+            BILVault.initialize,
             (address(pool), address(nft), address(hollar), INITIAL_TVL_CAP, address(0))
         ));
     }
@@ -103,7 +103,7 @@ contract AdminTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_pauseDeposits_rejectsNonRoleHolder() public {
-        vm.expectRevert(HDCLVault.NotAdminOrGuardian.selector);
+        vm.expectRevert(BILVault.NotAdminOrGuardian.selector);
         vm.prank(alice);
         vault.pauseDeposits();
     }
@@ -112,7 +112,7 @@ contract AdminTest is BaseTest {
         vm.prank(admin);
         vault.pauseDeposits();
 
-        vm.expectRevert(HDCLVault.NotAdminOrGuardian.selector);
+        vm.expectRevert(BILVault.NotAdminOrGuardian.selector);
         vm.prank(alice);
         vault.unpauseDeposits();
     }
@@ -138,7 +138,7 @@ contract AdminTest is BaseTest {
 
         assertTrue(vault.depositsPaused());
 
-        vm.expectRevert(HDCLVault.DepositsArePaused.selector);
+        vm.expectRevert(BILVault.DepositsArePaused.selector);
         _deposit(alice, TEN_THOUSAND_HOLLAR);
     }
 
@@ -151,20 +151,20 @@ contract AdminTest is BaseTest {
 
         assertFalse(vault.depositsPaused());
 
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        assertGt(hdcl, 0);
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        assertGt(bil, 0);
     }
 
     /// @notice Spec: pausing deposits does NOT block redemptions or position processing
     function test_pauseDeposits_doesNotBlockRedemptionsOrProcessing() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
 
         vm.prank(admin);
         vault.pauseDeposits();
 
         // requestRedeem still works
-        _requestRedeem(alice, aliceHdcl / 4);
-        assertGt(vault.totalQueuedHdcl(), 0);
+        _requestRedeem(alice, aliceBil / 4);
+        assertGt(vault.totalQueuedBil(), 0);
 
         // pokeDecentral still works (warp past maturity)
         _warpDays(61);
@@ -197,7 +197,7 @@ contract AdminTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_pause_rejectsNonRoleHolder() public {
-        vm.expectRevert(HDCLVault.NotAdminOrGuardian.selector);
+        vm.expectRevert(BILVault.NotAdminOrGuardian.selector);
         vm.prank(alice);
         vault.pause();
     }
@@ -206,7 +206,7 @@ contract AdminTest is BaseTest {
         vm.prank(admin);
         vault.pause();
 
-        vm.expectRevert(HDCLVault.NotAdminOrGuardian.selector);
+        vm.expectRevert(BILVault.NotAdminOrGuardian.selector);
         vm.prank(alice);
         vault.unpause();
     }
@@ -250,7 +250,7 @@ contract AdminTest is BaseTest {
 
     /// @notice Spec: emergency pause stops ALL state-changing operations
     function test_pause_blocksAllOperations() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
 
         vm.prank(admin);
         vault.pause();
@@ -262,7 +262,7 @@ contract AdminTest is BaseTest {
         // requestRedeem
         vm.prank(alice);
         vm.expectRevert("Pausable: paused");
-        vault.requestRedeem(aliceHdcl / 4, alice, alice);
+        vault.requestRedeem(aliceBil / 4, alice, alice);
 
         // pokeDecentral
         vm.expectRevert("Pausable: paused");
@@ -280,8 +280,8 @@ contract AdminTest is BaseTest {
         vm.prank(admin);
         vault.unpause();
 
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        assertGt(hdcl, 0, "Deposit works after unpause");
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        assertGt(bil, 0, "Deposit works after unpause");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -316,7 +316,7 @@ contract AdminTest is BaseTest {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
         vm.prank(admin);
-        vm.expectRevert(HDCLVault.CapBelowAssets.selector);
+        vm.expectRevert(BILVault.CapBelowAssets.selector);
         vault.setTvlCap(TEN_THOUSAND_HOLLAR - 1);
     }
 
@@ -411,12 +411,12 @@ contract AdminTest is BaseTest {
     }
 
     /// @notice setMinRedeemAmount(0) reverts. A zero floor would let an
-    ///         attacker post zero-HDCL redemption requests that pass the
-    ///         requestRedeem gate, escrow zero HDCL, and still consume a
+    ///         attacker post zero-BIL redemption requests that pass the
+    ///         requestRedeem gate, escrow zero BIL, and still consume a
     ///         work iteration per spam entry in the queue processor.
     function test_setMinRedeemAmount_revertsOnZero() public {
         vm.prank(admin);
-        vm.expectRevert(HDCLVault.MinMustBePositive.selector);
+        vm.expectRevert(BILVault.MinMustBePositive.selector);
         vault.setMinRedeemAmount(0);
     }
 
@@ -424,13 +424,13 @@ contract AdminTest is BaseTest {
     function test_setMinRedeemAmount_affectsRedemptions() public {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
-        // Raise min to 5000 HDCL
+        // Raise min to 5000 BIL
         vm.prank(admin);
         vault.setMinRedeemAmount(5000e18);
 
         // Small redeem should revert
         vm.prank(alice);
-        vm.expectRevert(HDCLVault.BelowMinimumRedeem.selector);
+        vm.expectRevert(BILVault.BelowMinimumRedeem.selector);
         vault.requestRedeem(4999e18, alice, alice);
 
         // At-min redeem should succeed
@@ -450,9 +450,9 @@ contract AdminTest is BaseTest {
 
     function test_setOracle_updatesValue() public {
         // setOracle now probes the candidate, so it requires a real oracle
-        // implementation. Use WDCLOracle (the production oracle) as the probe
+        // implementation. Use BILOracle (the production oracle) as the probe
         // target — it serves the vault's own exchange rate.
-        WDCLOracle newOracle = new WDCLOracle(address(vault));
+        BILOracle newOracle = new BILOracle(address(vault));
         vm.prank(admin);
         vault.setOracle(address(newOracle));
 
@@ -461,12 +461,12 @@ contract AdminTest is BaseTest {
 
     function test_setOracle_revertsOnZeroAddress() public {
         vm.prank(admin);
-        vm.expectRevert(HDCLVault.ZeroAddress.selector);
+        vm.expectRevert(BILVault.ZeroAddress.selector);
         vault.setOracle(address(0));
     }
 
     function test_setOracle_emitsEvent() public {
-        WDCLOracle newOracle = new WDCLOracle(address(vault));
+        BILOracle newOracle = new BILOracle(address(vault));
 
         vm.expectEmit(true, false, false, false);
         emit OracleUpdated(address(newOracle));
@@ -491,13 +491,13 @@ contract AdminTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_getOraclePrice_revertsWithoutOracle() public {
-        vm.expectRevert(HDCLVault.OracleNotSet.selector);
+        vm.expectRevert(BILVault.OracleNotSet.selector);
         vault.getOraclePrice();
     }
 
     function test_getOraclePrice_returnsCorrectPrice() public {
-        // Deploy WDCLOracle and set it
-        WDCLOracle wdclOracle = new WDCLOracle(address(vault));
+        // Deploy BILOracle and set it
+        BILOracle wdclOracle = new BILOracle(address(vault));
         vm.prank(admin);
         vault.setOracle(address(wdclOracle));
 
@@ -514,7 +514,7 @@ contract AdminTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_upgrade_onlyUpgrader() public {
-        HDCLVault newImpl = new HDCLVault();
+        BILVault newImpl = new BILVault();
 
         vm.expectRevert(_accessControlRevert(alice, vault.UPGRADER_ROLE()));
         vm.prank(alice);
@@ -522,14 +522,14 @@ contract AdminTest is BaseTest {
     }
 
     function test_upgrade_succeeds() public {
-        HDCLVault newImpl = new HDCLVault();
+        BILVault newImpl = new BILVault();
 
         vm.prank(admin);
         vault.upgradeTo(address(newImpl));
 
         // Vault still works after upgrade
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        assertGt(hdcl, 0);
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        assertGt(bil, 0);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -541,7 +541,7 @@ contract AdminTest is BaseTest {
         // Verify vault has no external transfer/withdraw function for HOLLAR or NFTs
         // This is a documentation test — if the contract compiles with only the known
         // admin functions, no extraction path exists. The only HOLLAR exits are:
-        //   1. Queue fulfillment (burns HDCL, sends HOLLAR to user)
+        //   1. Queue fulfillment (burns BIL, sends HOLLAR to user)
         //   2. Reinvest (deposits into Decentral)
         // Both are permissionless and follow protocol rules.
         assertTrue(true, "No admin extraction function exists");

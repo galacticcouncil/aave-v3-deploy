@@ -1,7 +1,7 @@
-# HDCL Vault Keeper — Docker Swarm stack
+# BIL Vault Keeper — Docker Swarm stack
 #
 # Deploy:
-#   docker stack deploy -c docker-stack.yml hdcl-keeper
+#   docker stack deploy -c docker-stack.yml bil-keeper
 #
 # Env vars expected at deploy time (export or use a .env loader):
 #   VAULT_ADDRESS         — proxy address from DEPLOYMENT.md step 1
@@ -9,7 +9,7 @@
 #   RPC_URL               — Hydration RPC (defaults to nice.hydration.cloud below)
 #   POLL_INTERVAL_MS      — cycle interval, default 6s
 #   ALERT_WEBHOOK         — Discord webhook URL (optional)
-#   IMAGE                 — override image (defaults to galacticcouncil/hdcl-keeper:latest)
+#   IMAGE                 — override image (defaults to galacticcouncil/bil-keeper:latest)
 #
 # IMPORTANT: replicas MUST stay at 1. Two keepers running in parallel will
 # fight over the signing key's tx nonce on every cycle. update_config uses
@@ -20,7 +20,7 @@ version: "3.8"
 
 services:
   keeper:
-    image: ${IMAGE:-galacticcouncil/hdcl-keeper:latest}
+    image: ${IMAGE:-galacticcouncil/bil-keeper:latest}
     environment:
       RPC_URL: ${RPC_URL:-https://rpc.nice.hydration.cloud}
       VAULT_ADDRESS: ${VAULT_ADDRESS:?VAULT_ADDRESS required}
@@ -51,7 +51,7 @@ services:
           cpus: "0.05"
           memory: 64M
       labels:
-        com.hydration.role: "hdcl-keeper"
+        com.hydration.role: "bil-keeper"
     logging:
       driver: json-file
       options:

@@ -3,12 +3,12 @@ pragma solidity ^0.8.22;
 
 import {IAggregatorV3Interface} from "./interfaces/IAggregatorV3Interface.sol";
 
-interface IHDCLVault {
+interface IBILVault {
     function exchangeRate() external view returns (uint256);
 }
 
-/// @title WDCLOracle
-/// @notice Chainlink-compatible oracle for wDCL/HOLLAR exchange rate.
+/// @title BILOracle
+/// @notice Chainlink-compatible oracle for BIL/HOLLAR exchange rate.
 /// @dev This is a purely on-chain oracle — it reads the vault's live exchange rate.
 ///      `updatedAt` is always `block.timestamp` because the rate is computed on every call.
 ///      Downstream consumers should NOT rely on round-based staleness checks — this oracle
@@ -19,15 +19,15 @@ interface IHDCLVault {
 ///      accounting (totalAssets / totalSupply) remains readable and meaningful, so the
 ///      exchange rate computation is still correct. Reverting here would cascade into
 ///      downstream lending markets — blocking liquidations and borrow/withdraw flows
-///      against HDCL collateral, potentially causing bad debt while the vault is paused.
+///      against BIL collateral, potentially causing bad debt while the vault is paused.
 ///      To signal "do not trust this feed" to integrators, prefer setting the vault's
 ///      oracle pointer to a sentinel address or rotating to a replacement oracle.
-contract WDCLOracle is IAggregatorV3Interface {
-    IHDCLVault public immutable vault;
+contract BILOracle is IAggregatorV3Interface {
+    IBILVault public immutable vault;
 
     constructor(address _vault) {
         require(_vault != address(0), "Zero vault");
-        vault = IHDCLVault(_vault);
+        vault = IBILVault(_vault);
     }
 
     function decimals() external pure returns (uint8) {
@@ -35,7 +35,7 @@ contract WDCLOracle is IAggregatorV3Interface {
     }
 
     function description() external pure returns (string memory) {
-        return "wDCL / HOLLAR";
+        return "BIL / HOLLAR";
     }
 
     function version() external pure returns (uint256) {
@@ -100,7 +100,7 @@ contract WDCLOracle is IAggregatorV3Interface {
     ///      "feed broken" state explicitly instead of silently misreading.
     function _scaledAnswer() internal view returns (int256) {
         uint256 scaled = vault.exchangeRate() / 1e10;
-        require(scaled > 0, "WDCLOracle: rate truncates to zero");
+        require(scaled > 0, "BILOracle: rate truncates to zero");
         return int256(scaled);
     }
 }

@@ -1,12 +1,12 @@
-import { HDCLKeeper } from './keeper.js';
+import { BILKeeper } from './keeper.js';
 import { CONFIG } from './config.js';
 
 async function main() {
-  console.log('Starting HDCL Keeper...');
+  console.log('Starting BIL Keeper...');
   console.log(`Vault: ${CONFIG.VAULT_ADDRESS}`);
   console.log(`Poll interval: ${CONFIG.POLL_INTERVAL_MS}ms`);
 
-  const keeper = new HDCLKeeper();
+  const keeper = new BILKeeper();
 
   const run = async () => {
     try {

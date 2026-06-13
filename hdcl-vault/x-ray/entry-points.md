@@ -1,6 +1,6 @@
 # Entry Point Map
 
-> HDCL Vault | `feat/hdcl-vault` @ `41037fc` | ERC-4626 + ERC-7540 (async-redeem)
+> BIL Vault | `feat/bil-vault` @ `41037fc` | ERC-4626 + ERC-7540 (async-redeem)
 > 30+ entry points: 11 permissionless · 2 role-gated (claim) · ~12 admin-only
 
 ---
@@ -110,7 +110,7 @@ All Decentral calls wrapped in try/catch. State stays put on revert; next poke r
 | `setTvlCap(newCap)`        | ADMIN | Global cap across all pools; requires `newCap >= totalAssets()`. |
 | `setMinReinvestAmount(x)`  | ADMIN | |
 | `setMinRedeemAmount(x)`    | ADMIN | |
-| `setOracle(addr)`          | ADMIN | Zero-check. Used by WDCLOracle consumers. |
+| `setOracle(addr)`          | ADMIN | Zero-check. Used by BILOracle consumers. |
 | `registerPool(pool)`       | ADMIN | Adds a Decentral pool to the registry. |
 | `setActiveDepositPool(pool)` | ADMIN | Routes **new** deposits + reinvest to `pool`. Must be registered. Existing positions anchor to `positionPool[i]`. |
 | `retirePool(pool)`         | ADMIN | Removes a pool from the registry. Requires zero open positions in that pool. |

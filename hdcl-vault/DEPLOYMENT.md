@@ -1,4 +1,4 @@
-# HDCL Vault Deployment Plan
+# BIL Vault Deployment Plan
 
 > Audience: deploy operator / Hydration governance facilitator
 > Companion to: `script/Deploy.s.sol`, `PLAN-multi-pool.md`, `x-ray/entry-points.md`
@@ -28,14 +28,14 @@ forge script script/Deploy.s.sol --rpc-url $RPC_URL --broadcast --legacy
 
 After success, the script logs three addresses:
 - `Implementation` — UUPS impl contract (unused once proxied)
-- `Proxy (HDCL Vault)` — the canonical vault address
-- `WDCLOracle` — the Chainlink-compatible feed for Aave
+- `Proxy (BIL Vault)` — the canonical vault address
+- `BILOracle` — the Chainlink-compatible feed for Aave
 
 Record all three. The proxy is the only one consumers should interact with.
 
-**What `initialize` did automatically (from `HDCLVault.sol:348`):**
+**What `initialize` did automatically (from `BILVault.sol:348`):**
 - Registered `DECENTRAL_POOL` and set it as `activeDepositPool` — **no separate `registerPool` / `setActiveDepositPool` calls needed for the seed pool**
-- Set `tvlCap`, defaulted `minReinvestAmount = 10 HOLLAR`, `minRedeemAmount = 1 HDCL`
+- Set `tvlCap`, defaulted `minReinvestAmount = 10 HOLLAR`, `minRedeemAmount = 1 BIL`
 - Granted `DEFAULT_ADMIN_ROLE`, `ADMIN_ROLE`, `UPGRADER_ROLE` to `_admin`
 
 ---
@@ -95,18 +95,18 @@ Verify before starting:
 - Keeper address has gas (HDX) on Hydration
 - `vault.hasRole(vault.CLAIM_OPERATOR_ROLE(), keeperAddress)` is `true`
 
-**Production (Docker Swarm)** — image is published at `galacticcouncil/hdcl-keeper:latest`:
+**Production (Docker Swarm)** — image is published at `galacticcouncil/bil-keeper:latest`:
 
 ```sh
 export VAULT_ADDRESS=0x...
 export KEEPER_PRIVATE_KEY=0x...
 export ALERT_WEBHOOK=https://discord.com/api/webhooks/...   # optional
-docker stack deploy -c hdcl-vault/keeper/docker-stack.yml hdcl-keeper
+docker stack deploy -c bil-vault/keeper/docker-stack.yml bil-keeper
 ```
 
 The stack pins `replicas: 1` with `stop-first` ordering on rolling updates — never run two keepers on the same key, they'll fight for the tx nonce.
 
-**Local / dev**: `npm start` from `hdcl-vault/keeper/`. First cycle logs should show `Positions: 1 (head: 0)` (the seed position) and no `pokeQueue` call yet.
+**Local / dev**: `npm start` from `bil-vault/keeper/`. First cycle logs should show `Positions: 1 (head: 0)` (the seed position) and no `pokeQueue` call yet.
 
 ---
 
@@ -137,7 +137,7 @@ See `PLAN-multi-pool.md → "Pool rotation procedure"` for the full normal/emerg
 
 Once the seed deposit is in and the oracle returns a positive answer, wire external consumers:
 
-- **Aave**: register `WDCLOracle` as the price feed for the hDCL listing
+- **Aave**: register `BILOracle` as the price feed for the hDCL listing
 - **UI / SDK**: point at the proxy address; ERC-4626 + ERC-7540 surface is available
 
 ---

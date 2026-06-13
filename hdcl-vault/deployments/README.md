@@ -1,4 +1,4 @@
-# HDCL Vault Deployments
+# BIL Vault Deployments
 
 One file per active deployment, kept current with the on-chain state.
 
@@ -14,5 +14,5 @@ Pick the file matching your target network. Each contains: contract addresses (v
 ## Conventions
 
 - **Lark testnet is reset periodically.** After a reset, the deployment file is updated with new addresses by re-running `script/deploy-lark.sh`. Treat the addresses as stable for the duration of a given lark generation, but expect them to change between resets — pin to the `lark-2.md` file rather than copy-pasting addresses into UI config.
-- The keeper bot runs at `swarmpit.lark.hydration.cloud` as stack `hdcl-keeper`. The vault works without the keeper (everything is still callable), but auto-claim and timely settlement depend on it.
+- The keeper bot runs at `swarmpit.lark.hydration.cloud` as stack `bil-keeper`. The vault works without the keeper (everything is still callable), but auto-claim and timely settlement depend on it.
 - See `../DEPLOYMENT.md` for the procedure to bring up a fresh deployment from scratch.

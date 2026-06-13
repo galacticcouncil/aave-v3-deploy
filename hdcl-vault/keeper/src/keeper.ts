@@ -71,7 +71,7 @@ const VAULT_ABI = [
     outputs: [{ name: '', type: 'uint256' }],
   },
   {
-    name: 'totalQueuedHdcl',
+    name: 'totalQueuedBil',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
@@ -127,8 +127,8 @@ const VAULT_ABI = [
     inputs: [{ name: 'requestId', type: 'uint256' }],
     outputs: [
       { name: 'user', type: 'address' },
-      { name: 'hdclAmount', type: 'uint256' },
-      { name: 'hdclSettled', type: 'uint256' },
+      { name: 'bilAmount', type: 'uint256' },
+      { name: 'bilSettled', type: 'uint256' },
       { name: 'hollarOwed', type: 'uint256' },
       { name: 'active', type: 'bool' },
     ],
@@ -155,7 +155,7 @@ const VAULT_ABI = [
 
 // ─── Keeper class ────────────────────────────────────────────────────────────
 
-export class HDCLKeeper {
+export class BILKeeper {
   private publicClient: PublicClient;
   private walletClient: WalletClient;
   private account: ReturnType<typeof privateKeyToAccount>;
@@ -184,18 +184,18 @@ export class HDCLKeeper {
     console.log(`\n[${new Date().toISOString()}] Running keeper cycle...`);
 
     // 1. Read vault state
-    const [positionCount, positionHead, idleHollar, totalQueuedHdcl, minReinvestAmount] =
+    const [positionCount, positionHead, idleHollar, totalQueuedBil, minReinvestAmount] =
       await Promise.all([
         this.readContract('getPositionCount'),
         this.readContract('getPositionHead'),
         this.readContract('idleHollar'),
-        this.readContract('totalQueuedHdcl'),
+        this.readContract('totalQueuedBil'),
         this.readContract('minReinvestAmount'),
       ]);
 
     console.log(`  Positions: ${positionCount} (head: ${positionHead})`);
     console.log(`  Idle HOLLAR: ${formatEther(idleHollar as bigint)}`);
-    console.log(`  Queued HDCL: ${formatEther(totalQueuedHdcl as bigint)}`);
+    console.log(`  Queued BIL: ${formatEther(totalQueuedBil as bigint)}`);
 
     // 2. Iterate positions and process any that should advance
     const count = Number(positionCount);
@@ -210,13 +210,13 @@ export class HDCLKeeper {
     }
 
     // 3. Re-read state after position processing (it may have changed)
-    const [idleHollarAfter, totalQueuedHdclAfter] = await Promise.all([
+    const [idleHollarAfter, totalQueuedBilAfter] = await Promise.all([
       this.readContract('idleHollar'),
-      this.readContract('totalQueuedHdcl'),
+      this.readContract('totalQueuedBil'),
     ]);
 
     const idle = idleHollarAfter as bigint;
-    const queued = totalQueuedHdclAfter as bigint;
+    const queued = totalQueuedBilAfter as bigint;
     const minReinvest = minReinvestAmount as bigint;
 
     // 4. pokeQueue handles both queue processing and reinvestment
@@ -255,9 +255,9 @@ export class HDCLKeeper {
       const req = (await this.readContract('getRedemptionRequest', [i])) as [
         Address, bigint, bigint, bigint, boolean,
       ];
-      const [user, , hdclSettled, , active] = req;
-      if (!active || hdclSettled === 0n) continue;
-      claimable.set(user, (claimable.get(user) ?? 0n) + hdclSettled);
+      const [user, , bilSettled, , active] = req;
+      if (!active || bilSettled === 0n) continue;
+      claimable.set(user, (claimable.get(user) ?? 0n) + bilSettled);
     }
     if (claimable.size === 0) return;
 
@@ -409,10 +409,10 @@ export class HDCLKeeper {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: 'HDCL Keeper',
+          username: 'BIL Keeper',
           embeds: [
             {
-              title: level === 'error' ? 'HDCL Keeper — error' : 'HDCL Keeper — warning',
+              title: level === 'error' ? 'BIL Keeper — error' : 'BIL Keeper — warning',
               description: message,
               color,
               footer: { text: `Vault ${this.vaultAddress}` },

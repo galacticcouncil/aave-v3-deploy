@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 
 /// @title ERC-4626 Base Surface (W2a)
 /// @notice Covers the synchronous-deposit half of ERC-4626 conformance.
@@ -139,7 +139,7 @@ contract ERC4626Test is BaseTest {
 
     function test_deposit_zeroReceiver_reverts() public {
         vm.prank(alice);
-        vm.expectRevert(HDCLVault.ZeroAddress.selector);
+        vm.expectRevert(BILVault.ZeroAddress.selector);
         vault.deposit(10_000e18, address(0));
     }
 
@@ -181,13 +181,13 @@ contract ERC4626Test is BaseTest {
 
     function test_mint_zeroReceiver_reverts() public {
         vm.prank(alice);
-        vm.expectRevert(HDCLVault.ZeroAddress.selector);
+        vm.expectRevert(BILVault.ZeroAddress.selector);
         vault.mint(5_000e18, address(0));
     }
 
     function test_mint_zeroShares_reverts() public {
         vm.prank(alice);
-        vm.expectRevert(HDCLVault.ZeroAmount.selector);
+        vm.expectRevert(BILVault.ZeroAmount.selector);
         vault.mint(0, alice);
     }
 
@@ -196,7 +196,7 @@ contract ERC4626Test is BaseTest {
         vault.pauseDeposits();
 
         vm.prank(alice);
-        vm.expectRevert(HDCLVault.DepositsArePaused.selector);
+        vm.expectRevert(BILVault.DepositsArePaused.selector);
         vault.mint(5_000e18, alice);
     }
 
@@ -205,7 +205,7 @@ contract ERC4626Test is BaseTest {
         vault.setTvlCap(10_000e18);
 
         vm.prank(alice);
-        vm.expectRevert(HDCLVault.ExceedsTvlCap.selector);
+        vm.expectRevert(BILVault.ExceedsTvlCap.selector);
         vault.mint(20_000e18, alice);
     }
 

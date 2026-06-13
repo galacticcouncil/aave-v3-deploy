@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import "forge-std/Test.sol";
-import {WDCLOracle} from "../../src/WDCLOracle.sol";
+import {BILOracle} from "../../src/BILOracle.sol";
 
 /// @dev Minimal vault stub that lets us drive the oracle with arbitrary rates.
 contract MockRateVault {
@@ -12,18 +12,18 @@ contract MockRateVault {
     }
 }
 
-/// @title WDCLOracle Zero-Answer Defense
+/// @title BILOracle Zero-Answer Defense
 /// @notice Verifies the oracle reverts rather than returning a zero answer
 ///         when the vault's exchange rate would truncate to zero (rate < 1e10).
 ///         A zero price downstream can trigger mass liquidations in lending
 ///         markets — reverting forces consumers to handle the failure mode.
 contract OracleZeroCheckTest is Test {
     MockRateVault internal vault;
-    WDCLOracle internal oracle;
+    BILOracle internal oracle;
 
     function setUp() public {
         vault = new MockRateVault();
-        oracle = new WDCLOracle(address(vault));
+        oracle = new BILOracle(address(vault));
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -32,20 +32,20 @@ contract OracleZeroCheckTest is Test {
 
     function test_latestRoundData_revertsOnZeroRate() public {
         vault.setRate(0);
-        vm.expectRevert("WDCLOracle: rate truncates to zero");
+        vm.expectRevert("BILOracle: rate truncates to zero");
         oracle.latestRoundData();
     }
 
     function test_getRoundData_revertsOnZeroRate() public {
         vault.setRate(0);
-        vm.expectRevert("WDCLOracle: rate truncates to zero");
+        vm.expectRevert("BILOracle: rate truncates to zero");
         oracle.getRoundData(0);
     }
 
     /// @notice rate < 1e10 truncates to zero in `int256(rate / 1e10)` — must revert.
     function test_revertsWhenRateTruncatesToZero() public {
         vault.setRate(1e10 - 1); // 9_999_999_999 → /1e10 = 0
-        vm.expectRevert("WDCLOracle: rate truncates to zero");
+        vm.expectRevert("BILOracle: rate truncates to zero");
         oracle.latestRoundData();
     }
 
@@ -86,7 +86,7 @@ contract OracleZeroCheckTest is Test {
         vault.setRate(rate);
 
         if (rate < 1e10) {
-            vm.expectRevert("WDCLOracle: rate truncates to zero");
+            vm.expectRevert("BILOracle: rate truncates to zero");
             oracle.latestRoundData();
         } else {
             (, int256 answer,,,) = oracle.latestRoundData();

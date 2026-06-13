@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 
 contract FirstDepositorTest is BaseTest {
     address public attacker = makeAddr("attacker");
@@ -30,10 +30,10 @@ contract FirstDepositorTest is BaseTest {
         //         The vault will mint (amount - DEAD_SHARES) to attacker, DEAD_SHARES to 0xdead
         uint256 attackerDeposit = 10e18;
         vm.prank(attacker);
-        uint256 attackerHdcl = vault.deposit(attackerDeposit, attacker);
+        uint256 attackerBil = vault.deposit(attackerDeposit, attacker);
 
-        // Attacker got (10e18 - 1000) HDCL
-        assertEq(attackerHdcl, attackerDeposit - DEAD_SHARES, "attacker should get deposit - dead shares");
+        // Attacker got (10e18 - 1000) BIL
+        assertEq(attackerBil, attackerDeposit - DEAD_SHARES, "attacker should get deposit - dead shares");
 
         // Dead shares were minted to 0xdead
         assertEq(vault.balanceOf(DEAD_ADDRESS), DEAD_SHARES, "dead shares should go to 0xdead");
@@ -59,20 +59,20 @@ contract FirstDepositorTest is BaseTest {
         // Step 3: Victim deposits 10e18 HOLLAR
         uint256 victimDeposit = 10e18;
         vm.prank(victim);
-        uint256 victimHdcl = vault.deposit(victimDeposit, victim);
+        uint256 victimBil = vault.deposit(victimDeposit, victim);
 
-        // Victim should receive ~ victimDeposit * supply / totalAssets = 10e18 * 10e18 / 10e18 = 10e18 HDCL
+        // Victim should receive ~ victimDeposit * supply / totalAssets = 10e18 * 10e18 / 10e18 = 10e18 BIL
         // (fair amount, NOT rounded down to zero by the inflated rate)
-        assertEq(victimHdcl, victimDeposit, "victim should receive fair HDCL amount despite donation attack");
+        assertEq(victimBil, victimDeposit, "victim should receive fair BIL amount despite donation attack");
     }
 
-    /// @notice After a large first deposit, a second depositor receives proportional HDCL.
+    /// @notice After a large first deposit, a second depositor receives proportional BIL.
     function test_smallDeposit_afterLargeFirst() public {
         // Alice makes a large first deposit
         uint256 largeDeposit = 50_000e18;
         vm.prank(alice);
-        uint256 aliceHdcl = vault.deposit(largeDeposit, alice);
-        assertEq(aliceHdcl, largeDeposit - DEAD_SHARES, "first depositor gets amount - dead shares");
+        uint256 aliceBil = vault.deposit(largeDeposit, alice);
+        assertEq(aliceBil, largeDeposit - DEAD_SHARES, "first depositor gets amount - dead shares");
 
         // Warp 30 days so some yield accrues (rate > 1)
         _warpDays(30);
@@ -83,18 +83,18 @@ contract FirstDepositorTest is BaseTest {
         // Bob makes a smaller deposit
         uint256 smallDeposit = 1_000e18;
         vm.prank(bob);
-        uint256 bobHdcl = vault.deposit(smallDeposit, bob);
+        uint256 bobBil = vault.deposit(smallDeposit, bob);
 
-        // Bob should receive proportional HDCL at the current rate:
-        //   bobHdcl = smallDeposit * totalSupplyBefore / totalAssetsBefore
-        //   Since rate > 1, bobHdcl < smallDeposit
-        assertGt(bobHdcl, 0, "bob should receive non-zero HDCL");
-        assertLt(bobHdcl, smallDeposit, "bob should receive less HDCL than HOLLAR deposited since rate > 1");
+        // Bob should receive proportional BIL at the current rate:
+        //   bobBil = smallDeposit * totalSupplyBefore / totalAssetsBefore
+        //   Since rate > 1, bobBil < smallDeposit
+        assertGt(bobBil, 0, "bob should receive non-zero BIL");
+        assertLt(bobBil, smallDeposit, "bob should receive less BIL than HOLLAR deposited since rate > 1");
 
         // Verify proportionality: bob's HOLLAR value should be close to his deposit
-        uint256 bobHollarValue = bobHdcl * vault.exchangeRate() / 1e18;
+        uint256 bobHollarValue = bobBil * vault.exchangeRate() / 1e18;
         // Allow 1% tolerance for rounding
-        assertApproxEqRel(bobHollarValue, smallDeposit, 0.01e18, "bob's HDCL value should approximate his deposit");
+        assertApproxEqRel(bobHollarValue, smallDeposit, 0.01e18, "bob's BIL value should approximate his deposit");
     }
 
     /// @notice Verify dead shares are minted to the DEAD_ADDRESS on first deposit.
@@ -105,21 +105,21 @@ contract FirstDepositorTest is BaseTest {
         // First deposit
         uint256 depositAmount = 1_000e18;
         vm.prank(alice);
-        uint256 aliceHdcl = vault.deposit(depositAmount, alice);
+        uint256 aliceBil = vault.deposit(depositAmount, alice);
 
         // Dead shares minted to DEAD_ADDRESS
         assertEq(vault.balanceOf(DEAD_ADDRESS), DEAD_SHARES, "dead shares should be minted to 0xdead");
 
         // Alice receives (deposit - dead shares)
-        assertEq(aliceHdcl, depositAmount - DEAD_SHARES, "first depositor gets deposit minus dead shares");
+        assertEq(aliceBil, depositAmount - DEAD_SHARES, "first depositor gets deposit minus dead shares");
 
         // Total supply = alice + dead
         assertEq(vault.totalSupply(), depositAmount, "total supply should equal full deposit amount");
 
         // Second deposit should NOT mint additional dead shares
         vm.prank(bob);
-        uint256 bobHdcl = vault.deposit(1_000e18, bob);
-        assertGt(bobHdcl, 0, "bob gets HDCL");
+        uint256 bobBil = vault.deposit(1_000e18, bob);
+        assertGt(bobBil, 0, "bob gets BIL");
         assertEq(vault.balanceOf(DEAD_ADDRESS), DEAD_SHARES, "dead shares should NOT increase on second deposit");
     }
 }

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 
 contract ReinvestTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
@@ -19,7 +19,7 @@ contract ReinvestTest is BaseTest {
 
         uint256 idleBefore = vault.idleHollar();
         assertGt(idleBefore, 0, "Should have idle HOLLAR after position processing");
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be empty");
+        assertEq(vault.totalQueuedBil(), 0, "Queue should be empty");
 
         uint256 positionCountBefore = vault.getPositionCount();
 
@@ -51,7 +51,7 @@ contract ReinvestTest is BaseTest {
 
     function test_reinvest_skippedWhenQueueNotEmpty() public {
         // 1. Deposit and mature
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
 
@@ -59,15 +59,15 @@ contract ReinvestTest is BaseTest {
         assertGt(idleBefore, 0, "Should have idle HOLLAR");
 
         // 2. Alice requests redeem (queue is not empty)
-        _requestRedeem(alice, aliceHdcl / 4);
-        assertGt(vault.totalQueuedHdcl(), 0, "Queue should have entries");
+        _requestRedeem(alice, aliceBil / 4);
+        assertGt(vault.totalQueuedBil(), 0, "Queue should have entries");
 
         // 3. pokeQueue rate-locks the queue. Alice claims to actually receive HOLLAR.
         vault.pokeQueue();
         _claimAll(alice);
 
         // After claim, queue is cleared.
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue should be fulfilled after pokeQueue + claim");
+        assertEq(vault.totalQueuedBil(), 0, "Queue should be fulfilled after pokeQueue + claim");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -226,9 +226,9 @@ contract ReinvestTest is BaseTest {
 
         // Bob queues a redemption easily fulfillable from idleHollar.
         _deposit(bob, 1_000e18);
-        uint256 bobHdcl = vault.balanceOf(bob);
+        uint256 bobBil = vault.balanceOf(bob);
         vm.prank(bob);
-        vault.requestRedeem(bobHdcl, bob, bob);
+        vault.requestRedeem(bobBil, bob, bob);
 
         uint256 posCountBefore = vault.getPositionCount();
 
@@ -239,7 +239,7 @@ contract ReinvestTest is BaseTest {
         // pokeQueue, so reinvest is suppressed even though idleHollar is
         // still positive — the contract chooses to service the queue this
         // call and let any leftover earn yield on the next pokeQueue.
-        assertEq(vault.totalQueuedHdcl(), 0, "bob's redemption fulfilled + claimed");
+        assertEq(vault.totalQueuedBil(), 0, "bob's redemption fulfilled + claimed");
         assertEq(
             vault.getPositionCount(),
             posCountBefore,

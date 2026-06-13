@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 import {QueueLib} from "../../src/libraries/QueueLib.sol";
 
 /// @title Pull-Redemption Mechanics (W2b)
@@ -23,11 +23,11 @@ contract PullRedemptionTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_pokeQueue_rateLocksWithoutTransfer() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
 
-        uint256 redeemAmt = aliceHdcl / 4;
+        uint256 redeemAmt = aliceBil / 4;
         uint256 requestId = _requestRedeem(alice, redeemAmt);
 
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
@@ -44,20 +44,20 @@ contract PullRedemptionTest is BaseTest {
         assertLt(vault.idleHollar(), idleBefore, "idle decreased");
         assertGt(vault.totalReservedHollar(), 0, "reserved increased");
 
-        // Request is rate-locked: hdclSettled == hdclAmount
+        // Request is rate-locked: bilSettled == bilAmount
         (, uint256 amt, uint256 settled, uint256 owed,) = vault.getRedemptionRequest(requestId);
         assertEq(settled, amt, "fully settled");
         assertGt(owed, 0, "HOLLAR locked for claim");
     }
 
     function test_totalAssets_includesReserved() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
 
         uint256 totalAssetsBefore = vault.totalAssets();
 
-        _requestRedeem(alice, aliceHdcl / 4);
+        _requestRedeem(alice, aliceBil / 4);
         vault.pokeQueue();
 
         // totalAssets shouldn't drop just because HOLLAR moved from idle to reserved
@@ -74,10 +74,10 @@ contract PullRedemptionTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_redeem_burnsAndPays() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
-        _requestRedeem(alice, aliceHdcl / 4);
+        _requestRedeem(alice, aliceBil / 4);
         vault.pokeQueue();
 
         uint256 supplyBefore = vault.totalSupply();
@@ -85,10 +85,10 @@ contract PullRedemptionTest is BaseTest {
         uint256 reservedBefore = vault.totalReservedHollar();
 
         vm.prank(alice);
-        uint256 assets = vault.redeem(aliceHdcl / 4, alice, alice);
+        uint256 assets = vault.redeem(aliceBil / 4, alice, alice);
 
         // hDCL burned
-        assertEq(vault.totalSupply(), supplyBefore - aliceHdcl / 4, "hDCL burned at claim");
+        assertEq(vault.totalSupply(), supplyBefore - aliceBil / 4, "hDCL burned at claim");
         // HOLLAR transferred
         assertEq(hollar.balanceOf(alice) - aliceHollarBefore, assets, "alice received assets");
         // Reserved decremented
@@ -96,16 +96,16 @@ contract PullRedemptionTest is BaseTest {
     }
 
     function test_redeem_canPayToReceiver() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
-        _requestRedeem(alice, aliceHdcl / 4);
+        _requestRedeem(alice, aliceBil / 4);
         vault.pokeQueue();
 
         uint256 bobHollarBefore = hollar.balanceOf(bob);
 
         vm.prank(alice);
-        vault.redeem(aliceHdcl / 4, bob, alice);
+        vault.redeem(aliceBil / 4, bob, alice);
 
         assertGt(hollar.balanceOf(bob), bobHollarBefore, "bob (receiver) got HOLLAR");
         // Alice's hDCL was burned (escrowed); her HOLLAR balance shouldn't change here
@@ -113,36 +113,36 @@ contract PullRedemptionTest is BaseTest {
     }
 
     function test_redeem_revertsWhenControllerIsNotSender() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
-        _requestRedeem(alice, aliceHdcl / 4);
+        _requestRedeem(alice, aliceBil / 4);
         vault.pokeQueue();
 
         // Bob tries to claim alice's redemption
         vm.prank(bob);
-        vm.expectRevert(HDCLVault.NotAuthorized.selector);
-        vault.redeem(aliceHdcl / 4, bob, alice);
+        vm.expectRevert(BILVault.NotAuthorized.selector);
+        vault.redeem(aliceBil / 4, bob, alice);
     }
 
     function test_redeem_revertsOnInsufficientClaimable() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
-        _requestRedeem(alice, aliceHdcl / 4);
+        _requestRedeem(alice, aliceBil / 4);
         vault.pokeQueue();
 
         // Try to claim more than settled
         vm.prank(alice);
         vm.expectRevert(QueueLib.InsufficientClaimable.selector);
-        vault.redeem(aliceHdcl, alice, alice);
+        vault.redeem(aliceBil, alice, alice);
     }
 
     function test_redeem_emitsWithdrawEvent() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
-        uint256 redeemAmt = aliceHdcl / 4;
+        uint256 redeemAmt = aliceBil / 4;
         _requestRedeem(alice, redeemAmt);
         vault.pokeQueue();
 
@@ -170,10 +170,10 @@ contract PullRedemptionTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_withdraw_burnsExactAssets() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
-        _requestRedeem(alice, aliceHdcl / 4);
+        _requestRedeem(alice, aliceBil / 4);
         vault.pokeQueue();
 
         // Get the request's owed HOLLAR
@@ -185,7 +185,7 @@ contract PullRedemptionTest is BaseTest {
         uint256 sharesBurned = vault.withdraw(owed, alice, alice);
 
         assertEq(hollar.balanceOf(alice) - aliceHollarBefore, owed, "alice received exact assets");
-        assertEq(sharesBurned, aliceHdcl / 4, "all settled shares consumed");
+        assertEq(sharesBurned, aliceBil / 4, "all settled shares consumed");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -201,8 +201,8 @@ contract PullRedemptionTest is BaseTest {
         _processPositionFull(0); // idle ≈ 10,300
 
         _deposit(bob, 50_000e18); // creates position 1; idle unchanged
-        uint256 bobHdcl = vault.balanceOf(bob);
-        uint256 reqId = _requestRedeem(bob, bobHdcl);
+        uint256 bobBil = vault.balanceOf(bob);
+        uint256 reqId = _requestRedeem(bob, bobBil);
 
         // pokeQueue partially settles bob
         vault.pokeQueue();
@@ -212,13 +212,13 @@ contract PullRedemptionTest is BaseTest {
         assertLt(settledBefore, amt, "not fully settled");
 
         // Bob cancels — only unsettled portion refunded; settled stays alive
-        uint256 bobHdclBefore = vault.balanceOf(bob);
+        uint256 bobBilBefore = vault.balanceOf(bob);
         vm.prank(bob);
         vault.cancelRedeem(reqId);
-        uint256 bobHdclAfter = vault.balanceOf(bob);
+        uint256 bobBilAfter = vault.balanceOf(bob);
 
         // Bob got the unsettled portion back as hDCL
-        assertEq(bobHdclAfter - bobHdclBefore, amt - settledBefore, "unsettled refunded");
+        assertEq(bobBilAfter - bobBilBefore, amt - settledBefore, "unsettled refunded");
 
         // Request still alive with the settled portion
         (, uint256 amtAfter, uint256 settledAfter, uint256 owedAfter, bool active) = vault.getRedemptionRequest(reqId);

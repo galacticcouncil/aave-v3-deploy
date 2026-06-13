@@ -3,7 +3,7 @@ pragma solidity ^0.8.22;
 
 import "forge-std/console.sol";
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 
 /// @title Redemption Queue Grief Vector — Regression Coverage
 /// @notice Verifies that mass create-then-cancel attacks cannot starve legitimate
@@ -17,7 +17,7 @@ contract QueueGriefTest is BaseTest {
     function setUp() public override {
         super.setUp();
         // Top up alice & bob with extra HOLLAR for many small redemption requests.
-        // Each requestRedeem locks `minRedeemAmount = 1e18` HDCL, recovered on cancel.
+        // Each requestRedeem locks `minRedeemAmount = 1e18` BIL, recovered on cancel.
         hollar.mint(alice, 1_000_000e18);
         hollar.mint(bob, 1_000_000e18);
     }
@@ -30,7 +30,7 @@ contract QueueGriefTest is BaseTest {
     }
 
     /// @dev Spam N requestRedeem then cancel each, leaving N zero-address slots
-    /// at queue positions [startId, startId+N). Caller must already hold HDCL.
+    /// at queue positions [startId, startId+N). Caller must already hold BIL.
     function _spamCreateAndCancelInOrder(address user, uint256 n) internal {
         uint256 minR = vault.minRedeemAmount();
         uint256[] memory ids = new uint256[](n);
@@ -88,7 +88,7 @@ contract QueueGriefTest is BaseTest {
         // Bob spams 200 mid-queue cancellations (cancel in reverse so Fix B's
         // head-sweep doesn't reach them — these are pure mid-queue holes).
         vm.prank(bob);
-        vault.deposit(50_000e18, bob); // bob needs HDCL to escrow
+        vault.deposit(50_000e18, bob); // bob needs BIL to escrow
         _spamCreateAndCancelReverse(bob, 200);
 
         assertEq(vault.queueHead(), 0, "queueHead unchanged (none were at head)");
@@ -192,7 +192,7 @@ contract QueueGriefTest is BaseTest {
         // After rate-locking alice's request, queueHead advances past her too
         // (full-settle advances head). After claim, hDCL is burned.
         assertEq(vault.queueHead(), 101, "single call processes alice past 100 holes");
-        assertEq(vault.totalQueuedHdcl(), 0, "alice's HDCL burned after claim");
+        assertEq(vault.totalQueuedBil(), 0, "alice's BIL burned after claim");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -376,7 +376,7 @@ contract QueueGriefTest is BaseTest {
 
         assertEq(vault.queueHead(), 100, "head fully advanced via cancel-at-head");
         assertEq(vault.queueTail(), 100, "queue empty");
-        assertEq(vault.totalQueuedHdcl(), 0, "no escrow");
+        assertEq(vault.totalQueuedBil(), 0, "no escrow");
     }
 
     /// @notice Worst-case adversarial: attacker uses reverse-order cancels.
@@ -425,7 +425,7 @@ contract QueueGriefTest is BaseTest {
     /// escrowed hDCL + reserved HOLLAR are permanently locked.
     ///
     /// Fix: maintain `_settledByController[address] => uint256[] ids`,
-    /// populated in `processQueue` on the 0 → >0 hdclSettled transition,
+    /// populated in `processQueue` on the 0 → >0 bilSettled transition,
     /// swap-popped in claim when fully drained or stale. Claim iteration
     /// is now bounded by the user's own settled-but-unclaimed requests.
     function test_claim_robustAgainstQueueTailBloat() public {
@@ -441,7 +441,7 @@ contract QueueGriefTest is BaseTest {
 
         // 2. Attacker (bob) bloats queueTail with 1000 deleted slots.
         vm.prank(bob);
-        vault.deposit(50_000e18, bob); // bob needs HDCL to escrow per cycle
+        vault.deposit(50_000e18, bob); // bob needs BIL to escrow per cycle
         uint256 tailBefore = vault.queueTail();
         _spamCreateAndCancelReverse(bob, 1000);
         assertEq(
@@ -547,9 +547,9 @@ contract QueueGriefTest is BaseTest {
         vault.deposit(50_000e18, alice);
         // Cache balance first — vm.prank is consumed by the next call (including
         // a view-call argument), so balanceOf() can't share a prank with redeem.
-        uint256 aliceHdcl = vault.balanceOf(alice);
+        uint256 aliceBil = vault.balanceOf(alice);
         vm.prank(alice);
-        uint256 reqId = vault.requestRedeem(aliceHdcl, alice, alice);
+        uint256 reqId = vault.requestRedeem(aliceBil, alice, alice);
 
         vault.pokeQueue(); // partially settles, pushes to alice's index
 

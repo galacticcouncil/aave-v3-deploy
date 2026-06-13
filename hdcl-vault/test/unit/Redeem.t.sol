@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 
 /// @title Comprehensive Redeem Test Suite
 /// @notice Covers requestRedeem, cancelRedeem, pokeDecentral (position lifecycle),
@@ -16,13 +16,13 @@ contract RedeemTest is BaseTest {
 
     /// @notice Contract enforces minRedeemAmount (default 1e18).
     ///         DEVIATION: Spec says `Require wdclAmount > 0`.
-    ///         Contract uses `if (hdclAmount < minRedeemAmount) revert BelowMinimumRedeem()`.
+    ///         Contract uses `if (bilAmount < minRedeemAmount) revert BelowMinimumRedeem()`.
     function test_requestRedeem_reverts_whenBelowMinRedeemAmount() public {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
         vm.prank(alice);
-        vm.expectRevert(HDCLVault.BelowMinimumRedeem.selector);
-        vault.requestRedeem(1e18 - 1, alice, alice); // just below 1 HDCL
+        vm.expectRevert(BILVault.BelowMinimumRedeem.selector);
+        vault.requestRedeem(1e18 - 1, alice, alice); // just below 1 BIL
     }
 
     function test_requestRedeem_reverts_whenInsufficientBalance() public {
@@ -51,29 +51,29 @@ contract RedeemTest is BaseTest {
     //                   requestRedeem - HAPPY PATH
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice Spec: HDCL transferred to vault as escrow (not burned)
-    function test_requestRedeem_escrowsHdclInVault() public {
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 redeemAmt = hdcl / 2;
+    /// @notice Spec: BIL transferred to vault as escrow (not burned)
+    function test_requestRedeem_escrowsBilInVault() public {
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 redeemAmt = bil / 2;
 
         uint256 aliceBefore = vault.balanceOf(alice);
         uint256 vaultBefore = vault.balanceOf(address(vault));
 
         _requestRedeem(alice, redeemAmt);
 
-        assertEq(vault.balanceOf(alice), aliceBefore - redeemAmt, "Alice HDCL decreased");
+        assertEq(vault.balanceOf(alice), aliceBefore - redeemAmt, "Alice BIL decreased");
         assertEq(vault.balanceOf(address(vault)), vaultBefore + redeemAmt, "Vault holds escrow");
     }
 
     /// @notice Spec: totalSupply unchanged by escrow (rate unaffected)
     function test_requestRedeem_doesNotAffectExchangeRate() public {
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(30);
 
         uint256 rateBefore = vault.exchangeRate();
         uint256 supplyBefore = vault.totalSupply();
 
-        _requestRedeem(alice, hdcl / 2);
+        _requestRedeem(alice, bil / 2);
 
         assertEq(vault.totalSupply(), supplyBefore, "totalSupply unchanged by escrow");
         assertEq(vault.exchangeRate(), rateBefore, "Exchange rate unchanged by escrow");
@@ -81,8 +81,8 @@ contract RedeemTest is BaseTest {
 
     /// @notice Spec: queue entry created with correct fields
     function test_requestRedeem_createsQueueEntry() public {
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 redeemAmt = hdcl / 2;
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 redeemAmt = bil / 2;
 
         uint256 requestId = _requestRedeem(alice, redeemAmt);
 
@@ -96,23 +96,23 @@ contract RedeemTest is BaseTest {
     }
 
     /// @notice Spec: totalQueuedWdcl += wdclAmount
-    function test_requestRedeem_updatesTotalQueuedHdcl() public {
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 redeemAmt = hdcl / 2;
+    function test_requestRedeem_updatesTotalQueuedBil() public {
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 redeemAmt = bil / 2;
 
-        assertEq(vault.totalQueuedHdcl(), 0);
+        assertEq(vault.totalQueuedBil(), 0);
 
         _requestRedeem(alice, redeemAmt);
 
-        assertEq(vault.totalQueuedHdcl(), redeemAmt);
+        assertEq(vault.totalQueuedBil(), redeemAmt);
     }
 
     /// @notice Multiple requests increment requestId sequentially
     function test_requestRedeem_incrementsRequestId() public {
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
 
-        uint256 id0 = _requestRedeem(alice, hdcl / 4);
-        uint256 id1 = _requestRedeem(alice, hdcl / 4);
+        uint256 id0 = _requestRedeem(alice, bil / 4);
+        uint256 id1 = _requestRedeem(alice, bil / 4);
 
         assertEq(id0, 0);
         assertEq(id1, 1);
@@ -121,8 +121,8 @@ contract RedeemTest is BaseTest {
 
     /// @notice Spec: emit RedemptionRequested(requestId, msg.sender, wdclAmount)
     function test_requestRedeem_emitsEvent() public {
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 redeemAmt = hdcl / 2;
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 redeemAmt = bil / 2;
 
         vm.expectEmit(true, true, false, true);
         emit RedemptionRequested(0, alice, redeemAmt);
@@ -136,29 +136,29 @@ contract RedeemTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_cancelRedeem_reverts_whenNotOwner() public {
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 requestId = _requestRedeem(alice, hdcl / 2);
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 requestId = _requestRedeem(alice, bil / 2);
 
         vm.prank(bob);
-        vm.expectRevert(HDCLVault.NotRequestOwner.selector);
+        vm.expectRevert(BILVault.NotRequestOwner.selector);
         vault.cancelRedeem(requestId);
     }
 
     function test_cancelRedeem_reverts_whenAlreadyCancelled() public {
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 requestId = _requestRedeem(alice, hdcl / 2);
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 requestId = _requestRedeem(alice, bil / 2);
 
         vm.prank(alice);
         vault.cancelRedeem(requestId);
 
         vm.prank(alice);
-        vm.expectRevert(HDCLVault.RequestNotActive.selector);
+        vm.expectRevert(BILVault.RequestNotActive.selector);
         vault.cancelRedeem(requestId);
     }
 
     function test_cancelRedeem_reverts_whenInvalidRequestId() public {
         vm.prank(alice);
-        vm.expectRevert(HDCLVault.InvalidRequestId.selector);
+        vm.expectRevert(BILVault.InvalidRequestId.selector);
         vault.cancelRedeem(999);
     }
 
@@ -166,10 +166,10 @@ contract RedeemTest is BaseTest {
     //                   cancelRedeem - HAPPY PATH
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice Spec: return escrowed HDCL, update totalQueuedWdcl, mark inactive
-    function test_cancelRedeem_returnsEscrowedHdcl() public {
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 redeemAmt = hdcl / 2;
+    /// @notice Spec: return escrowed BIL, update totalQueuedWdcl, mark inactive
+    function test_cancelRedeem_returnsEscrowedBil() public {
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 redeemAmt = bil / 2;
         uint256 requestId = _requestRedeem(alice, redeemAmt);
 
         uint256 aliceBefore = vault.balanceOf(alice);
@@ -177,8 +177,8 @@ contract RedeemTest is BaseTest {
         vm.prank(alice);
         vault.cancelRedeem(requestId);
 
-        assertEq(vault.balanceOf(alice), aliceBefore + redeemAmt, "HDCL returned");
-        assertEq(vault.totalQueuedHdcl(), 0, "totalQueuedHdcl zeroed");
+        assertEq(vault.balanceOf(alice), aliceBefore + redeemAmt, "BIL returned");
+        assertEq(vault.totalQueuedBil(), 0, "totalQueuedBil zeroed");
 
         (, , , , bool active) = vault.getRedemptionRequest(requestId);
         assertFalse(active, "Request inactive after cancel");
@@ -192,13 +192,13 @@ contract RedeemTest is BaseTest {
         _warpDays(61);
         _processPositionFull(0); // idle ~= 10,300 HOLLAR
 
-        // Alice queues all her HDCL (needs ~10,299 HOLLAR)
-        uint256 aliceHdcl = vault.balanceOf(alice);
-        _requestRedeem(alice, aliceHdcl);
+        // Alice queues all her BIL (needs ~10,299 HOLLAR)
+        uint256 aliceBil = vault.balanceOf(alice);
+        _requestRedeem(alice, aliceBil);
 
-        // Bob queues all his HDCL (needs ~10,300 HOLLAR)
-        uint256 bobHdcl = vault.balanceOf(bob);
-        uint256 bobRequestId = _requestRedeem(bob, bobHdcl);
+        // Bob queues all his BIL (needs ~10,300 HOLLAR)
+        uint256 bobBil = vault.balanceOf(bob);
+        uint256 bobRequestId = _requestRedeem(bob, bobBil);
 
         // Process queue: Alice fully fulfilled (FIFO), Bob partially
         vault.pokeQueue();
@@ -206,8 +206,8 @@ contract RedeemTest is BaseTest {
         (, , uint256 bobSettled, , bool bobActive) = vault.getRedemptionRequest(bobRequestId);
         // Bob should be partially settled if any idle remained after Alice
         if (bobSettled > 0 && bobActive) {
-            uint256 remaining = bobHdcl - bobSettled;
-            uint256 bobHdclBefore = vault.balanceOf(bob);
+            uint256 remaining = bobBil - bobSettled;
+            uint256 bobBilBefore = vault.balanceOf(bob);
 
             // Cancel Bob's partially fulfilled request
             vm.prank(bob);
@@ -216,16 +216,16 @@ contract RedeemTest is BaseTest {
             // Only the unfulfilled portion is returned
             assertEq(
                 vault.balanceOf(bob),
-                bobHdclBefore + remaining,
-                "Only unfulfilled HDCL returned on cancel"
+                bobBilBefore + remaining,
+                "Only unfulfilled BIL returned on cancel"
             );
         }
     }
 
     /// @notice Spec: emit RedemptionCancelled(requestId, remaining)
     function test_cancelRedeem_emitsEvent() public {
-        uint256 hdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 redeemAmt = hdcl / 2;
+        uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 redeemAmt = bil / 2;
         uint256 requestId = _requestRedeem(alice, redeemAmt);
 
         vm.expectEmit(true, false, false, true);
@@ -329,7 +329,7 @@ contract RedeemTest is BaseTest {
         _warpDays(61);
         _processPositionFull(0);
 
-        vm.expectRevert(HDCLVault.PositionAlreadyRedeemed.selector);
+        vm.expectRevert(BILVault.PositionAlreadyRedeemed.selector);
         vault.pokeDecentral(0);
     }
 
@@ -385,13 +385,13 @@ contract RedeemTest is BaseTest {
 
     /// @notice Spec §4.5: upon Redeemed, triggers queue processing with idle HOLLAR
     function test_pokeDecentral_triggersQueueOnRedemption() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
 
         // Queue redeem BEFORE processing (no idle yet)
-        uint256 redeemAmt = aliceHdcl / 4;
+        uint256 redeemAmt = aliceBil / 4;
         _requestRedeem(alice, redeemAmt);
-        assertEq(vault.totalQueuedHdcl(), redeemAmt);
+        assertEq(vault.totalQueuedBil(), redeemAmt);
 
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
 
@@ -400,7 +400,7 @@ contract RedeemTest is BaseTest {
         _claimAll(alice);
 
         // Queue should be cleared (idle from redemption fulfilled it, then claim drained)
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue auto-cleared on position redemption + claim");
+        assertEq(vault.totalQueuedBil(), 0, "Queue auto-cleared on position redemption + claim");
         assertGt(hollar.balanceOf(alice), aliceHollarBefore, "Alice received HOLLAR");
     }
 
@@ -439,13 +439,13 @@ contract RedeemTest is BaseTest {
     //               pokeQueue - QUEUE PROCESSING
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// @notice Spec §4.6: full fulfillment burns HDCL, sends HOLLAR
+    /// @notice Spec §4.6: full fulfillment burns BIL, sends HOLLAR
     function test_pokeQueue_fullyFulfillsRequest() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
 
-        uint256 redeemAmt = aliceHdcl / 4;
+        uint256 redeemAmt = aliceBil / 4;
         _requestRedeem(alice, redeemAmt);
 
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
@@ -454,9 +454,9 @@ contract RedeemTest is BaseTest {
         vault.pokeQueue();
         _claimAll(alice);
 
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue fully cleared");
+        assertEq(vault.totalQueuedBil(), 0, "Queue fully cleared");
         assertGt(hollar.balanceOf(alice), aliceHollarBefore, "Alice received HOLLAR");
-        assertEq(vault.totalSupply(), supplyBefore - redeemAmt, "HDCL burned");
+        assertEq(vault.totalSupply(), supplyBefore - redeemAmt, "BIL burned");
     }
 
     /// @notice Spec §4.6: partial fulfillment when idle < HOLLAR needed
@@ -468,18 +468,18 @@ contract RedeemTest is BaseTest {
         _processPositionFull(0); // idle ~= 10,300
 
         // Queue both users (total HOLLAR needed ~= 20,600, idle ~= 10,300)
-        uint256 aliceHdcl = vault.balanceOf(alice);
-        uint256 bobHdcl = vault.balanceOf(bob);
-        _requestRedeem(alice, aliceHdcl);
-        _requestRedeem(bob, bobHdcl);
+        uint256 aliceBil = vault.balanceOf(alice);
+        uint256 bobBil = vault.balanceOf(bob);
+        _requestRedeem(alice, aliceBil);
+        _requestRedeem(bob, bobBil);
 
-        uint256 totalQueuedBefore = vault.totalQueuedHdcl();
+        uint256 totalQueuedBefore = vault.totalQueuedBil();
 
         vault.pokeQueue();
         _claimAll(alice);
         _claimAll(bob);
 
-        uint256 totalQueuedAfter = vault.totalQueuedHdcl();
+        uint256 totalQueuedAfter = vault.totalQueuedBil();
         assertLt(totalQueuedAfter, totalQueuedBefore, "Queue partially drained");
         assertGt(totalQueuedAfter, 0, "Queue not fully cleared (not enough idle)");
     }
@@ -504,19 +504,19 @@ contract RedeemTest is BaseTest {
         _claimAll(alice);
         _claimAll(bob);
 
-        assertEq(vault.totalQueuedHdcl(), 0, "Both fulfilled");
+        assertEq(vault.totalQueuedBil(), 0, "Both fulfilled");
         assertGt(hollar.balanceOf(alice), aliceHollarBefore, "Alice (first) received HOLLAR");
         assertGt(hollar.balanceOf(bob), bobHollarBefore, "Bob (second) received HOLLAR");
     }
 
     /// @notice Spec §4.6: skips inactive (cancelled) entries
     function test_pokeQueue_skipsInactiveEntries() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
 
-        uint256 req0 = _requestRedeem(alice, aliceHdcl / 4);
-        _requestRedeem(alice, aliceHdcl / 4); // req1
+        uint256 req0 = _requestRedeem(alice, aliceBil / 4);
+        _requestRedeem(alice, aliceBil / 4); // req1
 
         // Cancel req0
         vm.prank(alice);
@@ -528,20 +528,20 @@ contract RedeemTest is BaseTest {
         _claimAll(alice);
 
         // req0 skipped, req1 fulfilled
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue cleared (skipped cancelled entry)");
+        assertEq(vault.totalQueuedBil(), 0, "Queue cleared (skipped cancelled entry)");
         assertGt(hollar.balanceOf(alice), aliceHollarBefore, "Alice received HOLLAR for req1");
     }
 
-    /// @notice Spec §4.6: burn at current rate; HOLLAR = hdcl * rate / 1e18
+    /// @notice Spec §4.6: burn at current rate; HOLLAR = bil * rate / 1e18
     function test_pokeQueue_burnsAtCurrentRate() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
 
         uint256 rate = vault.exchangeRate();
         assertGt(rate, 1e18, "Rate > 1 after yield");
 
-        uint256 redeemAmt = aliceHdcl / 4;
+        uint256 redeemAmt = aliceBil / 4;
         _requestRedeem(alice, redeemAmt);
 
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
@@ -551,18 +551,18 @@ contract RedeemTest is BaseTest {
 
         uint256 hollarReceived = hollar.balanceOf(alice) - aliceHollarBefore;
         uint256 expectedHollar = (redeemAmt * rate) / 1e18;
-        assertApproxEqRel(hollarReceived, expectedHollar, 0.01e18, "HOLLAR = hdcl * rate");
+        assertApproxEqRel(hollarReceived, expectedHollar, 0.01e18, "HOLLAR = bil * rate");
     }
 
     /// @notice Spec §4.6: exchange rate preserved after queue processing
     function test_pokeQueue_preservesExchangeRate() public {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 bobHdcl = _deposit(bob, TEN_THOUSAND_HOLLAR);
+        uint256 bobBil = _deposit(bob, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
         _processPositionFull(1);
 
-        _requestRedeem(bob, bobHdcl / 4);
+        _requestRedeem(bob, bobBil / 4);
 
         uint256 rateBefore = vault.exchangeRate();
 
@@ -574,16 +574,16 @@ contract RedeemTest is BaseTest {
 
     /// @notice Anyone can call pokeQueue (permissionless)
     function test_pokeQueue_permissionless() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
-        _requestRedeem(alice, aliceHdcl / 4);
+        _requestRedeem(alice, aliceBil / 4);
 
         vm.prank(keeper);
         vault.pokeQueue();
         _claimAll(alice);
 
-        assertEq(vault.totalQueuedHdcl(), 0, "Keeper can process queue (alice claims to clear)");
+        assertEq(vault.totalQueuedBil(), 0, "Keeper can process queue (alice claims to clear)");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -598,7 +598,7 @@ contract RedeemTest is BaseTest {
 
         uint256 idle = vault.idleHollar();
         assertGt(idle, 0);
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue empty");
+        assertEq(vault.totalQueuedBil(), 0, "Queue empty");
 
         uint256 posBefore = vault.getPositionCount();
 
@@ -627,19 +627,19 @@ contract RedeemTest is BaseTest {
 
     /// @notice Spec §4.7 step 1: queue gets processed BEFORE reinvest
     function test_pokeQueue_processesQueueThenReinvests() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0);
 
         // Small redeem -> leaves plenty of idle after fulfillment
-        _requestRedeem(alice, aliceHdcl / 10);
+        _requestRedeem(alice, aliceBil / 10);
 
         uint256 posBefore = vault.getPositionCount();
 
         vault.pokeQueue();
         _claimAll(alice);
 
-        assertEq(vault.totalQueuedHdcl(), 0, "Queue fulfilled first (settled + claimed)");
+        assertEq(vault.totalQueuedBil(), 0, "Queue fulfilled first (settled + claimed)");
         // Remaining idle should be reinvested if >= minReinvestAmount
         if (vault.idleHollar() == 0) {
             assertGt(vault.getPositionCount(), posBefore, "Remaining idle reinvested");
@@ -755,7 +755,7 @@ contract RedeemTest is BaseTest {
     /// @notice Full user journey: deposit -> wait -> redeem -> receive HOLLAR with yield
     function test_e2e_depositRedeemFullCycle() public {
         // 1. Alice deposits
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         uint256 aliceHollarStart = hollar.balanceOf(alice);
 
         // 2. Wait for position to mature
@@ -765,7 +765,7 @@ contract RedeemTest is BaseTest {
         _processPositionFull(0);
 
         // 4. Alice requests full redemption
-        _requestRedeem(alice, aliceHdcl);
+        _requestRedeem(alice, aliceBil);
 
         // 5. Keeper pokes queue (rate-locks) and Alice claims
         vault.pokeQueue();
@@ -789,8 +789,8 @@ contract RedeemTest is BaseTest {
         _deposit(bob, TEN_THOUSAND_HOLLAR);
 
         // Alice queues early (no idle yet)
-        uint256 aliceHdcl = vault.balanceOf(alice);
-        _requestRedeem(alice, aliceHdcl);
+        uint256 aliceBil = vault.balanceOf(alice);
+        _requestRedeem(alice, aliceBil);
 
         uint256 rateAtQueue = vault.exchangeRate();
 
@@ -817,7 +817,7 @@ contract RedeemTest is BaseTest {
     ///         If queue was processed in the same call, reinvest requires a second pokeQueue.
     function test_e2e_multiUserCycle() public {
         // Alice and Bob deposit
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
         _deposit(bob, TEN_THOUSAND_HOLLAR);
 
         // Mature and process both
@@ -826,22 +826,22 @@ contract RedeemTest is BaseTest {
         _processPositionFull(1);
 
         // Alice exits partially
-        _requestRedeem(alice, aliceHdcl / 2);
+        _requestRedeem(alice, aliceBil / 2);
         vault.pokeQueue(); // fulfills queue
         vault.pokeQueue(); // now queue is empty -> reinvests remaining idle
 
         uint256 posCount = vault.getPositionCount();
         assertGt(posCount, 2, "Reinvested positions created");
 
-        // Bob still holds HDCL - value should be preserved
+        // Bob still holds BIL - value should be preserved
         uint256 bobValue = vault.previewRedeem(vault.balanceOf(bob));
-        assertGt(bobValue, TEN_THOUSAND_HOLLAR, "Bob's HDCL worth more than initial deposit");
+        assertGt(bobValue, TEN_THOUSAND_HOLLAR, "Bob's BIL worth more than initial deposit");
     }
 
     /// @notice Estimated wait time: non-zero before maturity, zero after fulfillment
     function test_e2e_estimatedWaitTime() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        uint256 requestId = _requestRedeem(alice, aliceHdcl / 4);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 requestId = _requestRedeem(alice, aliceBil / 4);
 
         uint256 waitBefore = vault.getEstimatedWaitTime(requestId);
         assertGt(waitBefore, 0, "Wait > 0 when no idle and position not mature");
@@ -861,8 +861,8 @@ contract RedeemTest is BaseTest {
 
     /// @notice When maturity + delay already passed -> returns 0
     function test_getEstimatedWaitTime_returnsZero_whenMaturityPassed() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
-        _requestRedeem(alice, aliceHdcl / 4);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _requestRedeem(alice, aliceBil / 4);
 
         // Warp past maturity (60d) + principal delay (48h)
         _warpDays(63);
@@ -877,17 +877,17 @@ contract RedeemTest is BaseTest {
 
     /// @notice Exercise uncalled view getters for coverage
     function test_viewGetters_coverage() public {
-        uint256 aliceHdcl = _deposit(alice, TEN_THOUSAND_HOLLAR);
+        uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
 
         // Getters on empty queue
-        assertEq(vault.getTotalQueuedHdcl(), 0);
+        assertEq(vault.getTotalQueuedBil(), 0);
         assertEq(vault.getIdleHollar(), 0);
         assertEq(vault.getRedemptionQueuePending(), 0);
         assertEq(vault.getQueueHead(), 0);
 
         // After queue entry
-        _requestRedeem(alice, aliceHdcl / 4);
-        assertGt(vault.getTotalQueuedHdcl(), 0);
+        _requestRedeem(alice, aliceBil / 4);
+        assertGt(vault.getTotalQueuedBil(), 0);
         assertEq(vault.getRedemptionQueuePending(), 1);
     }
 

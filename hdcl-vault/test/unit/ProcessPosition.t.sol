@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {BaseTest} from "../helpers/BaseTest.sol";
-import {HDCLVault} from "../../src/HDCLVault.sol";
+import {BILVault} from "../../src/BILVault.sol";
 
 contract ProcessPositionTest is BaseTest {
     /// @dev Helper to calculate expected yield: principal * apyWad * days / 365 / 1e18
@@ -197,7 +197,7 @@ contract ProcessPositionTest is BaseTest {
         assertEq(state, 4, "Position should be Redeemed");
 
         // Attempt to process again should revert
-        vm.expectRevert(HDCLVault.PositionAlreadyRedeemed.selector);
+        vm.expectRevert(BILVault.PositionAlreadyRedeemed.selector);
         vault.pokeDecentral(0);
     }
 
@@ -285,7 +285,7 @@ contract ProcessPositionTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_processPosition_triggersQueueProcessing() public {
-        // Alice deposits and gets HDCL
+        // Alice deposits and gets BIL
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
         // Warp past maturity and process position fully -> idle HOLLAR
@@ -293,10 +293,10 @@ contract ProcessPositionTest is BaseTest {
         _processPositionFull(0);
 
         // Now Alice has idle HOLLAR in the vault. She requests redeem.
-        uint256 aliceHdcl = vault.balanceOf(alice);
-        uint256 redeemAmount = aliceHdcl / 2;
+        uint256 aliceBil = vault.balanceOf(alice);
+        uint256 redeemAmount = aliceBil / 2;
         _requestRedeem(alice, redeemAmount);
-        assertGt(vault.totalQueuedHdcl(), 0, "Queue should have entries");
+        assertGt(vault.totalQueuedBil(), 0, "Queue should have entries");
 
         // Bob deposits (creates a new position at index 1)
         _deposit(bob, TEN_THOUSAND_HOLLAR);
@@ -307,7 +307,7 @@ contract ProcessPositionTest is BaseTest {
         // Before processing Bob's position, check queue state
         // (The queue may have been halfly/fully cleared by Bob's deposit
         //  using existing idle HOLLAR. If not, processing Bob's position will do it.)
-        uint256 queueBefore = vault.totalQueuedHdcl();
+        uint256 queueBefore = vault.totalQueuedBil();
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
 
         // If queue was already cleared by Bob's deposit, the test passes trivially.
@@ -316,7 +316,7 @@ contract ProcessPositionTest is BaseTest {
             _processPositionFull(1);
             _claimAll(alice);
 
-            uint256 queueAfter = vault.totalQueuedHdcl();
+            uint256 queueAfter = vault.totalQueuedBil();
             assertLt(queueAfter, queueBefore, "Queue should be reduced after position redemption + claim");
 
             uint256 aliceHollarAfter = hollar.balanceOf(alice);
@@ -445,8 +445,8 @@ contract ProcessPositionTest is BaseTest {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
         _warpDays(61);
         _processPositionFull(0); // idle accumulates
-        uint256 aliceHdcl = vault.balanceOf(alice);
-        uint256 reqId = _requestRedeem(alice, aliceHdcl / 4);
+        uint256 aliceBil = vault.balanceOf(alice);
+        uint256 reqId = _requestRedeem(alice, aliceBil / 4);
 
         // Still 0 before settlement.
         assertEq(vault.maxRedeem(alice), 0, "no settle yet -> 0");
@@ -459,7 +459,7 @@ contract ProcessPositionTest is BaseTest {
         assertGt(claimableShares, 0, "settled some shares");
 
         // maxRedeem matches claimable shares.
-        assertEq(vault.maxRedeem(alice), claimableShares, "maxRedeem == hdclSettled sum");
+        assertEq(vault.maxRedeem(alice), claimableShares, "maxRedeem == bilSettled sum");
 
         // maxWithdraw matches the reserved HOLLAR for those shares.
         (, , , uint256 hollarOwed, ) = vault.getRedemptionRequest(reqId);
