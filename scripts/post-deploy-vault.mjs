@@ -1,4 +1,4 @@
-// Post-deploy script for the HDCL Vault. Mirrors hdcl-vault/DEPLOYMENT.md
+// Post-deploy script for the BIL Vault. Mirrors bil-vault/DEPLOYMENT.md
 // Steps 2 (role grants) + 3 (seed deposit), with optional admin/upgrader
 // role transfer to a governance address.
 //
@@ -72,7 +72,7 @@ const networkGasPrice = await pub.getGasPrice();
 const GAS_PRICE = (networkGasPrice * 110n) / 100n;
 const txOpts = { type: "legacy", gas: 1_500_000n, gasPrice: GAS_PRICE };
 
-// ── role hashes (must match HDCLVault.sol:63-78) ──────────────────────
+// ── role hashes (must match BILVault.sol:63-78) ──────────────────────
 const DEFAULT_ADMIN_ROLE = "0x" + "00".repeat(32);
 const ADMIN_ROLE = keccak256(toBytes("ADMIN_ROLE"));
 const UPGRADER_ROLE = keccak256(toBytes("UPGRADER_ROLE"));

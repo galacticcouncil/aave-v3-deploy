@@ -1,7 +1,7 @@
 // One-off: unlock Alice's HDX on 0.lark by removing her votes on already-approved
 // referendums and unlocking each conviction-voting track.
 //
-// Not related to the HDCL flow — kept here so the submit-hdcl-proposal.ts stays
+// Not related to the BIL flow — kept here so the submit-bil-proposal.ts stays
 // focused on the proposal. Run once, then retire.
 //
 //   PROPOSAL_WS=wss://0.lark.hydration.cloud \

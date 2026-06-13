@@ -41,7 +41,7 @@ export const AAVE_REFERRAL = "0";
 // market's provider (the UI / subgraph enumerate markets through it). The
 // main Hydration money market already owns the canonical registry, and on the
 // mainnet-state forks (lark / lark2 / chopsticks) it exists at the same
-// address. A second market (HDCL) registers its own provider into THIS
+// address. A second market (BIL) registers its own provider into THIS
 // registry — done via governance, since the registry is owned by the
 // aave-manager precompile. When set, deploy/00_core/00_markets_registry.ts
 // adopts this address instead of deploying a new registry.

@@ -22,7 +22,7 @@ const func: DeployFunction = async function ({
   // The reserve-config tasks below (caps, debt ceiling, e-modes, liquidation
   // fee, rate strategies) all operate on *initialized* reserves. On networks
   // where the reserve underlying isn't registered at deploy time — e.g. the
-  // HDCL market, whose DCL asset is registered + the reserve initialized by a
+  // BIL market, whose BIL asset is registered + the reserve initialized by a
   // later governance proposal (deploy/02_market/09_init_reserves.ts defers it)
   // — the pool has zero reserves here and these tasks have nothing to do (and
   // some throw on the empty list). Skip them; the governance proposal that

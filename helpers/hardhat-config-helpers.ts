@@ -104,7 +104,7 @@ export const NETWORKS_RPC_URL: iParamsPerNetwork<string> = {
   [eHydrationNetwork.zombie]: process.env.RPC || "http://localhost:9999",
   // 0.lark testnet — mainnet fork kept long-running for pre-prod rehearsals.
   [eHydrationNetwork.lark]: process.env.RPC || "https://0.lark.hydration.cloud",
-  // 2.lark testnet — current generation; HDCL Vault + WDCLOracle live here.
+  // 2.lark testnet — current generation; BIL Vault + BILOracle live here.
   [eHydrationNetwork.lark2]: process.env.RPC || "https://2.lark.hydration.cloud",
   // Local chopsticks fork — disposable, used for dry-runs before 0.lark.
   // Default port matches `npx @acala-network/chopsticks` default (8000).
@@ -123,7 +123,7 @@ export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
   [eHydrationNetwork.nice]: true,
   [eHydrationNetwork.lark]: true,
   [eHydrationNetwork.lark2]: true,
-  // chopsticks is a mainnet-state fork — real HOLLAR / HDX / HDCL tokens
+  // chopsticks is a mainnet-state fork — real HOLLAR / HDX / BIL tokens
   // exist on it. Mark as live so deploys don't fall back to mock testnet tokens.
   [eHydrationNetwork.chopsticks]: true,
   [eBaseNetwork.base]: true,

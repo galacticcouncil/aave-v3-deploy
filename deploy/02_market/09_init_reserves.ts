@@ -82,7 +82,7 @@ const func: DeployFunction = async function ({
   }
 
   // Skip reserves whose underlying asset doesn't respond to decimals() yet.
-  // On Hydration, substrate-asset precompiles (e.g. HDCL tokenAddress(55))
+  // On Hydration, substrate-asset precompiles (e.g. BIL tokenAddress(55))
   // only respond after the asset is added to the substrate asset registry —
   // which is done by the governance proposal, not by this deploy script. For
   // those assets, defer reserve init to the proposal (which atomically

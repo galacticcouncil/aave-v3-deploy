@@ -21,13 +21,13 @@ const func: DeployFunction = async function ({
     process.env.FORK ? process.env.FORK : hre.network.name
   ) as eNetwork;
 
-  // Hydration-based markets (main Hydration MM + HDCL) don't use the native
+  // Hydration-based markets (main Hydration MM + BIL) don't use the native
   // token gateway: on Hydration every asset — including the native token — is
   // represented as an ERC20 via the substrate-asset precompile, so there's no
   // "wrap native → supply" path to bridge. Skip it for both.
   if (
     MARKET_NAME == ConfigNames.Hydration ||
-    MARKET_NAME == ConfigNames.HDCL
+    MARKET_NAME == ConfigNames.BIL
   ) {
     console.log(
       `Skipping WrappedTokenGateway deployment for ${MARKET_NAME} market (precompile ERC20s, no native wrap)`

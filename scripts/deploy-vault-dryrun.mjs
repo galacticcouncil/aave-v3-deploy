@@ -1,16 +1,16 @@
-// Dry-run HDCL Vault deploy against a chopsticks mainnet fork.
+// Dry-run BIL Vault deploy against a chopsticks mainnet fork.
 //
 // Foundry's forge script can't traverse chopsticks's lazy-loaded storage
 // through the Decentral pool's delegatecall (the staticcall returns Stop
 // even though direct eth_call works) — so we port Deploy.s.sol to viem,
 // which has been validated end-to-end via the chopsticks 2.2.0 release.
 //
-// Mirrors hdcl-vault/script/Deploy.s.sol step-by-step:
+// Mirrors bil-vault/script/Deploy.s.sol step-by-step:
 //   1. Deploy QueueLib library
-//   2. Link the QueueLib placeholder in HDCLVault bytecode
-//   3. Deploy HDCLVault implementation
+//   2. Link the QueueLib placeholder in BILVault bytecode
+//   3. Deploy BILVault implementation
 //   4. Deploy ERC1967Proxy with initialize() call as initdata
-//   5. Deploy WDCLOracle(vault)
+//   5. Deploy BILOracle(vault)
 //   6. vault.setOracle(oracle)  (deployer must == admin)
 //   7. Sanity-check vault.getOraclePrice() > 0
 //
@@ -38,19 +38,19 @@ const HOLLAR = "0x531a654d1696ED52e7275A8cede955E82620f99a";
 const TVL_CAP = 2_000_000n * 10n ** 18n; // 2M HOLLAR
 const QUEUE_LIB_PLACEHOLDER = "__$613e6a1b40d495099704d6df6019b2979e$__";
 
-const VAULT_DIR = "/home/mrq/git/aave-v3-deploy/hdcl-vault";
+const VAULT_DIR = "/home/mrq/git/aave-v3-deploy/bil-vault";
 
 const queueLibArt = JSON.parse(
   readFileSync(`${VAULT_DIR}/out/QueueLib.sol/QueueLib.json`, "utf-8"),
 );
 const vaultArt = JSON.parse(
-  readFileSync(`${VAULT_DIR}/out/HDCLVault.sol/HDCLVault.json`, "utf-8"),
+  readFileSync(`${VAULT_DIR}/out/BILVault.sol/BILVault.json`, "utf-8"),
 );
 const proxyArt = JSON.parse(
   readFileSync(`${VAULT_DIR}/out/ERC1967Proxy.sol/ERC1967Proxy.json`, "utf-8"),
 );
 const oracleArt = JSON.parse(
-  readFileSync(`${VAULT_DIR}/out/WDCLOracle.sol/WDCLOracle.json`, "utf-8"),
+  readFileSync(`${VAULT_DIR}/out/BILOracle.sol/BILOracle.json`, "utf-8"),
 );
 
 const chain = {
@@ -65,7 +65,7 @@ const pub = createPublicClient({ chain, transport: http(RPC) });
 const wallet = createWalletClient({ chain, account, transport: http(RPC) });
 
 // Hydration's pallet-ethereum on mainnet rejects EIP-1559 (type-2) txs —
-// per hdcl-vault/deployments/lark-2.md: "Hydration's EVM runs in legacy
+// per bil-vault/deployments/lark-2.md: "Hydration's EVM runs in legacy
 // (type-0) tx mode. Don't send EIP-1559 (type-2) transactions — they'll
 // be rejected." Forge handled this via --legacy; viem needs it explicitly
 // via `type: "legacy"` + `gasPrice`. The price MUST be ≥ DynamicEvmFee's
@@ -74,7 +74,7 @@ const wallet = createWalletClient({ chain, account, transport: http(RPC) });
 const networkGasPrice = await pub.getGasPrice();
 const GAS_PRICE = (networkGasPrice * 110n) / 100n; // +10% headroom
 console.log(`network gasPrice: ${networkGasPrice}  using: ${GAS_PRICE}`);
-// HDCLVault impl is ~24KB and lives near EIP-170. Hydration's per-tx gas
+// BILVault impl is ~24KB and lives near EIP-170. Hydration's per-tx gas
 // cap is below the 60M block-gas-limit — empirically 12M works, 18M does
 // not (validate returns custom:13).
 const txOpts = {
@@ -101,9 +101,9 @@ const queueLib = queueLibReceipt.contractAddress;
 console.log(`  QueueLib: ${queueLib}  gasUsed=${queueLibReceipt.gasUsed}\n`);
 
 // ════════════════════════════════════════════════════════════════════════
-// Step 2: link HDCLVault bytecode (replace QueueLib placeholder)
+// Step 2: link BILVault bytecode (replace QueueLib placeholder)
 // ════════════════════════════════════════════════════════════════════════
-console.log("--- 2: link QueueLib into HDCLVault bytecode ---");
+console.log("--- 2: link QueueLib into BILVault bytecode ---");
 const linkedBytecode = vaultArt.bytecode.object.replaceAll(
   QUEUE_LIB_PLACEHOLDER,
   queueLib.slice(2).toLowerCase(),
@@ -116,9 +116,9 @@ if (placeholdersLeft) {
 console.log("  ✅ all QueueLib placeholders linked\n");
 
 // ════════════════════════════════════════════════════════════════════════
-// Step 3: HDCLVault implementation
+// Step 3: BILVault implementation
 // ════════════════════════════════════════════════════════════════════════
-console.log("--- 3: deploy HDCLVault impl ---");
+console.log("--- 3: deploy BILVault impl ---");
 const implHash = await wallet.deployContract({
   abi: vaultArt.abi,
   bytecode: linkedBytecode,
@@ -154,9 +154,9 @@ const vault = proxyReceipt.contractAddress;
 console.log(`  Proxy (Vault): ${vault}  gasUsed=${proxyReceipt.gasUsed}\n`);
 
 // ════════════════════════════════════════════════════════════════════════
-// Step 5: WDCLOracle(vault)
+// Step 5: BILOracle(vault)
 // ════════════════════════════════════════════════════════════════════════
-console.log("--- 5: deploy WDCLOracle ---");
+console.log("--- 5: deploy BILOracle ---");
 const oracleHash = await wallet.deployContract({
   abi: oracleArt.abi,
   bytecode: oracleArt.bytecode.object,
@@ -165,7 +165,7 @@ const oracleHash = await wallet.deployContract({
 });
 const oracleReceipt = await pub.waitForTransactionReceipt({ hash: oracleHash });
 const oracle = oracleReceipt.contractAddress;
-console.log(`  WDCLOracle: ${oracle}  gasUsed=${oracleReceipt.gasUsed}\n`);
+console.log(`  BILOracle: ${oracle}  gasUsed=${oracleReceipt.gasUsed}\n`);
 
 // ════════════════════════════════════════════════════════════════════════
 // Step 6: vault.setOracle(oracle)  (deployer holds ADMIN_ROLE per init)
@@ -208,7 +208,7 @@ console.log("══════════════════════�
 console.log(`  QueueLib:        ${queueLib}`);
 console.log(`  Implementation:  ${impl}`);
 console.log(`  Proxy (Vault):   ${vault}`);
-console.log(`  WDCLOracle:      ${oracle}`);
+console.log(`  BILOracle:      ${oracle}`);
 console.log(`  Admin/deployer:  ${account.address}`);
 console.log(`  Network:         chopsticks fork of mainnet (chain 222222)`);
 console.log("════════════════════════════════════════════");
