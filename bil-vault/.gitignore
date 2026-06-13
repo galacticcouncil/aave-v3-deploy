@@ -20,3 +20,4 @@ keeper/dist/
 
 # OS
 .DS_Store
+lcov.info
