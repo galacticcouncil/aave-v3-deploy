@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 PRIME oracle trend: pull every MRL update event from Hydration's indexer
-(grafana-api.play.hydration.cloud), sample the PRIME/HOLLAR pool 10-min EMA at
-each MRL block via mainnet RPC, and print the divergence over time.
+(grafana-api.play.hydration.cloud), sample the PRIME/HOLLAR 1-day EMA (routed,
+HOLLAR-quoted) at each MRL block via mainnet RPC, and print the divergence over time.
 
 Used to verify the ClampedOracle (MRL primary, pool EMA secondary, 200 bps)
 stays in-band historically and to gauge how fast the band is being approached.
@@ -29,7 +29,8 @@ RPC = "https://rpc.hydradx.cloud"
 
 # Feeds.
 MRL = "0x82022F77ae239Ad99bB1F2aC0d8DaFF6Cc976a07"     # ManagedOracle, PRIME/USD primary
-POOL = "0x00000102737461626c6573770000008f0000002b"   # stableswap 10-min EMA, PRIME/HOLLAR
+POOL = "0x000001040000000000000000000000de0000002b"   # routed Day(1-day) EMA, PRIME(43) priced in HOLLAR(222)
+# (was 0x00000102737461626c6573770000008f0000002b = stablesw(143,43) = 2-Pool-PRIME LP-share / PRIME — wrong ratio)
 # AnswerUpdated(int256 current, uint256 indexed roundId, uint256 updatedAt).
 ANSWER_UPDATED_TOPIC0 = "0x7d8cee5d1217e47a14a662098e84a7758580aaf78f430c07c543249234e867bf"
 

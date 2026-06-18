@@ -25,10 +25,22 @@ import path from "path";
 const PRIME_TOKEN = "0x000000000000000000000000000000010000002b";
 // Current source on AaveOracle (the original PRIMEoracle ManagedOracle).
 const OLD_SOURCE = "0xDEe587cC569bf1FcBdcD6d1472031d225f34C307";
-// New source: ClampedOracle(MRL primary, PRIME/HOLLAR pool 10-min EMA secondary, 200 bps).
-const NEW_SOURCE = "0x166f286745171D58B6b16E6020f7e48246c816E3";
+// New source: ClampedOracle(MRL primary, PRIME/HOLLAR 1-day EMA secondary, 200 bps).
+// NOTE: the 0x166f… wrapper below was deployed against the WRONG secondary (the
+// 2-Pool-PRIME LP-share feed, see EXPECTED_SECONDARY note). It MUST be redeployed
+// via `deploy-clamped-oracle` with the corrected secondary, then this address
+// replaced. Until then the secondary() sanity-check below will (by design) reject
+// the stale wrapper and refuse to build the swap.
+const NEW_SOURCE = "0x166f286745171D58B6b16E6020f7e48246c816E3"; // STALE — redeploy
 const EXPECTED_PRIMARY = "0x82022F77ae239Ad99bB1F2aC0d8DaFF6Cc976a07";
-const EXPECTED_SECONDARY = "0x00000102737461626c6573770000008f0000002b";
+// Secondary = routed/Omnipool Day (1-day) EMA, PRIME(43) priced in HOLLAR(222):
+// returns value(PRIME)/value(HOLLAR) ≈ 1.0457. Format is
+// 000001 | 04 (Day period) | <8-byte zero source> | 000000de (HOLLAR 222) | 0000002b (PRIME 43).
+// Previously 0x00000102737461626c6573770000008f0000002b = stablesw(143, 43), i.e. the
+// 2-Pool-PRIME LP-share token priced in PRIME (≈1.0286) — the wrong ratio; HOLLAR (222)
+// was absent entirely. (stablesw prices share tokens only, so the corrected feed uses
+// the routed/Omnipool source, matching the config's member-vs-member feeds.)
+const EXPECTED_SECONDARY = "0x000001040000000000000000000000de0000002b";
 const EXPECTED_MAX_DIFF_BPS = 200;
 
 task(

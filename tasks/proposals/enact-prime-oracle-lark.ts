@@ -9,7 +9,7 @@ const LARK_HTTP = "https://node.lark.hydration.cloud";
 const AAVE_MANAGER = "0xAa7e0000000000000000000000000000000Aa7e0";
 const AAVE_ORACLE = "0xAD33C0F0C42C5A0EAA65b5895D2BdB20cb6E8760";
 const PRIME_TOKEN = "0x000000000000000000000000000000010000002b";
-const NEW_SOURCE = "0x166f286745171D58B6b16E6020f7e48246c816E3";
+const NEW_SOURCE = "0x166f286745171D58B6b16E6020f7e48246c816E3"; // STALE — deployed with the wrong (LP-share) secondary; redeploy & replace before re-running the Lark dry-run
 const OLD_SOURCE = "0xDEe587cC569bf1FcBdcD6d1472031d225f34C307";
 
 function sendAndWait(tx: any, signer: any, api: ApiPromise): Promise<any> {

@@ -2,13 +2,15 @@
 
 Status: deployed and live on `node.lark.hydration.cloud` (testnet fork). Mainnet swap proposal is pending governance submission.
 
+> **⚠️ Correction (in progress).** The originally-deployed secondary `…0000008f0000002b` pointed at the **2-Pool-PRIME LP-share feed** — `stablesw(143, 43)`, i.e. the pool-share token (143) priced in PRIME (43) ≈ 1.0286 — **not** the PRIME/HOLLAR rate. HOLLAR (222) was absent from the address entirely. The corrected secondary is the routed, **HOLLAR(222)-quoted PRIME(43)** 1-day EMA `0x000001040000000000000000000000de0000002b` (≈ 1.0457). Because `secondary` is immutable, the wrapper must be **redeployed** and the swap re-proposed. The quantitative sections below (**Trend**, **Why 200 bps**, **Lowest reportable price**, **Switch-over impact**) were computed against the *wrong* feed and must be regenerated (`python3 scripts/prime-oracle-trend.py`) before the mainnet proposal is submitted.
+
 ## Summary
 
-Wrap PRIME's `AaveOracle` source with a `ClampedOracle` so a manipulated or stuck primary feed can't move the reported price more than ±200 bps from the on-chain PRIME/HOLLAR 10-min EMA.
+Wrap PRIME's `AaveOracle` source with a `ClampedOracle` so a manipulated or stuck primary feed can't move the reported price more than ±200 bps from the on-chain PRIME/HOLLAR 1-day EMA.
 
-- **Wrapper:** `0x166f286745171D58B6b16E6020f7e48246c816E3`
+- **Wrapper:** `0x166f286745171D58B6b16E6020f7e48246c816E3` — ⚠️ stale; deployed with the wrong secondary, must be redeployed.
 - **Primary (canonical):** `0x82022F77ae239Ad99bB1F2aC0d8DaFF6Cc976a07` — `PRIMEoracleMRL`, a `ManagedOracle` pushed via Wormhole VAA relayed through Moonbeam.
-- **Secondary (sanity bound):** `0x00000102737461626c6573770000008f0000002b` — Hydration's stableswap precompile for the PRIME/HOLLAR pool, 10-min EMA.
+- **Secondary (sanity bound):** `0x000001040000000000000000000000de0000002b` — Hydration's chainlink precompile, routed/Omnipool 1-day (Day) EMA, PRIME(43) priced in HOLLAR(222). (Was `…0000008f0000002b`, the 2-Pool-PRIME LP-share feed — the bug.)
 - **`maxDiffBps`:** `200` (2%).
 - **Decimals:** 8.
 
