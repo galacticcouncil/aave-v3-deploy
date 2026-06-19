@@ -3,6 +3,7 @@ import { eContractid, IReserveParams } from "../../helpers/types";
 import {
   rateStrategyDOT,
   rateStrategyDOT5,
+  rateStrategyPRIME,
   rateStrategyStables,
   rateStrategyStables80,
 } from "./rateStrategies";
@@ -230,7 +231,7 @@ export const strategyPAXG: IReserveParams = {
 };
 
 export const strategyPRIME: IReserveParams = {
-  strategy: rateStrategyVolatileOne,
+  strategy: rateStrategyPRIME,
   baseLTVAsCollateral: "8500",
   liquidationThreshold: "8800",
   liquidationBonus: "10700",
