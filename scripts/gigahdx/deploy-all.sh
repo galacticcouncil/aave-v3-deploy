@@ -108,6 +108,21 @@ GHO_ARTIFACTS=(
   GhoVariableDebtToken-GIGAHDX GhoInterestRateStrategy-GIGAHDX
 )
 
+# Chain-wide singletons reused from the existing Hydration deployment instead of
+# redeployed. Safe because they carry no market-specific immutable (the logic
+# libraries differ only by their cross-link addresses, so reusing the whole set
+# stays consistent; ReservesSetupHelper is stateless). Seeded into the target
+# deployments dir before phase 1 so hardhat-deploy reuses them and links the
+# fresh Pool/PoolConfigurator impls against the existing libs. Disable with
+# REUSE_HYDRATION_SINGLETONS=0. (Pool/Configurator impls, ACL, oracle, rate
+# strategies and aToken/debt impls are NOT reusable — they bake in the provider/pool.)
+REUSE_HYDRATION_SINGLETONS="${REUSE_HYDRATION_SINGLETONS:-1}"
+REUSABLE_ARTIFACTS=(
+  SupplyLogic BorrowLogic LiquidationLogic EModeLogic
+  BridgeLogic ConfiguratorLogic FlashLoanLogic PoolLogic
+  ReservesSetupHelper
+)
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -189,6 +204,27 @@ fi
 
 mkdir -p "deployments/${NETWORK}"
 [ "$IS_LARK" = "1" ] && echo "$N" > "$LARK_SENTINEL"
+
+# ---------------------------------------------------------------------------
+# Reuse chain-wide singletons from the existing Hydration deployment
+# ---------------------------------------------------------------------------
+# Seed the target deployments dir with the reusable artifacts so hardhat-deploy
+# reuses them (matches on-chain bytecode) instead of redeploying. txHash/receipt
+# are stripped so a chopsticks fork doesn't hang fetching a historical tx in
+# fetchIfDifferent (harmless on real mainnet, where the tx is fetchable).
+if [ "$REUSE_HYDRATION_SINGLETONS" = "1" ] && [ "deployments/${NETWORK}" != "$HYDRATION_DEPLOYMENTS" ]; then
+  phase "0.5 — reuse Hydration singletons (logic libraries + helpers)"
+  [ -f "deployments/${NETWORK}/.chainId" ] || cp "$HYDRATION_DEPLOYMENTS/.chainId" "deployments/${NETWORK}/.chainId" 2>/dev/null || echo "222222" > "deployments/${NETWORK}/.chainId"
+  reused=0
+  for f in "${REUSABLE_ARTIFACTS[@]}"; do
+    src="$HYDRATION_DEPLOYMENTS/$f.json"
+    [ -f "$src" ] || { warn "reusable artifact $f.json not found in $HYDRATION_DEPLOYMENTS — will deploy fresh"; continue; }
+    node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('$src'));delete j.transactionHash;delete j.receipt;fs.writeFileSync('deployments/${NETWORK}/$f.json',JSON.stringify(j,null,2));"
+    info "reusing $f at $(node -e "console.log(require('./deployments/${NETWORK}/$f.json').address)")"
+    reused=$((reused + 1))
+  done
+  info "seeded $reused reusable singleton(s) — hardhat-deploy will reuse, not redeploy"
+fi
 
 # ===========================================================================
 # The deployment
