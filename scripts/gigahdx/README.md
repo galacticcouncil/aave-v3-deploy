@@ -8,10 +8,10 @@ All scripts default to `wss://2.lark.hydration.cloud` / `https://2.lark.hydratio
 
 ```bash
 # 1. Allow our deployer EVM key on the chain
-ts-node scripts/lark/whitelist-deployer.ts
+ts-node scripts/gigahdx/whitelist-deployer.ts
 
 # 2. Fund the deployer with HDX
-ts-node scripts/lark/fund-account.ts
+ts-node scripts/gigahdx/fund-account.ts
 
 # 3. Deploy core + GIGAHDX market
 MARKET_NAME=GIGAHDX HARDHAT_NETWORK=lark2 npx hardhat deploy --tags market
@@ -22,23 +22,23 @@ MARKET_NAME=GIGAHDX HARDHAT_NETWORK=lark2 \
   npx hardhat deploy-FixedPriceOracle --asset stHDX --price 2500000
 
 # 5. Move admin roles to gov precompile (0xaa7e…)
-HARDHAT_NETWORK=lark2 npx hardhat run scripts/lark/transfer-admin-to-governance.ts
+HARDHAT_NETWORK=lark2 npx hardhat run scripts/gigahdx/transfer-admin-to-governance.ts
 
 # 6. Wire up stHDX oracle via TC referendum
-ts-node scripts/lark/set-sthdx-oracle.ts
+ts-node scripts/gigahdx/set-sthdx-oracle.ts
 
 # 7. Submit the GIGAHDX init proposal via TC referendum
-ts-node scripts/lark/submit-gigahdx-proposal.ts
+ts-node scripts/gigahdx/submit-gigahdx-proposal.ts
 
 # 8. Point the runtime's GIGAHDX adapter at the new pool
-ts-node scripts/lark/set-gigahdx-pool.ts
+ts-node scripts/gigahdx/set-gigahdx-pool.ts
 
 # 9. Sanity check the whole thing
-ts-node scripts/lark/generate-addresses.ts        # writes deployments/lark2/_addresses.{json,md}
-ts-node scripts/lark/verify-readiness.ts          # PASS/FAIL table
+ts-node scripts/gigahdx/generate-addresses.ts        # writes deployments/lark2/_addresses.{json,md}
+ts-node scripts/gigahdx/verify-readiness.ts          # PASS/FAIL table
 
 # 10. End-to-end smoke test
-ts-node scripts/lark/test-e2e.ts
+ts-node scripts/gigahdx/test-e2e.ts
 ```
 
 ## Other helpers

@@ -103,6 +103,9 @@ export const NETWORKS_RPC_URL: iParamsPerNetwork<string> = {
   [eHydrationNetwork.hydration]: process.env.RPC || "https://rpc.hydradx.cloud",
   [eHydrationNetwork.zombie]: "https://2.lark.hydration.cloud",
   [eHydrationNetwork.lark2]: process.env.RPC || "https://2.lark.hydration.cloud",
+  // GIGAHDX market deployed as its own market into deployments/gigahdx.
+  // Same chain as hydration (mainnet); RPC overridable for fork testing.
+  [eHydrationNetwork.gigahdx]: process.env.RPC || "https://rpc.hydradx.cloud",
 };
 
 export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
@@ -117,6 +120,7 @@ export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
   [eHydrationNetwork.nice]: true,
   [eHydrationNetwork.zombie]: true,
   [eHydrationNetwork.lark2]: true,
+  [eHydrationNetwork.gigahdx]: true,
   [eBaseNetwork.base]: true,
 };
 
@@ -157,6 +161,10 @@ export const getCommonNetworkConfig = (
   url: NETWORKS_RPC_URL[networkName] || "",
   blockGasLimit: DEFAULT_BLOCK_GAS_LIMIT,
   chainId,
+  // Override the HTTP provider timeout (ms) for slow endpoints, e.g. a
+  // chopsticks fork that lazily fetches mainnet state per block. Unset =>
+  // hardhat default; harmless on fast (real) RPCs.
+  ...(process.env.RPC_TIMEOUT ? { timeout: Number(process.env.RPC_TIMEOUT) } : {}),
   gasPrice: GAS_PRICE_PER_NET[networkName] || undefined,
   // Hydration/lark nodes return unreliable eth_estimateGas for contract calls.
   // Observed multiple OOG reverts with 5x; bump to 20x to avoid repeated failures.

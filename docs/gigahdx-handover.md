@@ -22,7 +22,7 @@ The work is divided across three repos: this one (`aave-v3-deploy`), `gho-core` 
 - `contracts/LockableAToken.sol` — AToken subclass that blocks transfer/burn of locked balance via `0x0806` precompile.
 - `contracts/FixedPriceOracle.sol` — testnet-only mock oracle. Mainnet uses `USDOracleAdapter` at `0x202df3eDac2775b857ee2f61A3569731E53eC713`. The deploy task refuses to run on `HARDHAT_NETWORK=hydration`.
 - `markets/gigahdx/` — market config (only `STHDX` reserve; HOLLAR added at proposal time as a separate `initReserves` call).
-- `scripts/lark/` — lark2 testnet operational scripts (deploy + admin transfer + per-call referendum submitters + e2e test).
+- `scripts/gigahdx/` — lark2 testnet operational scripts (deploy + admin transfer + per-call referendum submitters + e2e test).
 - `scripts/test-mainnet-flow.sh` — local fork verification harness; run this any time you change deploy/launch logic.
 - `docs/gigahdx-deployment.md` — original design/planning doc.
 
@@ -134,10 +134,10 @@ git commit -m "import GHO impls for GIGAHDX from gho-core"
 The deploys above used your EOA as admin. Move all admin roles to `0xaa7e…` so the proposal's `dispatcher.dispatchAsAaveManager` calls satisfy ACL checks:
 
 ```bash
-HARDHAT_NETWORK=hydration npx hardhat run scripts/lark/transfer-admin-to-governance.ts
+HARDHAT_NETWORK=hydration npx hardhat run scripts/gigahdx/transfer-admin-to-governance.ts
 ```
 
-(The script lives under `scripts/lark/` for historical reasons but is safe on mainnet — it explicitly targets `0xaa7e0000000000000000000000000000000aa7e0`.)
+(The script lives under `scripts/gigahdx/` for historical reasons but is safe on mainnet — it explicitly targets `0xaa7e0000000000000000000000000000000aa7e0`.)
 
 What it does:
 - `ACLManager-GIGAHDX`: grants `DEFAULT_ADMIN_ROLE`, `POOL_ADMIN`, `RISK_ADMIN`, `EMERGENCY_ADMIN` to gov.
@@ -279,8 +279,8 @@ Coverage:
 
 For full proposal-execution coverage, use the lark2 path (Alice as sole TC member, fast referendum):
 ```bash
-# scripts/lark/README.md has the full lark2 sequence
-ts-node scripts/lark/test-e2e.ts
+# scripts/gigahdx/README.md has the full lark2 sequence
+ts-node scripts/gigahdx/test-e2e.ts
 ```
 
 ### Known limits of local fork testing
@@ -333,7 +333,7 @@ These are visible from this branch but should NOT be touched in this PR:
 
 - **`markets/zombie/`** — redundant test market. Audit and delete (or migrate test usages) in a separate PR.
 - **`markets/hydration/index.ts:73`** — WETH commented out of `ReserveAssets`. Fix before any future Hydration MM redeploy.
-- **`scripts/lark/transfer-admin-to-governance.ts`** — works for mainnet too despite the path; consider moving to `scripts/` (top-level) and renaming, separate PR.
+- **`scripts/gigahdx/transfer-admin-to-governance.ts`** — works for mainnet too despite the path; consider moving to `scripts/` (top-level) and renaming, separate PR.
 - **HDCL Vault** (`hdcl-vault/` directory) — separate workstream with its own review/PR. The 15 issues from the prior line-by-line review (oracle decimals, missing storage gap, etc.) are tracked elsewhere.
 
 ---

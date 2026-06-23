@@ -270,19 +270,23 @@ export const getPairsTokenAggregator = (
 ): [string[], string[]] => {
   const { ETH, USD, ...assetsAddressesWithoutEth } = allAssetsAddresses;
 
-  const pairs = Object.entries(assetsAddressesWithoutEth).map(
-    ([tokenSymbol, tokenAddress]) => {
-      const aggregatorAddressIndex = Object.keys(
-        aggregatorsAddresses
-      ).findIndex((value) => value === tokenSymbol);
-      const [, aggregatorAddress] = (
-        Object.entries(aggregatorsAddresses) as [string, tEthereumAddress][]
-      )[aggregatorAddressIndex];
-      if (!aggregatorAddress) throw `Missing aggregator for ${tokenSymbol}`;
+  const pairs = Object.entries(assetsAddressesWithoutEth)
+    .map(([tokenSymbol, tokenAddress]) => {
+      const aggregatorAddress = aggregatorsAddresses[tokenSymbol];
+      // No aggregator configured for this asset: skip it here rather than
+      // crash/throw. Its oracle source is wired later (e.g. init-reserve prefers
+      // a deployed ${SYMBOL}-USDOracleAdapter), so the AaveOracle is deployed
+      // without an initial source for it and gets one via setAssetSources.
+      if (!aggregatorAddress) {
+        console.log(
+          `[getPairsTokenAggregator] no aggregator for ${tokenSymbol} — skipping (wired later via setAssetSources)`
+        );
+        return null;
+      }
       if (!tokenAddress) throw `Missing token address for ${tokenSymbol}`;
       return [tokenAddress, aggregatorAddress];
-    }
-  ) as [string, string][];
+    })
+    .filter((p): p is [string, string] => p !== null);
 
   const mappedPairs = pairs.map(([asset]) => asset);
   const mappedAggregators = pairs.map(([, source]) => source);

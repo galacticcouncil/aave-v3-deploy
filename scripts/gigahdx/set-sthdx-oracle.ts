@@ -11,7 +11,7 @@
 //   7. On enactment, AaveOracle.getAssetPrice(stHDX) returns the fixed price.
 //
 // Usage:
-//   npx ts-node scripts/lark/set-sthdx-oracle.ts
+//   npx ts-node scripts/gigahdx/set-sthdx-oracle.ts
 
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import type { SubmittableExtrinsic } from "@polkadot/api/types";

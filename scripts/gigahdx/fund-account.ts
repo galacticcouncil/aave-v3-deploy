@@ -6,7 +6,7 @@
 //   WS_URL=wss://2.lark.hydration.cloud \
 //   TARGET=//Bob HDX=1000 WETH=0.1 \
 //     npx ts-node --transpile-only --compiler-options '{"module":"commonjs"}' \
-//     scripts/lark/fund-account.ts
+//     scripts/gigahdx/fund-account.ts
 //
 // TARGET formats:
 //   - "//Alice", "//Bob", ... — derived sr25519 dev account

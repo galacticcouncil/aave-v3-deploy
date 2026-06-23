@@ -1,9 +1,9 @@
 // Mint WETH (asset 20) on a freshly-reset lark testnet via WhitelistedCaller ref.
 //
 // On a freshly-bootstrapped lark, //Alice has plenty of HDX but ZERO WETH, which
-// breaks `scripts/lark/fund-account.ts` when funding the deployer's EVM-truncated account
+// breaks `scripts/gigahdx/fund-account.ts` when funding the deployer's EVM-truncated account
 // (deployer needs WETH for EVM gas). This script uses the same governance pattern
-// as `scripts/lark/runtime-upgrade.ts` to inject WETH directly via `tokens.setBalance`
+// as `scripts/gigahdx/runtime-upgrade.ts` to inject WETH directly via `tokens.setBalance`
 // (Root origin, dispatched through WhitelistedCaller track).
 //
 // Defaults (override via env):
@@ -13,9 +13,9 @@
 // Usage:
 //   WS_URL=wss://2.lark.hydration.cloud \
 //     npx ts-node --transpile-only --compiler-options '{"module":"commonjs"}' \
-//     scripts/lark/mint-weth-wl.ts
+//     scripts/gigahdx/mint-weth-wl.ts
 //
-// After this succeeds, run the standard `scripts/lark/fund-account.ts` to transfer HDX
+// After this succeeds, run the standard `scripts/gigahdx/fund-account.ts` to transfer HDX
 // to the deployer (or any other account) — Alice now has WETH to spare.
 
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";

@@ -3,7 +3,13 @@ import * as fs from "fs";
 import * as path from "path";
 
 async function main() {
-  const deployments = path.join(__dirname, "..", "..", "deployments", "lark2");
+  const deployments = path.join(
+    __dirname,
+    "..",
+    "..",
+    "deployments",
+    hre.network.name
+  );
   const artifacts: Record<string, string> = {};
 
   for (const f of fs.readdirSync(deployments)) {
@@ -119,7 +125,7 @@ Second Aave V3 money market instance on Hydration, deployed and activated on the
 - **Market ID:** \`${out.network.marketId}\`
 - **ProviderId:** \`${out.network.providerId}\`
 
-Machine-readable version: \`deployments/lark2/_addresses.json\`.
+Machine-readable version: \`deployments/${hre.network.name}/_addresses.json\`.
 
 ## Core pool contracts
 

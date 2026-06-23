@@ -23,7 +23,7 @@
 // Usage:
 //   WS_URL=ws://127.0.0.1:9999 RPC_URL=http://127.0.0.1:9999 \
 //     npx ts-node --transpile-only --compiler-options '{"module":"commonjs"}' \
-//     scripts/lark/test-liquidation.ts
+//     scripts/gigahdx/test-liquidation.ts
 
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import { ethers } from "ethers";

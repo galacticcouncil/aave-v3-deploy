@@ -29,10 +29,10 @@ Currently, the gigaHdx Pool contract address is registered against `pallet-liqui
 
 | File | What needs updating |
 |---|---|
-| `scripts/lark/set-gigahdx-pool.ts` | The extrinsic call (`api.tx.liquidation.setGigahdxPoolContract(...)`) and 2 query calls (`api.query.liquidation.gigaHdxPoolContract()`) — all → `gigahdx.*`. Plus the file-header comment. |
-| `scripts/lark/verify-readiness.ts` | Query at L71 and the human-readable label at L75 (`"pallet_liquidation::gigaHdxPoolContract → sheet.Pool"`) |
-| `scripts/lark/test-e2e.ts` | Query at L180 |
-| `scripts/lark/test-gigastake-routing.ts` | Query at L95 |
+| `scripts/gigahdx/set-gigahdx-pool.ts` | The extrinsic call (`api.tx.liquidation.setGigahdxPoolContract(...)`) and 2 query calls (`api.query.liquidation.gigaHdxPoolContract()`) — all → `gigahdx.*`. Plus the file-header comment. |
+| `scripts/gigahdx/verify-readiness.ts` | Query at L71 and the human-readable label at L75 (`"pallet_liquidation::gigaHdxPoolContract → sheet.Pool"`) |
+| `scripts/gigahdx/test-e2e.ts` | Query at L180 |
+| `scripts/gigahdx/test-gigastake-routing.ts` | Query at L95 |
 | `docs/gigahdx-deployment.md` | Reference at L17 (`pallet-liquidation update`) — describe the new owner pallet |
 
 **Exact rename (pending Martin's push):**
@@ -45,7 +45,7 @@ I'm guessing the new names will be `gigahdx.poolContract` / `gigahdx.setPoolCont
 - `markets/gigahdx/index.ts` — same reserve config
 - `tasks/proposals/gigahdx-launch.ts` — same proposal flow
 - `tasks/misc/deploy-LockableAToken.ts` — same deploy task
-- All other `scripts/lark/*` — unchanged
+- All other `scripts/gigahdx/*` — unchanged
 - USDOracleAdapter wiring — unchanged
 - HOLLAR facilitator config — unchanged
 
@@ -56,15 +56,15 @@ I'm guessing the new names will be `gigahdx.poolContract` / `gigahdx.setPoolCont
 ```
 1. Wait for Martin to push the substrate-side pivot
 2. Update the 5 files in §2.2 with the new pallet path (one commit)
-3. scripts/lark/whitelist-deployer.ts                 (whitelist deployer key)
+3. scripts/gigahdx/whitelist-deployer.ts                 (whitelist deployer key)
 4. MARKET_NAME=GIGAHDX npx hardhat deploy             (re-deploy pool, configurator, etc.)
 5. MARKET_NAME=GIGAHDX npx hardhat deploy-LockableAToken
 6. MARKET_NAME=GIGAHDX npx hardhat deploy-FixedPriceOracle --asset stHDX --price 2500000 --network lark2
-7. scripts/lark/transfer-admin-to-governance.ts
-8. scripts/lark/set-sthdx-oracle.ts
-9. scripts/lark/set-gigahdx-pool.ts                   (with the updated pallet path)
-10. scripts/lark/submit-gigahdx-proposal.ts
-11. scripts/lark/test-e2e.ts                          (with the updated query path)
+7. scripts/gigahdx/transfer-admin-to-governance.ts
+8. scripts/gigahdx/set-sthdx-oracle.ts
+9. scripts/gigahdx/set-gigahdx-pool.ts                   (with the updated pallet path)
+10. scripts/gigahdx/submit-gigahdx-proposal.ts
+11. scripts/gigahdx/test-e2e.ts                          (with the updated query path)
 ```
 
 Steps 3–10 are unchanged from today (just step 9 now hits a different pallet).

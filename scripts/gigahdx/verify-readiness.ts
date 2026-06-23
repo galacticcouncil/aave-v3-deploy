@@ -4,9 +4,9 @@
 // Usage:
 //   WS_URL=wss://2.lark.hydration.cloud RPC_URL=https://2.lark.hydration.cloud \
 //     npx ts-node --transpile-only --compiler-options '{"module":"commonjs"}' \
-//     scripts/lark/verify-readiness.ts
+//     scripts/gigahdx/verify-readiness.ts
 //
-// Requires deployments/lark2/_addresses.json (run scripts/lark/generate-addresses.ts first).
+// Requires deployments/lark2/_addresses.json (run scripts/gigahdx/generate-addresses.ts first).
 //
 // No transactions are sent; this script only reads on-chain state. Output is a
 // PASS/FAIL table grouped by concern.
@@ -18,7 +18,7 @@ import * as path from "path";
 
 const WS = process.env.WS_URL || "wss://2.lark.hydration.cloud";
 const RPC = process.env.RPC_URL || "https://2.lark.hydration.cloud";
-const SHEET = path.join(__dirname, "..", "..", "deployments", "lark2", "_addresses.json");
+const SHEET = path.join(__dirname, "..", "..", "deployments", process.env.DEPLOY_NETWORK || "lark2", "_addresses.json");
 
 type Result = { group: string; name: string; ok: boolean; detail: string };
 const results: Result[] = [];
@@ -203,8 +203,8 @@ async function main() {
   const fac = await hollar.getFacilitator(realGhoAToken);
   add("F. HOLLAR facilitator (ref 327)", "Real GhoAToken is registered facilitator",
     fac.bucketCapacity.gt(0), `cap=${fac.bucketCapacity.toString()} label="${fac.label}"`);
-  add("F. HOLLAR facilitator (ref 327)", "Bucket cap == 1M HOLLAR",
-    fac.bucketCapacity.eq(ethers.utils.parseUnits("1.0", 24)),
+  add("F. HOLLAR facilitator (ref 327)", "Bucket cap == 222,222 HOLLAR",
+    fac.bucketCapacity.eq(ethers.utils.parseUnits("222222.0", 18)),
     `cap=${ethers.utils.formatUnits(fac.bucketCapacity, 18)} HOLLAR`);
 
   // ===================================================================

@@ -67,7 +67,7 @@ ok "6 GHO artifacts copied to deployments/localhost/"
 
 bold "[5/6] Transfer admin to governance"
 MARKET_NAME=GIGAHDX FORK=hydration HARDHAT_NETWORK=localhost \
-  npx hardhat run scripts/lark/transfer-admin-to-governance.ts >/tmp/transfer-admin.log 2>&1
+  npx hardhat run scripts/gigahdx/transfer-admin-to-governance.ts >/tmp/transfer-admin.log 2>&1
 grep -q "DONE" /tmp/transfer-admin.log \
   && ok "admin roles + ownership moved to 0xaa7e…" \
   || fail "transfer-admin failed — check /tmp/transfer-admin.log"
@@ -107,6 +107,6 @@ echo "  Steps 1–5: testable here, all PASS"
 echo "  Step 6 (preimage gen): PARTIAL — gen logic + first 5 batched txs OK,"
 echo "    full preimage requires real mainnet GIGAHDX artifacts in"
 echo "    deployments/hydration/. Will work on real mainnet deploy."
-echo "  Step 6 alt: full preimage testable on lark2 via scripts/lark/test-e2e.ts"
+echo "  Step 6 alt: full preimage testable on lark2 via scripts/gigahdx/test-e2e.ts"
 echo "  Steps 7–10 (gov vote, runtime upgrade, smoke test): not testable in"
 echo "    this repo — exercise on lark2."

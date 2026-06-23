@@ -14,8 +14,8 @@
 //   7. Transfer:    aGIGAHDXstHDX.transfer (LockableAToken free path)
 //
 // Usage:
-//   WS_URL=wss://2.lark.hydration.cloud npx ts-node scripts/lark/test-e2e.ts
-//   TESTER_URI=//Bob STAKE_HDX=200 npx ts-node scripts/lark/test-e2e.ts
+//   WS_URL=wss://2.lark.hydration.cloud npx ts-node scripts/gigahdx/test-e2e.ts
+//   TESTER_URI=//Bob STAKE_HDX=200 npx ts-node scripts/gigahdx/test-e2e.ts
 
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import { u8aToHex } from "@polkadot/util";

@@ -21,3 +21,4 @@ types
 deployments/*
 !deployments/hydration
 !deployments/nice
+!deployments/gigahdx

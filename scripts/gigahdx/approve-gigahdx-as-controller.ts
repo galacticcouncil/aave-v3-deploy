@@ -36,7 +36,7 @@
 // Usage:
 //   WS_URL=wss://<N>.lark.hydration.cloud \
 //     npx ts-node --transpile-only --compiler-options '{"module":"commonjs"}' \
-//     scripts/lark/approve-gigahdx-as-controller.ts
+//     scripts/gigahdx/approve-gigahdx-as-controller.ts
 
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import type { SubmittableExtrinsic } from "@polkadot/api/types";

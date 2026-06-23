@@ -443,6 +443,25 @@ task(
   }
 
   // ===================================================================
+  // Phase D.5: Recurring Treasury → gigahdx funding (appended to the batch).
+  // Encoded utility.batchAll of two scheduler.scheduleAfter calls, each a
+  // periodic utility.dispatchAs(Treasury, balances.transferKeepAlive(...)) that
+  // tops up the gigahdx pallet + gigahdx-rewards accounts from the Treasury.
+  // ===================================================================
+  const GIGAHDX_FUNDING_BATCH =
+    "0x0d0208050458020000015802000038220000000d0301016d6f646c70792f7472737279000000000000000000000000000000000000000007036d6f646c676967616864782100000000000000000000000000000000000000000f005c1f7ca6990e050458020000015802000038220000000d0301016d6f646c70792f7472737279000000000000000000000000000000000000000007036d6f646c676967617277642100000000000000000000000000000000000000000f0018299078e615";
+  const fundingBatch = api.createType("Call", GIGAHDX_FUNDING_BATCH) as any;
+  // batchAll's calls vector is the first positional arg (args[0]).
+  for (const c of fundingBatch.args[0]) {
+    // push the Call directly — utility.batchAll accepts Call objects alongside
+    // the submittables built above (api.tx(callHex) would mis-decode as an extrinsic).
+    txs.push(c);
+    console.log(
+      `---------> + treasury funding: ${c.section}.${c.method} (scheduled)`
+    );
+  }
+
+  // ===================================================================
   // Phase E: Generate proposal preimage
   // ===================================================================
   const preimage = await generateProposalV2(txs, false);
