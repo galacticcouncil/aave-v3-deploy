@@ -5,7 +5,7 @@ import { task } from "hardhat/config";
 // Get it from the whm `oracle-relay-ethereum` migration output: step `003-deploy-transactor` -> `mdaH160`.
 // It is DISTINCT from the Solana-source MDA used by deploy-PRIMEoracleMRL, and is SHARED with
 // deploy-apyUSDOracleMRL (same Ethereum relay -> same transactor -> same MDA). Keep both in sync.
-const ETH_SOURCE_MDA = "0x0000000000000000000000000000000000000000"; // TODO: replace with mdaH160
+const ETH_SOURCE_MDA: string = "0x54df54a7a32bd5e24d0415cf468b9ff622c626e3"; // whm oracle-relay-ethereum step 003 mdaH160
 
 task(
   `deploy-wstETHOracleMRL`,
