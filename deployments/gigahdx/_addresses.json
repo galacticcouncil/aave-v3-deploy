@@ -3,8 +3,8 @@
   "description": "Second Aave V3 money market instance on Hydration. stHDX collateral-only, HOLLAR borrow-only via GhoAToken facilitator.",
   "network": {
     "chainId": 222222,
-    "rpcUrl": "https://node0.lark.hydration.cloud",
-    "wsUrl": "wss://node0.lark.hydration.cloud",
+    "rpcUrl": "https://hdx.tarn.hydration.cloud",
+    "wsUrl": "wss://hdx.tarn.hydration.cloud",
     "marketId": "GIGAHDX",
     "providerId": 22222269
   },
