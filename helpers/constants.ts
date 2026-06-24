@@ -105,6 +105,7 @@ export const chainlinkAggregatorProxy: Record<string, string> = {
   [eEthereumNetwork.sepolia]: "0x6c60d915c7a646860dba836ffcb7f112b6cfdc76",
   [eHydrationNetwork.hydration]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
   [eHydrationNetwork.nice]: "0xBd763043861CAF4E7e4E7Ffe951A03dF2Ea7E5AC",
+  [eHydrationNetwork.lark2]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
 };
 
 export const chainlinkEthUsdAggregatorProxy: Record<string, string> = {
@@ -130,6 +131,7 @@ export const chainlinkEthUsdAggregatorProxy: Record<string, string> = {
   [eEthereumNetwork.sepolia]: "0x6c60d915c7a646860dba836ffcb7f112b6cfdc76",
   [eHydrationNetwork.hydration]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
   [eHydrationNetwork.nice]: "0xBd763043861CAF4E7e4E7Ffe951A03dF2Ea7E5AC",
+  [eHydrationNetwork.lark2]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
 };
 
 export const ETHEREUM_SHORT_EXECUTOR =

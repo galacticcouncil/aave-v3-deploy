@@ -3,6 +3,7 @@ import { eContractid, IReserveParams } from "../../helpers/types";
 import {
   rateStrategyDOT,
   rateStrategyDOT5,
+  rateStrategyPRIME,
   rateStrategyStables,
   rateStrategyStables80,
 } from "./rateStrategies";
@@ -27,7 +28,7 @@ export const strategyUSDC: IReserveParams = {
   supplyCap,
   borrowCap,
   debtCeiling,
-  borrowableIsolation: true,
+  borrowableIsolation: false,
 };
 
 export const strategyUSDT = strategyUSDC;
@@ -230,7 +231,7 @@ export const strategyPAXG: IReserveParams = {
 };
 
 export const strategyPRIME: IReserveParams = {
-  strategy: rateStrategyVolatileOne,
+  strategy: rateStrategyPRIME,
   baseLTVAsCollateral: "8500",
   liquidationThreshold: "8800",
   liquidationBonus: "10700",
@@ -241,9 +242,45 @@ export const strategyPRIME: IReserveParams = {
   reserveDecimals: "6",
   aTokenImpl: eContractid.AToken,
   reserveFactor,
-  supplyCap: "10000000",
+  supplyCap: "15000000",
   borrowCap: "3000000",
-  debtCeiling: "800000000",
+  debtCeiling: "1200000000",
+  borrowableIsolation: false,
+};
+
+export const strategySIGIL: IReserveParams = {
+  strategy: rateStrategyStables,
+  baseLTVAsCollateral: "8500",
+  liquidationThreshold: "8800",
+  liquidationBonus: "10700",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: false,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "18",
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "1100000",
+  borrowCap: "0",
+  debtCeiling,
+  borrowableIsolation: false,
+};
+
+export const strategyApyUSD: IReserveParams = {
+  strategy: rateStrategyVolatileOne,
+  baseLTVAsCollateral: "8500",
+  liquidationThreshold: "8800",
+  liquidationBonus: "10700",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: true,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "18",
+  aTokenImpl: eContractid.AToken,
+  reserveFactor,
+  supplyCap: "5000000",
+  borrowCap: "3000000",
+  debtCeiling: "222222200",
   borrowableIsolation: false,
 };
 

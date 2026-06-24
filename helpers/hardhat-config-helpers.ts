@@ -101,8 +101,8 @@ export const NETWORKS_RPC_URL: iParamsPerNetwork<string> = {
   )}`,
   [eHydrationNetwork.nice]: "https://rpc.nice.hydration.cloud",
   [eHydrationNetwork.hydration]: process.env.RPC || "https://rpc.hydradx.cloud",
-  [eHydrationNetwork.zombie]: "https://2.lark.hydration.cloud",
-  [eHydrationNetwork.lark2]: process.env.RPC || "https://2.lark.hydration.cloud",
+  [eHydrationNetwork.zombie]: process.env.RPC || "http://localhost:9999",
+  [eHydrationNetwork.lark2]: process.env.RPC || "https://node2.lark.hydration.cloud",
   // GIGAHDX market deployed as its own market into deployments/gigahdx.
   // Same chain as hydration (mainnet); RPC overridable for fork testing.
   [eHydrationNetwork.gigahdx]: process.env.RPC || "https://rpc.hydradx.cloud",

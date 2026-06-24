@@ -5,7 +5,7 @@ import {
   TransferStrategy,
 } from "./../../helpers/types";
 import { POOL_ADMIN } from "./../../helpers/constants";
-import { BigNumber, utils } from "ethers";
+import { BigNumber } from "ethers";
 import AaveMarket from "../aave";
 import {
   strategyDOT,
@@ -25,6 +25,8 @@ import {
   strategyHUSDe,
   strategyPAXG,
   strategyPRIME,
+  strategyApyUSD,
+  strategySIGIL,
   strategySOL,
   strategyGSOL,
   strategyEURC,
@@ -38,6 +40,14 @@ const gdotSupplyIncentive = {
   incentivizedToken: AssetType.AToken,
   reward: tokenAddress(69),
   rewardOracle: "2-POOL-GDOT",
+  transferStrategy: TransferStrategy.PotRewardsStrategy,
+  emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
+};
+
+const primeSupplyIncentive = {
+  incentivizedToken: AssetType.AToken,
+  reward: tokenAddress(43),
+  rewardOracle: "PRIME",
   transferStrategy: TransferStrategy.PotRewardsStrategy,
   emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
 };
@@ -68,6 +78,8 @@ export const HydrationConfig: IAaveConfiguration = {
     "2-POOL-HUSDE": strategyHUSDe,
     PAXG: strategyPAXG,
     PRIME: strategyPRIME,
+    APYUSD: strategyApyUSD,
+    SIGIL: strategySIGIL,
     SOL: strategySOL,
     "2-POOL-GSOL": strategyGSOL,
     EURC: strategyEURC,
@@ -93,6 +105,8 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDE": tokenAddress(113),
       PAXG: tokenAddress(39),
       PRIME: tokenAddress(43),
+      APYUSD: tokenAddress(46),
+      SIGIL: tokenAddress(816),
       SOL: tokenAddress(1000752),
       "2-POOL-GSOL": tokenAddress(90001),
       EURC: tokenAddress(44),
@@ -207,6 +221,8 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDE": "0x00000102737461626c657377000000de00000071", // HOLLAR(222) / 2-POOL-HUSDe(113) 10 min. stablesw
       PAXG: "0x8fB61B8E81C2f17695F14A136C98b0C4013bc105",
       PRIME: "0xDEe587cC569bf1FcBdcD6d1472031d225f34C307",
+      APYUSD: "0x286BAaA3F5738ac01EF922B1E913Fcc09916AF96",
+      SIGIL: "0xe50AA7afa36A5E04C0b0D0892D0b173c924b662F",
       // GIGASOL oracles
       SOL: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
       "2-POOL-GSOL": "0xCD3648A48378cBDa915f6be0A30073b76593Ed9A",
@@ -245,8 +261,9 @@ export const HydrationConfig: IAaveConfiguration = {
     [eHydrationNetwork.hydration]: {
       "2-POOL-GDOT": [
         {
-          emissionPerSecond: BigNumber.from("3757650000000000"),
-          distributionEnd: Date.parse("17 Sep 2026 14:24:36 GMT") / 1000,
+          // 2,350 gDOT per 30 days
+          emissionPerSecond: BigNumber.from("906635802469136"),
+          distributionEnd: Date.parse("15 Oct 2026 14:00:00 GMT") / 1000,
           reserve: "2-Pool-GDOT",
           ...gdotSupplyIncentive,
         },
@@ -271,62 +288,31 @@ export const HydrationConfig: IAaveConfiguration = {
           emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
         },
       ],
-      "3-POOL": [
-        {
-          emissionPerSecond: utils.parseEther("0.0002810529212").toString(),
-          distributionEnd: Date.parse("17 Sep 2026 14:24:36 GMT") / 1000,
-          reserve: "3-Pool",
-          ...gdotSupplyIncentive,
-        },
-      ],
       "2-POOL-HUSDT": [
         {
-          emissionPerSecond: BigNumber.from(
-            "1,079,545,885,484,937".replace(/,/g, "")
-          ).mul(3),
-          distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
+          // 8,268.71 PRIME per 30 days
+          emissionPerSecond: BigNumber.from("3190"),
+          distributionEnd: Date.parse("15 Oct 2026 14:00:00 GMT") / 1000,
           reserve: "2-Pool-HUSDT",
-          ...gdotSupplyIncentive,
+          ...primeSupplyIncentive,
         },
       ],
       "2-POOL-HUSDC": [
         {
-          emissionPerSecond: BigNumber.from(
-            "1,079,545,885,484,937".replace(/,/g, "")
-          ).mul(3),
-          distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
+          // 8,268.71 PRIME per 30 days
+          emissionPerSecond: BigNumber.from("3190"),
+          distributionEnd: Date.parse("15 Oct 2026 14:00:00 GMT") / 1000,
           reserve: "2-Pool-HUSDC",
-          ...gdotSupplyIncentive,
-        },
-      ],
-      "2-POOL-HUSDS": [
-        {
-          emissionPerSecond: BigNumber.from(
-            "402,815,628,912,290".replace(/,/g, "")
-          ).mul(3),
-          distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
-          reserve: "2-Pool-HUSDS",
-          ...gdotSupplyIncentive,
-        },
-      ],
-      "2-POOL-HUSDE": [
-        {
-          emissionPerSecond: BigNumber.from(
-            "402,815,628,912,290".replace(/,/g, "")
-          ).mul(3),
-          distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
-          reserve: "2-Pool-HUSDe",
-          ...gdotSupplyIncentive,
+          ...primeSupplyIncentive,
         },
       ],
       "2-POOL-HEURC": [
         {
-          emissionPerSecond: BigNumber.from(
-            "3,044,902,607,709,750".replace(/,/g, "")
-          ),
-          distributionEnd: Date.parse("18 May 2026 00:00:00 GMT") / 1000,
+          // 7,295.92 PRIME per 30 days
+          emissionPerSecond: BigNumber.from("2814"),
+          distributionEnd: Date.parse("15 Oct 2026 14:00:00 GMT") / 1000,
           reserve: "2-Pool-HEURC",
-          ...gdotSupplyIncentive,
+          ...primeSupplyIncentive,
         },
       ],
     },
