@@ -344,3 +344,21 @@ export const strategyHEURC: IReserveParams = {
   ...strategyHtoken,
   supplyCap: "8,000,000".replace(/,/g, ""),
 };
+
+export const strategySTHDX: IReserveParams = {
+  strategy: rateStrategyDOT,
+  baseLTVAsCollateral: "4000",
+  liquidationThreshold: "7000",
+  liquidationBonus: "10800",
+  liquidationProtocolFee: "1000",
+  borrowingEnabled: false,
+  stableBorrowRateEnabled: false,
+  flashLoanEnabled: false,
+  reserveDecimals: "12",
+  aTokenImpl: eContractid.LockableAToken,
+  reserveFactor: "2000",
+  supplyCap: "500000000",
+  borrowCap: "0",
+  debtCeiling: "100000000", // $1,000,000 in cents
+  borrowableIsolation: false,
+};

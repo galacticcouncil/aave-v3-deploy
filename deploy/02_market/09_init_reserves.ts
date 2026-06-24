@@ -81,6 +81,29 @@ const func: DeployFunction = async function ({
     return;
   }
 
+  // Skip-guard: on Hydration lark networks, the underlying asset's ERC20
+  // precompile isn't responsive until the asset is registered in the
+  // substrate AssetRegistry — which happens inside the governance proposal
+  // (Phase 5/7). If we call initReserves now, the tx reverts when AAVE's
+  // ReserveConfig reads decimals() from the asset. Defer to the proposal.
+  try {
+    const firstReserve = reservesAddresses[Object.keys(reservesAddresses)[0]];
+    const probe = new hre.ethers.Contract(
+      firstReserve,
+      ["function decimals() view returns (uint8)"],
+      hre.ethers.provider
+    );
+    const d = await probe.decimals();
+    console.log(`[init-reserves] probe OK: ${firstReserve}.decimals() = ${d}`);
+  } catch (e) {
+    console.warn(
+      `[init-reserves] SKIP — asset precompile not responsive yet ` +
+        `(${(e as Error).message.slice(0, 80)}). ` +
+        `Reserve initialisation will happen via the governance proposal.`
+    );
+    return;
+  }
+
   await initReservesByHelper(
     ReservesConfig,
     reservesAddresses,

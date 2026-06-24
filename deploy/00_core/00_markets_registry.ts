@@ -28,13 +28,23 @@ const func: DeployFunction = async function ({
     )) as PoolAddressesProviderRegistry
   ).connect(await hre.ethers.getSigner(deployer));
 
-  await waitForTx(
-    await registryInstance.transferOwnership(addressesProviderRegistryOwner)
-  );
-
-  deployments.log(
-    `[Deployment] Transferred ownership of PoolAddressesProviderRegistry to: ${addressesProviderRegistryOwner} `
-  );
+  // Only transfer ownership if WE currently own the registry (i.e. we just
+  // deployed it). When a second market reuses an existing registry already
+  // owned by governance, the deployer is not the owner and transferOwnership
+  // would revert — registration into that registry is handled via governance.
+  const currentOwner = await registryInstance.owner();
+  if (currentOwner.toLowerCase() === deployer.toLowerCase()) {
+    await waitForTx(
+      await registryInstance.transferOwnership(addressesProviderRegistryOwner)
+    );
+    deployments.log(
+      `[Deployment] Transferred ownership of PoolAddressesProviderRegistry to: ${addressesProviderRegistryOwner} `
+    );
+  } else {
+    deployments.log(
+      `[Deployment] Reusing existing PoolAddressesProviderRegistry owned by ${currentOwner} — skipping ownership transfer (deployer ${deployer} is not the owner)`
+    );
+  }
   return true;
 };
 

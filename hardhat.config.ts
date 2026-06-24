@@ -140,6 +140,10 @@ export default {
       eHydrationNetwork.lark2,
       222222
     ),
+    [eHydrationNetwork.gigahdx]: getCommonNetworkConfig(
+      eHydrationNetwork.gigahdx,
+      222222
+    ),
     [eBaseNetwork.base]: getCommonNetworkConfig(eBaseNetwork.base, 8453),
     [eBaseNetwork.baseGoerli]: getCommonNetworkConfig(
       eBaseNetwork.baseGoerli,

@@ -81,6 +81,7 @@ export enum eHydrationNetwork {
   nice = "nice",
   zombie = "zombie",
   lark2 = "lark2",
+  gigahdx = "gigahdx",
 }
 
 export enum EthereumNetworkNames {
@@ -124,6 +125,7 @@ export enum eContractid {
   AToken = "AToken",
   MockAToken = "MockAToken",
   DelegationAwareAToken = "DelegationAwareAToken",
+  LockableAToken = "LockableAToken",
   MockStableDebtToken = "MockStableDebtToken",
   MockVariableDebtToken = "MockVariableDebtToken",
   AaveProtocolDataProvider = "AaveProtocolDataProvider",
