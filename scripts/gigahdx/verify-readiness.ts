@@ -44,7 +44,10 @@ async function main() {
   add("A. Runtime", `specVersion ≥ 406`, ver.specVersion.toNumber() >= 406, `got ${ver.specVersion.toNumber()}`);
 
   const pallets = Object.keys(api.tx);
-  for (const need of ["gigaHdx", "gigaHdxVoting", "feeProcessor"]) {
+  // GIGAHDX runtime pallets (match mainnet spec hydradx/428): the pool pallet
+  // `gigaHdx` + the rewards pallet `gigaHdxRewards`. (There is no `gigaHdxVoting`
+  // pallet on mainnet — that earlier expectation was wrong.)
+  for (const need of ["gigaHdx", "gigaHdxRewards", "feeProcessor"]) {
     add("A. Runtime", `pallet ${need} present`, pallets.includes(need));
   }
 
