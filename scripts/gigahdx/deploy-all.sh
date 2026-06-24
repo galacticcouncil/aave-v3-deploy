@@ -53,11 +53,11 @@ export RPC="${RPC:-$DEFAULT_LARK_RPC}"
 export RPC_URL="${RPC_URL:-$RPC}"
 export WS_URL="${WS_URL:-$(printf '%s' "$RPC" | sed 's#^http#ws#')}"
 
-# Are we on a lark (testnet) or mainnet? Drives the testnet-only safety rails.
-case "$RPC" in
-  *.lark.*) IS_LARK=1 ;;
-  *)        IS_LARK=0 ;;
-esac
+# Lark (testnet) mode is OPT-IN: set IS_LARK=1 explicitly to deploy to a lark
+# (enables the lark test-key fallback, GHO force-redeploy, and sentinel). Anything
+# else — including a *.lark host used as a real target — is treated as mainnet:
+# PK is required (no public-test-key fallback) and GHO impls resume, not re-clear.
+IS_LARK="${IS_LARK:-0}"
 
 # Deployer key: PK (preferred) or PRIV_KEY. On a lark, fall back to the test key.
 PRIV_KEY="${PK:-${PRIV_KEY:-}}"
@@ -73,18 +73,25 @@ export PRIV_KEY
 
 export MARKET_NAME="GIGAHDX"
 
-# FORK puts hardhat into *fork mode* (helpers/hardhat-config-helpers.ts) — it
-# deploys against a throwaway local fork instead of the live network. Lark
-# deploys to network "lark2" (not a market-config network) so it needs
-# FORK=hydration to resolve the GIGAHDX config; mainnet deploys to network
-# "hydration" where hre.network.name already resolves it, so FORK MUST be empty.
+# NETWORK = target hardhat network (= deployments dir). Lark defaults to lark2;
+# mainnet to hydration. Honor an explicit override (e.g. NETWORK=gigahdx).
 if [ "$IS_LARK" = "1" ]; then
-  export FORK="${FORK:-hydration}"
   NETWORK="${NETWORK:-lark2}"
 else
-  export FORK="${FORK:-}"
   NETWORK="${NETWORK:-hydration}"
 fi
+
+# FORK drives both fork-mode AND config/deployment-dir resolution
+# (`FORK ? FORK : hre.network.name`). It's ONLY needed when the target NETWORK has
+# no GIGAHDX market-config keys of its own — lark2/nice/zombie resolve config via
+# FORK=hydration. Networks that DO carry gigahdx keys (gigahdx, hydration) MUST run
+# with FORK empty; otherwise address lookups in phase 6 (review-reserve-factors,
+# init-reserve) read deployments/hydration instead of deployments/$NETWORK — the
+# split-brain that makes getAllReservesTokens() revert on a stale provider address.
+case "$NETWORK" in
+  hydration|gigahdx) export FORK="${FORK:-}" ;;
+  *)                 export FORK="${FORK:-hydration}" ;;
+esac
 
 # Where the canonical HOLLAR token + ZeroDiscountRateStrategy artifacts live.
 HYDRATION_DEPLOYMENTS="deployments/hydration"

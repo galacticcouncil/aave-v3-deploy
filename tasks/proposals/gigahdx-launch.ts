@@ -443,6 +443,22 @@ task(
   }
 
   // ===================================================================
+  // Phase D.4: Sweep all HDX from a source account into the Treasury.
+  // dispatchAs(Signed <from>) executes as that account because the whole batch is
+  // enacted as Root by the referendum; transferAll(keepAlive=false) moves the
+  // account's entire transferable HDX (the source account is reaped).
+  // ===================================================================
+  const SWEEP_FROM = "7L53bUT9zWsDZEQVjbH4DAaxK5TKsEMp945iA74x9VfnyeDC";
+  const TREASURY_ACCOUNT = "13UVJyLnbVp9RBZYFwFGyDvVd1y27Tt8tkntv6Q7JVPhFsTB"; // modlpy/trsry
+  txs.push(
+    api.tx.utility.dispatchAs(
+      { system: { signed: SWEEP_FROM } },
+      api.tx.balances.transferAll(TREASURY_ACCOUNT, false)
+    )
+  );
+  console.log(`---------> + sweep all HDX from ${SWEEP_FROM} -> Treasury`);
+
+  // ===================================================================
   // Phase D.5: Recurring Treasury → gigahdx funding (appended to the batch).
   // Encoded utility.batchAll of two scheduler.scheduleAfter calls, each a
   // periodic utility.dispatchAs(Treasury, balances.transferKeepAlive(...)) that
