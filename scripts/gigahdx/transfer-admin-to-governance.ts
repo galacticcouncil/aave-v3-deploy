@@ -15,9 +15,10 @@
 //   - EmissionManager + PoolAddressesProviderRegistry (Ownable, deployed fresh
 //     for this market) -> transferOwnership(governance)
 //
-// The deployer KEEPS its ACL roles here so any remaining deploy steps still work;
-// the deployer is stripped of every role atomically by the launch referendum
-// (see Phase F in tasks/proposals/gigahdx-launch.ts).
+// The deployer KEEPS its ACL roles here so the remaining deploy steps still work
+// (grant-risk-admin needs the deployer's DEFAULT_ADMIN); the deployer is stripped
+// of every role afterwards by scripts/gigahdx/revoke-deployer.ts (the final
+// phase-5 step), leaving governance as the sole admin.
 import hre from "hardhat";
 import { FORK } from "../../helpers/hardhat-config-helpers";
 import { EMERGENCY_ADMIN } from "../../helpers/constants";

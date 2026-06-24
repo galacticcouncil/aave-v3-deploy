@@ -292,10 +292,15 @@ if [ "deployments/${NETWORK}" != "$HYDRATION_DEPLOYMENTS" ]; then
   cp "$HYDRATION_DEPLOYMENTS/ZeroDiscountRateStrategy.json" "deployments/${NETWORK}/"
 fi
 
-phase "5 — transfer admin to governance (deployer EOA; enables the proposal's ACL checks)"
-# idempotent (skips already-granted roles); retry absorbs transient 'nonce too low'
+phase "5 — hand over admin to governance, then fully revoke the deployer"
+# idempotent (skips already-granted/revoked roles); retry absorbs transient 'nonce too low'
+# 1) grant governance every role + transfer Ownable contracts to gov
 retry 6 npx hardhat run scripts/gigahdx/transfer-admin-to-governance.ts --network "$NETWORK"
+# 2) grant risk admin to the ReservesSetupHelper (needs the deployer's DEFAULT_ADMIN)
 retry 4 npx hardhat run scripts/gigahdx/grant-risk-admin.ts --network "$NETWORK"
+# 3) LAST: deployer renounces every role it still holds (gov is now sole admin).
+#    Has a safety guard that refuses to run unless gov already holds DEFAULT_ADMIN+POOL_ADMIN.
+retry 4 npx hardhat run scripts/gigahdx/revoke-deployer.ts --network "$NETWORK"
 
 phase "6 — generate the launch proposal preimage (MANUAL submission)"
 info "one batch: init + config + HOLLAR + facilitator + asset registry +"
