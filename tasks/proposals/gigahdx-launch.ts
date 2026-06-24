@@ -478,6 +478,53 @@ task(
   }
 
   // ===================================================================
+  // Phase F: Relinquish deployer admin (final calls).
+  // The deploy (phase 5) GRANTED governance every role + handed over the
+  // Ownable contracts, but left the deployer's ACL roles in place so the
+  // deploy could finish. Here governance — which holds DEFAULT_ADMIN_ROLE —
+  // strips the deployer of EVERY role it still holds, so that once this
+  // referendum enacts the GIGAHDX market matches the main Hydration market:
+  // governance (0xaa7e0) is the sole DEFAULT_ADMIN/POOL_ADMIN and the deployer
+  // EOA holds nothing. These run as the aave-manager (governance) and are the
+  // last thing the batch does, so nothing earlier depends on the revoked roles.
+  // ===================================================================
+  const DEFAULT_ADMIN_ROLE =
+    "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+  if (await aclManager.isEmergencyAdmin(deployer)) {
+    console.log(`---------> revoke deployer EmergencyAdmin (${deployer})`);
+    addTransaction(
+      await aclManager.populateTransaction.removeEmergencyAdmin(deployer, {
+        gasLimit: 300_000,
+      })
+    );
+  }
+  if (await aclManager.isPoolAdmin(deployer)) {
+    console.log(`---------> revoke deployer PoolAdmin (${deployer})`);
+    addTransaction(
+      await aclManager.populateTransaction.removePoolAdmin(deployer, {
+        gasLimit: 300_000,
+      })
+    );
+  }
+  if (await aclManager.hasRole(DEFAULT_ADMIN_ROLE, deployer)) {
+    console.log(`---------> revoke deployer DEFAULT_ADMIN_ROLE (${deployer})`);
+    addTransaction(
+      await aclManager.populateTransaction.revokeRole(
+        DEFAULT_ADMIN_ROLE,
+        deployer,
+        { gasLimit: 300_000 }
+      )
+    );
+  }
+
+  const finalizeTxs = await Promise.all(
+    getBatch().map((tx) => aaveManagerCall({ ...tx, from: admin }))
+  );
+  txs.push(...finalizeTxs);
+  clearBatch();
+
+  // ===================================================================
   // Phase E: Generate proposal preimage
   // ===================================================================
   const preimage = await generateProposalV2(txs, false);

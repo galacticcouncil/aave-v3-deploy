@@ -171,7 +171,10 @@ export const EMERGENCY_ADMIN: Record<string, string> = {
   [ePolygonNetwork.polygon]: "0x1450F2898D6bA2710C98BE9CAF3041330eD5ae58",
   [eEthereumNetwork.main]: ETHEREUM_SHORT_EXECUTOR,
   [eHydrationNetwork.hydration]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b", // 7J4KqjeRmGZPVEAogDgtxVenmsJcsvPBCySdDGxaKQ6Yyknj
-  [eHydrationNetwork.gigahdx]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b",
+  // GIGAHDX mainnet emergency admin = the Technical Committee's account
+  // (vanity-mapped EVM origin, sibling of pool-admin 0x…aa7e0). NOTE: this is
+  // intentionally NOT the main-market emergency admin (0x146a…).
+  [eHydrationNetwork.gigahdx]: "0xaa7e0000000000000000000000000000000aa7e1",
   [eHydrationNetwork.nice]: "0xb847e0fd2a5e62d621a0382419bddb0a351a6d9c",
   [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
   [eHydrationNetwork.lark2]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b",
