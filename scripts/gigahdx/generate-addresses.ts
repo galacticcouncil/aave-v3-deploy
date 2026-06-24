@@ -41,12 +41,12 @@ async function main() {
   const hollarData = await pool.getReserveData(HOLLAR);
 
   const out = {
-    name: "GIGAHDX on Hydration Lark 2",
-    description: "Second Aave V3 money market instance on Hydration. stHDX collateral-only, HOLLAR borrow-only via GhoAToken facilitator. Deployed 2026-04-25.",
+    name: "GIGAHDX on Hydration",
+    description: "Second Aave V3 money market instance on Hydration. stHDX collateral-only, HOLLAR borrow-only via GhoAToken facilitator.",
     network: {
       chainId: 222222,
-      rpcUrl: process.env.RPC || process.env.RPC_URL || "https://2.lark.hydration.cloud",
-      wsUrl: process.env.WS_URL || "wss://2.lark.hydration.cloud",
+      rpcUrl: process.env.RPC || process.env.RPC_URL || "https://rpc.hydradx.cloud",
+      wsUrl: process.env.WS_URL || "wss://rpc.hydradx.cloud",
       marketId: "GIGAHDX",
       providerId: 22222269,
     },
@@ -71,7 +71,7 @@ async function main() {
         variableDebtToken: stHdxData.variableDebtTokenAddress,
         stableDebtToken: stHdxData.stableDebtTokenAddress,
         interestRateStrategy: stHdxData.interestRateStrategyAddress,
-        oracleSource_FixedPrice: artifacts["FixedPriceOracle-stHDX-GIGAHDX"],
+        oracleSource: artifacts["STHDX-USDOracleAdapter"],
         risk: "LTV 40%, LT 70%, LB 8%, RF 20%, supply-only"
       },
       HOLLAR: {
@@ -81,7 +81,7 @@ async function main() {
         stableDebtToken: hollarData.stableDebtTokenAddress,
         interestRateStrategy: hollarData.interestRateStrategyAddress,
         oracleSource_GhoOracle: GHO_ORACLE,
-        risk: "no collateral value, borrow-only. 1M HOLLAR facilitator bucket on HOLLAR token."
+        risk: "no collateral value, borrow-only. 222,222 HOLLAR facilitator bucket on HOLLAR token."
       }
     },
     implementations: {
@@ -115,9 +115,9 @@ async function main() {
   console.log(`wrote ${jsonPath}`);
 
   // Markdown version
-  const md = `# GIGAHDX on Lark 2 — Addresses for Frontend Integration
+  const md = `# GIGAHDX on Hydration — Addresses for Frontend Integration
 
-Second Aave V3 money market instance on Hydration, deployed and activated on the **Lark 2 test chain**.
+Second Aave V3 money market instance on Hydration. stHDX collateral-only, HOLLAR borrow-only via the GhoAToken facilitator.
 
 - **RPC:** ${out.network.rpcUrl}
 - **WS:** ${out.network.wsUrl}
@@ -155,7 +155,7 @@ All admin roles on GIGAHDX are held by Hydration governance: \`${out.admin}\`.
 | variableDebtToken | \`${out.reserves.stHDX.variableDebtToken}\` |
 | stableDebtToken | \`${out.reserves.stHDX.stableDebtToken}\` (unused) |
 | rateStrategy | \`${out.reserves.stHDX.interestRateStrategy}\` |
-| oracle source | \`${out.reserves.stHDX.oracleSource_FixedPrice}\` (FixedPriceOracle @ $0.025) |
+| oracle source | \`${out.reserves.stHDX.oracleSource}\` (USDOracleAdapter — Omnipool EMA, ~$0.0039) |
 
 **Risk:** ${out.reserves.stHDX.risk}. Borrow disabled.
 
@@ -164,10 +164,10 @@ All admin roles on GIGAHDX are held by Hydration governance: \`${out.admin}\`.
 | | Address |
 |---|---|
 | Underlying | \`${out.reserves.HOLLAR.underlying}\` (18 decimals, existing mainnet token) |
-| **aToken (GhoAToken)** | **\`${out.reserves.HOLLAR.aToken_GhoAToken}\`** — also the **HOLLAR facilitator** (1M bucket capacity) |
+| **aToken (GhoAToken)** | **\`${out.reserves.HOLLAR.aToken_GhoAToken}\`** — also the **HOLLAR facilitator** (222,222 bucket capacity) |
 | variableDebtToken | \`${out.reserves.HOLLAR.variableDebtToken}\` |
 | stableDebtToken | \`${out.reserves.HOLLAR.stableDebtToken}\` (unused) |
-| rateStrategy | \`${out.reserves.HOLLAR.interestRateStrategy}\` (4.5% fixed APY) |
+| rateStrategy | \`${out.reserves.HOLLAR.interestRateStrategy}\` (9% fixed APY) |
 | oracle source | \`${out.reserves.HOLLAR.oracleSource_GhoOracle}\` (GhoOracle, $1 fixed) |
 
 **Risk:** ${out.reserves.HOLLAR.risk}
