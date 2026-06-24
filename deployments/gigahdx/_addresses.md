@@ -1,6 +1,6 @@
-# GIGAHDX on Lark 2 — Addresses for Frontend Integration
+# GIGAHDX on Hydration — Addresses for Frontend Integration
 
-Second Aave V3 money market instance on Hydration, deployed and activated on the **Lark 2 test chain**.
+Second Aave V3 money market instance on Hydration. stHDX collateral-only, HOLLAR borrow-only via the GhoAToken facilitator.
 
 - **RPC:** https://node0.lark.hydration.cloud
 - **WS:** wss://node0.lark.hydration.cloud
@@ -34,11 +34,11 @@ All admin roles on GIGAHDX are held by Hydration governance: `0xaa7e000000000000
 | | Address |
 |---|---|
 | Underlying | `0x000000000000000000000000000000010000029e` (substrate asset **670**, 12 decimals) |
-| **aToken (GIGAHDX)** | **`0x0000000000000000000000000000000000000000`** (LockableAToken, substrate asset **67**) |
-| variableDebtToken | `0x0000000000000000000000000000000000000000` |
-| stableDebtToken | `0x0000000000000000000000000000000000000000` (unused) |
-| rateStrategy | `0x0000000000000000000000000000000000000000` |
-| oracle source | `undefined` (FixedPriceOracle @ $0.025) |
+| **aToken (GIGAHDX)** | **`0x6b9aC524ec8f08C49ec80176B138D16EB461c3D8`** (LockableAToken, substrate asset **67**) |
+| variableDebtToken | `0x85B849E2B235a1961d9B44336BD3FefCff3898a3` |
+| stableDebtToken | `0x5575F07b559A8CB80eEd4c085C21c0F75fEBc250` (unused) |
+| rateStrategy | `0x3B82eFebF099a3E262F894f8872028FD433487a6` |
+| oracle source | `0x645C0011595cEa8bA5db838bCcA0A5F204dD4883` (USDOracleAdapter — Omnipool EMA, ~$0.0039) |
 
 **Risk:** LTV 40%, LT 70%, LB 8%, RF 20%, supply-only. Borrow disabled.
 
@@ -47,13 +47,13 @@ All admin roles on GIGAHDX are held by Hydration governance: `0xaa7e000000000000
 | | Address |
 |---|---|
 | Underlying | `0x531a654d1696ED52e7275A8cede955E82620f99a` (18 decimals, existing mainnet token) |
-| **aToken (GhoAToken)** | **`0x0000000000000000000000000000000000000000`** — also the **HOLLAR facilitator** (1M bucket capacity) |
-| variableDebtToken | `0x0000000000000000000000000000000000000000` |
-| stableDebtToken | `0x0000000000000000000000000000000000000000` (unused) |
-| rateStrategy | `0x0000000000000000000000000000000000000000` (4.5% fixed APY) |
+| **aToken (GhoAToken)** | **`0x116D7Bb8E4e2a4C932B4d36c115D4122dc360462`** — also the **HOLLAR facilitator** (222,222 bucket capacity) |
+| variableDebtToken | `0x6F731562cBf2c0dA50a10E5aC922b95b42204863` |
+| stableDebtToken | `0x7dEdEa1E7C60c192014d553C4B2a04FeF323fe88` (unused) |
+| rateStrategy | `0x6033f11603e26B7B5a2384cD83F81Ab4C0b1220F` (9% fixed APY) |
 | oracle source | `0x6096C9D71F7c06024578a62F4B608a1Bb06834F8` (GhoOracle, $1 fixed) |
 
-**Risk:** no collateral value, borrow-only. 1M HOLLAR facilitator bucket on HOLLAR token.
+**Risk:** no collateral value, borrow-only. 222,222 HOLLAR facilitator bucket on HOLLAR token.
 
 ## Implementation contracts
 
