@@ -1,4 +1,11 @@
-import { MARKET_NAME } from "./env";
+// Read MARKET_NAME directly from process.env to avoid the circular-import
+// initialization-order bug that caused these constants to be baked as
+// `-undefined` strings. `helpers/env.ts` imports `ConfigNames` from
+// `market-config-helpers.ts`, which transitively pulls in market configs;
+// if this file is loaded mid-cycle, the imported `MARKET_NAME` is
+// `undefined`, and every template literal below captures that as the
+// literal string "undefined". Reading process.env here skips that chain.
+const MARKET_NAME = process.env.MARKET_NAME || "Hydration";
 
 export const POOL_ADDRESSES_PROVIDER_ID = `PoolAddressesProvider-${MARKET_NAME}`;
 export const ACL_MANAGER_ID = `ACLManager-${MARKET_NAME}`;

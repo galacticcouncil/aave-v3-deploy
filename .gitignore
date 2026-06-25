@@ -23,4 +23,5 @@ deployments/*
 !deployments/nice
 !deployments/lark
 !deployments/lark2
+!deployments/gigahdx
 # deployments/chopsticks is intentionally ignored — it's a disposable local fork.

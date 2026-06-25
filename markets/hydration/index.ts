@@ -5,7 +5,7 @@ import {
   TransferStrategy,
 } from "./../../helpers/types";
 import { POOL_ADMIN } from "./../../helpers/constants";
-import { BigNumber, utils } from "ethers";
+import { BigNumber } from "ethers";
 import AaveMarket from "../aave";
 import {
   strategyDOT,
@@ -25,10 +25,13 @@ import {
   strategyHUSDe,
   strategyPAXG,
   strategyPRIME,
+  strategyApyUSD,
+  strategySIGIL,
   strategySOL,
   strategyGSOL,
   strategyEURC,
   strategyHEURC,
+  strategySTHDX,
 } from "./reservesConfigs";
 import { tokenAddress } from "./helpers";
 import { ZERO_ADDRESS } from "../../helpers";
@@ -37,6 +40,14 @@ const gdotSupplyIncentive = {
   incentivizedToken: AssetType.AToken,
   reward: tokenAddress(69),
   rewardOracle: "2-POOL-GDOT",
+  transferStrategy: TransferStrategy.PotRewardsStrategy,
+  emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
+};
+
+const primeSupplyIncentive = {
+  incentivizedToken: AssetType.AToken,
+  reward: tokenAddress(43),
+  rewardOracle: "PRIME",
   transferStrategy: TransferStrategy.PotRewardsStrategy,
   emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
 };
@@ -67,10 +78,13 @@ export const HydrationConfig: IAaveConfiguration = {
     "2-POOL-HUSDE": strategyHUSDe,
     PAXG: strategyPAXG,
     PRIME: strategyPRIME,
+    APYUSD: strategyApyUSD,
+    SIGIL: strategySIGIL,
     SOL: strategySOL,
     "2-POOL-GSOL": strategyGSOL,
     EURC: strategyEURC,
     "2-POOL-HEURC": strategyHEURC,
+    STHDX: strategySTHDX,
   },
   ReserveAssets: {
     [eHydrationNetwork.hydration]: {
@@ -91,10 +105,13 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDE": tokenAddress(113),
       PAXG: tokenAddress(39),
       PRIME: tokenAddress(43),
+      APYUSD: tokenAddress(46),
+      SIGIL: tokenAddress(816),
       SOL: tokenAddress(1000752),
       "2-POOL-GSOL": tokenAddress(90001),
       EURC: tokenAddress(44),
       "2-POOL-HEURC": tokenAddress(10044),
+      STHDX: tokenAddress(670),
     },
     [eHydrationNetwork.nice]: {
       USDC: tokenAddress(21),
@@ -109,13 +126,26 @@ export const HydrationConfig: IAaveConfiguration = {
       //TBTC: ZERO_ADDRESS
     },
     [eHydrationNetwork.zombie]: {
-      USDC: ZERO_ADDRESS,
-      USDT: ZERO_ADDRESS,
-      // WETH: ZERO_ADDRESS,
-      WBTC: ZERO_ADDRESS,
-      DOT: ZERO_ADDRESS,
-      //VDOT: ZERO_ADDRESS,
-      //TBTC: ZERO_ADDRESS,
+      USDC: tokenAddress(22),
+      USDT: tokenAddress(10),
+      // WETH: tokenAddress(20),
+      WBTC: tokenAddress(19),
+      DOT: tokenAddress(5),
+      VDOT: tokenAddress(15),
+      TBTC: tokenAddress(1000765),
+      "2-POOL-GDOT": tokenAddress(690),
+      ETH: tokenAddress(34),
+      "2-POOL-GETH": tokenAddress(4200),
+      "3-POOL": tokenAddress(103),
+      "2-POOL-HUSDC": tokenAddress(110),
+      "2-POOL-HUSDT": tokenAddress(111),
+      "2-POOL-HUSDS": tokenAddress(112),
+      "2-POOL-HUSDE": tokenAddress(113),
+      PAXG: tokenAddress(39),
+      PRIME: tokenAddress(43),
+      SOL: tokenAddress(1000752),
+      "2-POOL-GSOL": tokenAddress(90001),
+      STHDX: tokenAddress(670),
     },
   },
   EModes: {
@@ -191,6 +221,8 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-HUSDE": "0x00000102737461626c657377000000de00000071", // HOLLAR(222) / 2-POOL-HUSDe(113) 10 min. stablesw
       PAXG: "0x8fB61B8E81C2f17695F14A136C98b0C4013bc105",
       PRIME: "0xDEe587cC569bf1FcBdcD6d1472031d225f34C307",
+      APYUSD: "0x286BAaA3F5738ac01EF922B1E913Fcc09916AF96",
+      SIGIL: "0xe50AA7afa36A5E04C0b0D0892D0b173c924b662F",
       // GIGASOL oracles
       SOL: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
       "2-POOL-GSOL": "0xCD3648A48378cBDa915f6be0A30073b76593Ed9A",
@@ -199,7 +231,10 @@ export const HydrationConfig: IAaveConfiguration = {
       EURC: "0xaa47a5662269270D3DF33Ae08F806e383611575c", // DIA EUR/USD oracle
       "2-POOL-HEURC": "0x71691b7EE575a2842b242cE8E0AEcdB0e031B725",
       EURUSD: "0xaa47a5662269270D3DF33Ae08F806e383611575c", // DIA EUR/USD oracle (used for HEURC pool drifting peg)
+      STHDX: "0xbd1108369553bfFBAaa1BA5C8D07a8131EB92F10", // deploy-USDOracleAdapter.ts
+      STHDX: "0x202df3eDac2775b857ee2f61A3569731E53eC713", // deploy-USDOracleAdapter.ts
     },
+    // zombie STHDX oracle merged into second zombie block below
     [eHydrationNetwork.nice]: {
       USDC: "0xEE7aFb45c094DC9fA404D6A86A7d795d4aA33D28",
       USDT: "0xb4aC9f0E6E207D5d81B756F8aF6efe3fe7B0E72c",
@@ -215,6 +250,7 @@ export const HydrationConfig: IAaveConfiguration = {
       WSTETH_ETH: "0x493f00bA516E55e5CA932f55CeB6b5c4b6E4257F", //TODO: deploy OraclesAggregator and use real address
     },
     [eHydrationNetwork.zombie]: {
+      STHDX: "0x202df3eDac2775b857ee2f61A3569731E53eC713", // deploy-USDOracleAdapter.ts
       // GIGASOL oracles for zombie testing
       SOL: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle (same as mainnet fork)
       "2-POOL-GSOL": "0xCD3648A48378cBDa915f6be0A30073b76593Ed9A", // USDOracleAdapter TODO: REPLACE BEFORE CREATING GIGASOL PROPOSAL
@@ -225,8 +261,9 @@ export const HydrationConfig: IAaveConfiguration = {
     [eHydrationNetwork.hydration]: {
       "2-POOL-GDOT": [
         {
-          emissionPerSecond: BigNumber.from("3757650000000000"),
-          distributionEnd: Date.parse("17 Sep 2026 14:24:36 GMT") / 1000,
+          // 2,350 gDOT per 30 days
+          emissionPerSecond: BigNumber.from("906635802469136"),
+          distributionEnd: Date.parse("15 Oct 2026 14:00:00 GMT") / 1000,
           reserve: "2-Pool-GDOT",
           ...gdotSupplyIncentive,
         },
@@ -251,62 +288,31 @@ export const HydrationConfig: IAaveConfiguration = {
           emissionAdmin: POOL_ADMIN[eHydrationNetwork.hydration],
         },
       ],
-      "3-POOL": [
-        {
-          emissionPerSecond: utils.parseEther("0.0002810529212").toString(),
-          distributionEnd: Date.parse("17 Sep 2026 14:24:36 GMT") / 1000,
-          reserve: "3-Pool",
-          ...gdotSupplyIncentive,
-        },
-      ],
       "2-POOL-HUSDT": [
         {
-          emissionPerSecond: BigNumber.from(
-            "1,079,545,885,484,937".replace(/,/g, "")
-          ).mul(3),
-          distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
+          // 8,268.71 PRIME per 30 days
+          emissionPerSecond: BigNumber.from("3190"),
+          distributionEnd: Date.parse("15 Oct 2026 14:00:00 GMT") / 1000,
           reserve: "2-Pool-HUSDT",
-          ...gdotSupplyIncentive,
+          ...primeSupplyIncentive,
         },
       ],
       "2-POOL-HUSDC": [
         {
-          emissionPerSecond: BigNumber.from(
-            "1,079,545,885,484,937".replace(/,/g, "")
-          ).mul(3),
-          distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
+          // 8,268.71 PRIME per 30 days
+          emissionPerSecond: BigNumber.from("3190"),
+          distributionEnd: Date.parse("15 Oct 2026 14:00:00 GMT") / 1000,
           reserve: "2-Pool-HUSDC",
-          ...gdotSupplyIncentive,
-        },
-      ],
-      "2-POOL-HUSDS": [
-        {
-          emissionPerSecond: BigNumber.from(
-            "402,815,628,912,290".replace(/,/g, "")
-          ).mul(3),
-          distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
-          reserve: "2-Pool-HUSDS",
-          ...gdotSupplyIncentive,
-        },
-      ],
-      "2-POOL-HUSDE": [
-        {
-          emissionPerSecond: BigNumber.from(
-            "402,815,628,912,290".replace(/,/g, "")
-          ).mul(3),
-          distributionEnd: Date.parse("22 Oct 2026 14:22:22 GMT") / 1000,
-          reserve: "2-Pool-HUSDe",
-          ...gdotSupplyIncentive,
+          ...primeSupplyIncentive,
         },
       ],
       "2-POOL-HEURC": [
         {
-          emissionPerSecond: BigNumber.from(
-            "3,044,902,607,709,750".replace(/,/g, "")
-          ),
-          distributionEnd: Date.parse("18 May 2026 00:00:00 GMT") / 1000,
+          // 7,295.92 PRIME per 30 days
+          emissionPerSecond: BigNumber.from("2814"),
+          distributionEnd: Date.parse("15 Oct 2026 14:00:00 GMT") / 1000,
           reserve: "2-Pool-HEURC",
-          ...gdotSupplyIncentive,
+          ...primeSupplyIncentive,
         },
       ],
     },
@@ -353,6 +359,16 @@ export const HydrationConfig: IAaveConfiguration = {
       "2-POOL-GSOL": {
         assetToX: "0x00000102737461626c657377000003f100015f91", // hydration's chainlink precompile, stableswap 10min., aSOL(1009)/gSOLs(90001)
         xToUSD: "0x2FAA73BCC0115b9F67d2f36E53738B7FF95f0D2C", // DIA SOL/USD oracle
+      },
+      STHDX: {
+        assetToX: "0x0000010267696761686478730000029e00000000", // gigahdxs source: stHDX(670)/HDX(0) TenMinutes
+        xToUSD: "0xea63e594ee00590938E856F2134E6C792bA92d13", // DIA HDX/USD oracle
+      },
+    },
+    [eHydrationNetwork.zombie]: {
+      STHDX: {
+        assetToX: "0x0000010267696761686478730000029e00000000", // gigahdxs source: stHDX(670)/HDX(0) TenMinutes
+        xToUSD: "0xea63e594ee00590938E856F2134E6C792bA92d13", // DIA HDX/USD oracle
       },
     },
   },

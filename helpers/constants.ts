@@ -121,6 +121,7 @@ export const chainlinkAggregatorProxy: Record<string, string> = {
   [eEthereumNetwork.sepolia]: "0x6c60d915c7a646860dba836ffcb7f112b6cfdc76",
   [eHydrationNetwork.hydration]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
   [eHydrationNetwork.nice]: "0xBd763043861CAF4E7e4E7Ffe951A03dF2Ea7E5AC",
+  [eHydrationNetwork.lark2]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
 };
 
 export const chainlinkEthUsdAggregatorProxy: Record<string, string> = {
@@ -146,6 +147,7 @@ export const chainlinkEthUsdAggregatorProxy: Record<string, string> = {
   [eEthereumNetwork.sepolia]: "0x6c60d915c7a646860dba836ffcb7f112b6cfdc76",
   [eHydrationNetwork.hydration]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
   [eHydrationNetwork.nice]: "0xBd763043861CAF4E7e4E7Ffe951A03dF2Ea7E5AC",
+  [eHydrationNetwork.lark2]: "0x8aEAE0bBf623B0E70732086B8D48A6090C311596",
 };
 
 export const ETHEREUM_SHORT_EXECUTOR =
@@ -170,6 +172,7 @@ export const POOL_ADMIN: Record<string, string> = {
   [eBaseNetwork.baseGoerli]: "0xA9F30e6ED4098e9439B2ac8aEA2d3fc26BcEbb45",
   [eEthereumNetwork.tenderly]: ETHEREUM_SHORT_EXECUTOR,
   [eHydrationNetwork.hydration]: "0xaa7e0000000000000000000000000000000aa7e0",
+  [eHydrationNetwork.gigahdx]: "0xaa7e0000000000000000000000000000000aa7e0",
   [eHydrationNetwork.nice]: HYDRATION_TEST_ADMIN,
   [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
   // lark / lark2 / chopsticks are all mainnet-state forks — the aave-manager
@@ -189,6 +192,10 @@ export const EMERGENCY_ADMIN: Record<string, string> = {
   [ePolygonNetwork.polygon]: "0x1450F2898D6bA2710C98BE9CAF3041330eD5ae58",
   [eEthereumNetwork.main]: ETHEREUM_SHORT_EXECUTOR,
   [eHydrationNetwork.hydration]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b", // 7J4KqjeRmGZPVEAogDgtxVenmsJcsvPBCySdDGxaKQ6Yyknj
+  // GIGAHDX mainnet emergency admin = the Technical Committee's account
+  // (vanity-mapped EVM origin, sibling of pool-admin 0x…aa7e0). NOTE: this is
+  // intentionally NOT the main-market emergency admin (0x146a…).
+  [eHydrationNetwork.gigahdx]: "0xaa7e0000000000000000000000000000000aa7e1",
   [eHydrationNetwork.nice]: "0xb847e0fd2a5e62d621a0382419bddb0a351a6d9c",
   [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
   [eHydrationNetwork.lark]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b",
@@ -241,6 +248,8 @@ export const MULTISIG_ADDRESS: { [key: string]: string } = {
   // Polygon Multisig
   [ePolygonNetwork.polygon]: "0x1450F2898D6bA2710C98BE9CAF3041330eD5ae58",
   [eHydrationNetwork.hydration]: "0xaa7e1000000000000000000000000000000aa7e10",
+  [eHydrationNetwork.gigahdx]: "0xaa7e1000000000000000000000000000000aa7e10",
   [eHydrationNetwork.nice]: HYDRATION_TEST_ADMIN,
   [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
+  [eHydrationNetwork.lark2]: "0xaa7e1000000000000000000000000000000aa7e10",
 };

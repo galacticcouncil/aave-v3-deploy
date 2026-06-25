@@ -53,6 +53,19 @@ export const rateStrategyDOT5: IInterestRateStrategyParams = {
   optimalStableToTotalDebtRatio: parseUnits("0.2", 27).toString(),
 };
 
+export const rateStrategyPRIME: IInterestRateStrategyParams = {
+  name: "rateStrategyPRIME",
+  optimalUsageRatio: parseUnits("0.75", 27).toString(),
+  baseVariableBorrowRate: "0",
+  variableRateSlope1: parseUnits("0.02", 27).toString(),
+  variableRateSlope2: parseUnits("0.2", 27).toString(),
+  stableRateSlope1: parseUnits("0.07", 27).toString(),
+  stableRateSlope2: parseUnits("3", 27).toString(),
+  baseStableRateOffset: parseUnits("0.02", 27).toString(),
+  stableRateExcessOffset: parseUnits("0.05", 27).toString(),
+  optimalStableToTotalDebtRatio: parseUnits("0.2", 27).toString(),
+};
+
 export const rateStrategyStables: IInterestRateStrategyParams = {
   name: "rateStrategyStables",
   optimalUsageRatio: parseUnits("0.7", 27).toString(),

@@ -1,0 +1,14 @@
+{
+  "PoolAddressesProviderRegistry": 1782338656,
+  "LogicLibraries": 1782338656,
+  "Treasury": 1782338657,
+  "PoolAddressesProvider:GIGAHDX:aave-v3-core@1.19.3": 1782338691,
+  "PoolConfigurator": 1782338757,
+  "ACLManager:GIGAHDX:aave-v3-core@1.19.3": 1782338846,
+  "Oracles:GIGAHDX:aave-v3-core@1.19.3": 1782338852,
+  "InitOracles:GIGAHDX:aave-v3-core@1.19.3": 1782338866,
+  "PoolInitalization:GIGAHDX:aave-v3-core@1.19.3": 1782338942,
+  "Incentives:GIGAHDX:aave-v3-periphery@2.5.2": 1782338998,
+  "TokenImplementations:GIGAHDX:aave-v3-core@1.19.3": 1782339056,
+  "PeripheryInit:GIGAHDX:aave-v3-periphery@2.5.2": 1782339112
+}

@@ -86,7 +86,14 @@ const func: DeployFunction = async function ({
   )) as RewardsController;
 
   // Call to initialize at implementation contract to prevent others.
-  await waitForTx(await incentivesImpl.initialize(ZERO_ADDRESS));
+  // On lark, eth_estimateGas can return intrinsic-only and OOG this call before
+  // the impl-already-initialized revert; force a generous gas limit and tolerate
+  // failure (impl is typically self-disabled by its ctor).
+  try {
+    await waitForTx(await incentivesImpl.initialize(ZERO_ADDRESS, { gasLimit: 250000 }));
+  } catch (e: any) {
+    console.log(`  incentivesImpl.initialize skipped: ${(e.message || String(e)).slice(0, 120)}`);
+  }
 
   // The Rewards Controller must be set at PoolAddressesProvider with id keccak256("INCENTIVES_CONTROLLER"):
   // 0x703c2c8634bed68d98c029c18f310e7f7ec0e5d6342c590190b3cb8b3ba54532
