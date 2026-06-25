@@ -27,9 +27,13 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-const RPC = "http://localhost:8000";
-// Hardhat dev #0 — deployer == admin (Deploy.s.sol:48 requirement)
-const PK = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+const RPC = process.env.RPC ?? "http://localhost:8000";
+// Deployer == admin (Deploy.s.sol:48 requirement). Defaults to hardhat dev
+// #0 for chopsticks; override via PRIVATE_KEY or PRIV_KEY for mainnet/lark.
+const PK =
+  process.env.PRIVATE_KEY ??
+  process.env.PRIV_KEY ??
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
 // Hydration mainnet addresses — same constants as Deploy.s.sol:11-14
 const DECENTRAL_POOL = "0x207a626c07b73E76134177D1f44B0f32e94ADB5a";

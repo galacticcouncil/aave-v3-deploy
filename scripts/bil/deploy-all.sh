@@ -185,8 +185,12 @@ grep -q "$HOLLAR_NETWORK" "$HOLLAR_DIR/hardhat.config.ts" 2>/dev/null \
 #    during _registerPool; if it reverts the whole deploy is wasted.
 #    selector for stablecoin() = keccak256("stablecoin()")[:4] = 0xe9cbd822
 sc="$(rpc_call "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_call\",\"params\":[{\"to\":\"$DECENTRAL_POOL_ADDRESS\",\"data\":\"0xe9cbd822\"},\"latest\"]}" | sed -n 's/.*"result":"\(0x[0-9a-fA-F]*\)".*/\1/p')"
-case "${sc:?}" in
-  *"${HOLLAR_ADDRESS#0x}"*) info "Decentral pool stablecoin() → HOLLAR ✓" ;;
+# Case-insensitive substring match — eth_call returns lowercase hex; the
+# canonical HOLLAR_ADDRESS we ship is mixed-case checksummed.
+sc_lower="$(printf '%s' "$sc" | tr 'A-F' 'a-f')"
+hollar_lower="$(printf '%s' "${HOLLAR_ADDRESS#0x}" | tr 'A-F' 'a-f')"
+case "${sc_lower:?}" in
+  *"$hollar_lower"*) info "Decentral pool stablecoin() → HOLLAR ✓" ;;
   *) die "Decentral pool $DECENTRAL_POOL_ADDRESS.stablecoin() did not return HOLLAR ($HOLLAR_ADDRESS) on $RPC. result: ${sc:-<empty/revert>}. Vault deploy WILL fail." ;;
 esac
 
@@ -235,7 +239,10 @@ fi
 phase "0a — deploy the BIL Vault (UUPS proxy + impl + QueueLib + BILOracle)"
 info "Ports bil-vault/script/Deploy.s.sol to viem (see deploy-bil-vault.mjs)."
 info "Records vault proxy + oracle addresses for later phases."
-retry 3 node scripts/deploy-bil-vault.mjs | tee /tmp/bil-vault-deploy.log
+retry 3 env \
+  PRIVATE_KEY="$PRIV_KEY" \
+  RPC="$RPC" \
+  node scripts/deploy-bil-vault.mjs | tee /tmp/bil-vault-deploy.log
 # Parse the addresses block at the end of the dry-run output
 VAULT_ADDRESS="$(sed -n 's/.*Proxy (Vault):[[:space:]]*\(0x[0-9a-fA-F]*\).*/\1/p' /tmp/bil-vault-deploy.log | tail -1)"
 BIL_ORACLE_ADDRESS="$(sed -n 's/.*BILOracle:[[:space:]]*\(0x[0-9a-fA-F]*\).*/\1/p' /tmp/bil-vault-deploy.log | tail -1)"
@@ -251,7 +258,11 @@ phase "0b — post-deploy: grant GUARDIAN + CLAIM_OPERATOR, seed deposit"
 # positions). Run NOW to grant operational roles BEFORE the proposal lands,
 # then re-run with NEW_ADMIN=<gov> after Phase 5 to rotate vault roles to
 # governance.
-retry 3 node scripts/post-deploy-bil-vault.mjs
+retry 3 env \
+  VAULT_ADDRESS="$VAULT_ADDRESS" \
+  PRIVATE_KEY="$PRIV_KEY" \
+  RPC="$RPC" \
+  node scripts/post-deploy-bil-vault.mjs
 
 phase "1 — deploy BIL Aave market core (EVM)"
 retry 5 npx hardhat deploy --tags market --network "$NETWORK"
@@ -325,7 +336,12 @@ retry 4 npx hardhat run scripts/bil/revoke-deployer.ts --network "$NETWORK"
 # post-deploy-bil-vault.mjs is idempotent — it only grants/renounces what isn't
 # already in the target state.
 phase "5b — rotate BIL Vault admin roles to governance"
-NEW_ADMIN="0xaa7e0000000000000000000000000000000aa7e0" retry 2 node scripts/post-deploy-bil-vault.mjs
+retry 2 env \
+  VAULT_ADDRESS="$VAULT_ADDRESS" \
+  PRIVATE_KEY="$PRIV_KEY" \
+  RPC="$RPC" \
+  NEW_ADMIN="0xaa7e0000000000000000000000000000000aa7e0" \
+  node scripts/post-deploy-bil-vault.mjs
 
 phase "6 — generate the launch proposal preimage (MANUAL submission)"
 info "one batch: assetRegistry register + initReserves(BIL) + setAssetSources"

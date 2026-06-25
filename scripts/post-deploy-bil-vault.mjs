@@ -43,7 +43,9 @@ import { privateKeyToAccount } from "viem/accounts";
 
 // ── env ────────────────────────────────────────────────────────────────
 const RPC = process.env.RPC ?? "http://localhost:8000";
-const PK = process.env.PRIVATE_KEY;
+// Accept PRIV_KEY (hardhat-ecosystem convention used by deploy-all.sh) and
+// PRIVATE_KEY (explicit) interchangeably.
+const PK = process.env.PRIVATE_KEY ?? process.env.PRIV_KEY;
 const VAULT = process.env.VAULT_ADDRESS;
 const GUARDIAN = process.env.GUARDIAN_ADDRESS;
 const KEEPER = process.env.KEEPER_ADDRESS;
