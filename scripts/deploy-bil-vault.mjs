@@ -1,4 +1,4 @@
-// Dry-run BIL Vault deploy against a chopsticks mainnet fork.
+// BIL Vault deploy (works against any RPC: mainnet, lark, chopsticks fork) against a chopsticks mainnet fork.
 //
 // Foundry's forge script can't traverse chopsticks's lazy-loaded storage
 // through the Decentral pool's delegatecall (the staticcall returns Stop
@@ -15,7 +15,7 @@
 //   7. Sanity-check vault.getOraclePrice() > 0
 //
 // Usage:
-//   node scripts/deploy-vault-dryrun.mjs
+//   node scripts/deploy-bil-vault.mjs
 
 import { readFileSync } from "fs";
 import {

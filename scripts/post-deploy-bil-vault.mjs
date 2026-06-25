@@ -1,4 +1,4 @@
-// Post-deploy script for the BIL Vault. Mirrors bil-vault/DEPLOYMENT.md
+// Post-deploy script for the BIL Vault. Idempotent. Works against any RPC. Mirrors bil-vault/DEPLOYMENT.md
 // Steps 2 (role grants) + 3 (seed deposit), with optional admin/upgrader
 // role transfer to a governance address.
 //
@@ -17,7 +17,7 @@
 //   SEED_AMOUNT=100              \         # optional: HOLLAR to seed (whole units)
 //   NEW_ADMIN=0x...              \         # optional: rotate roles to this (governance)
 //   RPC=http://localhost:8000              # default: chopsticks
-//   node scripts/post-deploy-vault.mjs
+//   node scripts/post-deploy-bil-vault.mjs
 //
 // Env var notes:
 //   - VAULT_ADDRESS + PRIVATE_KEY are REQUIRED. Everything else is optional;

@@ -52,7 +52,7 @@ node packages/chopsticks/chopsticks.cjs --config configs/hydradx-mainnet.yml --p
 curl -sX POST http://localhost:8000 -H "content-type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"dev_setBlockBuildMode","params":["Instant"]}'
 node scripts/fund-test-deployer.mjs                # fund hardhat dev #0 with WETH
-node scripts/deploy-vault-dryrun.mjs               # ports Deploy.s.sol to viem
+node scripts/deploy-bil-vault.mjs               # ports Deploy.s.sol to viem
 ```
 
 The dry-run prints the addresses + verifies `getOraclePrice() > 0` and
@@ -87,7 +87,7 @@ ran against lark testnet where the constraints are looser:
 4. **`forge script ... --broadcast --rpc-url http://chopsticks` mis-handles
    chopsticks's lazy-loaded delegatecall state.** Internal staticcalls
    through proxies return `[Stop]` even when `cast call` to the same
-   selector works. The viem script (`deploy-vault-dryrun.mjs`) bypasses
+   selector works. The viem script (`deploy-bil-vault.mjs`) bypasses
    this entirely. For the **mainnet broadcast** you can use forge directly
    (no lazy-loaded state involved) OR the viem script — both work; the
    viem script is what was end-to-end validated above.
@@ -100,7 +100,7 @@ After the dry-run succeeds, broadcast with operator's mainnet key:
 # Option A — viem script (validated path; legacy txs handled, gasPrice queried)
 RPC=https://rpc.hydradx.cloud \
   PRIVATE_KEY=0x<mainnet-deployer-key> \
-  node scripts/deploy-vault-dryrun.mjs
+  node scripts/deploy-bil-vault.mjs
 # (despite the name, the script broadcasts wherever RPC points)
 
 # Option B — forge against mainnet directly (Deploy.s.sol; constants are
@@ -124,7 +124,7 @@ RPC=https://rpc.hydradx.cloud \
   GUARDIAN_ADDRESS=<hydration-tech-committee> \
   KEEPER_ADDRESS=<keeper-bot> \
   SEED_AMOUNT=100 \
-  node scripts/post-deploy-vault.mjs
+  node scripts/post-deploy-bil-vault.mjs
 ```
 
 Idempotent — re-running skips already-granted roles + already-seeded
@@ -137,7 +137,7 @@ After verifying state, rotate admin/upgrader roles to governance:
 ```sh
 RPC=… PRIVATE_KEY=0x<deployer> VAULT_ADDRESS=<MAINNET_VAULT> \
   NEW_ADMIN=<governance> \
-  node scripts/post-deploy-vault.mjs
+  node scripts/post-deploy-bil-vault.mjs
 ```
 
 This grants `DEFAULT_ADMIN_ROLE` / `ADMIN_ROLE` / `UPGRADER_ROLE` to
