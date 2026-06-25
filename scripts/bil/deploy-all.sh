@@ -110,15 +110,27 @@ GHO_ARTIFACTS=(
 )
 
 # Chain-wide singletons reused from the existing Hydration deployment instead
-# of redeployed. Safe because they carry no market-specific immutable (the
-# logic libraries differ only by their cross-link addresses; ReservesSetupHelper
-# is stateless). Seeded into the target deployments dir before phase 1 so
-# hardhat-deploy reuses them. Disable with REUSE_HYDRATION_SINGLETONS=0.
+# of redeployed. Safe because they carry no market-specific immutable. Seeded
+# into the target deployments dir before phase 1 so hardhat-deploy reuses
+# them. Disable with REUSE_HYDRATION_SINGLETONS=0.
+#
+# Each entry's reuse-justification:
+#   - logic libraries: pure code, no constructor args
+#   - ReservesSetupHelper: stateless
+#   - PoolConfigurator-Implementation: no constructor args (provider is set
+#     in proxy storage via initialize); the impl is pure logic, two markets'
+#     proxies can delegate-call to the same impl
+#   - ReserveStrategy-rateStrategyStables: BIL's only reserve has
+#     borrowingEnabled=false, so the rate math is never executed. The
+#     provider-immutable mismatch (strategy bound to Hydration's provider)
+#     doesn't matter because no permissioned setters are called against it.
 REUSE_HYDRATION_SINGLETONS="${REUSE_HYDRATION_SINGLETONS:-1}"
 REUSABLE_ARTIFACTS=(
   SupplyLogic BorrowLogic LiquidationLogic EModeLogic
   BridgeLogic ConfiguratorLogic FlashLoanLogic PoolLogic
   ReservesSetupHelper
+  PoolConfigurator-Implementation
+  ReserveStrategy-rateStrategyStables
 )
 
 # ---------------------------------------------------------------------------
