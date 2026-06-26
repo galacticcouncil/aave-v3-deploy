@@ -112,6 +112,11 @@ export const NETWORKS_RPC_URL: iParamsPerNetwork<string> = {
   // GIGAHDX market deployed as its own market into deployments/gigahdx.
   // Same chain as hydration (mainnet); RPC overridable for fork testing.
   [eHydrationNetwork.gigahdx]: process.env.RPC || "https://rpc.hydradx.cloud",
+  // BIL market deployed as its own market into deployments/bil. Same chain
+  // as hydration (mainnet) but separate artifact namespace so hardhat-deploy
+  // doesn't try to reuse main-MM's per-market contracts (Pool-Implementation
+  // etc.) which bake provider immutables. RPC overridable for fork testing.
+  [eHydrationNetwork.bil]: process.env.RPC || "https://rpc.hydradx.cloud",
 };
 
 export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
@@ -131,6 +136,7 @@ export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
   [eHydrationNetwork.chopsticks]: true,
   [eHydrationNetwork.zombie]: true,
   [eHydrationNetwork.gigahdx]: true,
+  [eHydrationNetwork.bil]: true,
   [eBaseNetwork.base]: true,
 };
 

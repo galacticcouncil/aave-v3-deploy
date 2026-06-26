@@ -47,6 +47,13 @@ export const BILConfig: IAaveConfiguration = {
     [eHydrationNetwork.chopsticks]: {
       BIL: tokenAddress(550),
     },
+    // bil — mainnet target with its own deployments namespace (mirrors the
+    // gigahdx convention). Same chainId 222222, same RPC, separate
+    // deployments/bil/ dir so hardhat-deploy doesn't reuse main-MM's
+    // Pool-Implementation (which bakes provider immutables).
+    [eHydrationNetwork.bil]: {
+      BIL: tokenAddress(550),
+    },
   },
   // Reuse the main Hydration money-market treasury as the reserve-factor
   // recipient instead of standing up a fresh one. lark-2 is a mainnet-state
@@ -59,6 +66,7 @@ export const BILConfig: IAaveConfiguration = {
     [eHydrationNetwork.lark]: "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9",
     [eHydrationNetwork.lark2]: "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9",
     [eHydrationNetwork.chopsticks]: "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9",
+    [eHydrationNetwork.bil]: "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9",
   },
   EModes: {},
   ChainlinkAggregator: {
@@ -93,6 +101,11 @@ export const BILConfig: IAaveConfiguration = {
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
     },
     [eHydrationNetwork.zombie]: {
+      HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
+    },
+    // bil mainnet deploy — same auto-wire pattern as hydration: init-reserve
+    // pulls the BILOracleAdapter address from deployments/bil/.
+    [eHydrationNetwork.bil]: {
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
     },
   },
