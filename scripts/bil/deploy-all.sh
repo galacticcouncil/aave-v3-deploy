@@ -353,13 +353,16 @@ info "        + evmAccounts.approveContract(Pool-Proxy-BIL)"
 info "        + stablepool bootstrap (asset 10055, BIL/HOLLAR peg via BILOracleAdapter)"
 info "This PRINTS the encoded preimage hex + decoded tree and submits NOTHING."
 info "Take the 'submit preimages' hex below and submit it as a referendum yourself."
-npx hardhat bil --network "$NETWORK"
+# Retry covers transient RPC timeouts (chopsticks lazy-loading mainnet state
+# can stall on getUserAccountData / vault.exchangeRate reads). On real mainnet
+# the call is single-shot fast — retry is just defensive.
+retry 3 npx hardhat bil --network "$NETWORK"
 
 # ===========================================================================
 # Address sheet (read-only)
 # ===========================================================================
 phase "7 — generate the address sheet"
-npx hardhat run scripts/bil/generate-addresses.ts --network "$NETWORK"
+retry 2 npx hardhat run scripts/bil/generate-addresses.ts --network "$NETWORK"
 
 phase "DONE — contracts deployed to $RPC; proposal preimage printed in Phase 6"
 info "next: submit the Phase 6 preimage hex as a referendum manually and enact it,"
