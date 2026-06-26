@@ -96,7 +96,7 @@ HYDRATION_DEPLOYMENTS="deployments/hydration"
 HOLLAR_NETWORK="${HOLLAR_NETWORK:-$NETWORK}"
 HOLLAR_DEPLOY_DIR="$HOLLAR_DIR/deployments/$HOLLAR_NETWORK"
 
-GHO_DEPLOY_TAG="${GHO_DEPLOY_TAG:-bil_gho_deploy}"
+GHO_DEPLOY_TAG="${GHO_DEPLOY_TAG:-bil_hollar_deploy}"
 
 CORE_ARTIFACTS=(
   Pool-Proxy-BIL.json Pool-Implementation.json

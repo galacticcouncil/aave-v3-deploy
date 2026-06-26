@@ -60,9 +60,11 @@ export const BILConfig: IAaveConfiguration = {
   },
   EModes: {},
   ChainlinkAggregator: {
-    // mainnet — populate after BILOracleAdapter is deployed on mainnet.
+    // mainnet — BIL aggregator is auto-wired by init-reserve from the freshly
+    // deployed BILOracleAdapter artifact (see scripts/bil/deploy-all.sh phase 2).
+    // No hardcoded address: getPairsTokenAggregator skips the BIL entry during
+    // AaveOracle deploy, and init-reserve fills it via setAssetSources later.
     [eHydrationNetwork.hydration]: {
-      BIL: "TODO_DEPLOY_BILOracleAdapter",
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
     },
     // 0.lark — BILOracleAdapter deployed 2026-04-23.
@@ -83,13 +85,12 @@ export const BILConfig: IAaveConfiguration = {
       BIL: "0xAc4C01AbA189d90eCD707938D545f47535843642",
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
     },
-    // chopsticks dry-run — redeploy BILOracleAdapter each fresh fork.
+    // chopsticks dry-run — adapter is auto-wired by init-reserve from the
+    // freshly deployed BILOracleAdapter artifact.
     [eHydrationNetwork.chopsticks]: {
-      BIL: "TODO_DEPLOY_BILOracleAdapter",
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
     },
     [eHydrationNetwork.zombie]: {
-      BIL: "TODO_DEPLOY_BILOracleAdapter",
       HDX: "0xea63e594ee00590938E856F2134E6C792bA92d13",
     },
   },
