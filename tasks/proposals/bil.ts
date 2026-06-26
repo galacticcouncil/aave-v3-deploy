@@ -473,19 +473,15 @@ task(
   // warning rather than aborting the whole proposal — the main BIL
   // launch piece may still need re-application.
   try {
-    const stablepoolTxs = await buildStablepoolTxs(hre);
+    // inline=true skips the "asset 55 is registered" precondition since
+    // we register it earlier in this same batch — runtime ordering is
+    // preserved by batchAll executing sequentially.
+    const stablepoolTxs = await buildStablepoolTxs(hre, { inline: true });
     txs.push(...stablepoolTxs);
     console.log(`Phase E.5: appended ${stablepoolTxs.length} stablepool txs`);
   } catch (e: any) {
-    const msg = e?.message ?? "";
-    if (/already registered/i.test(msg)) {
-      console.log(`Phase E.5: stablepool already live — skipping (${msg})`);
-    } else if (/aToken receipt\) is not registered/i.test(msg)) {
-      // Pre-enactment state: the main bil.ts batch (above) registers BIL
-      // asset 55. The stablepool builder requires that already on-chain,
-      // so it cannot run in the same preimage. Submit and enact the main
-      // BIL proposal first, then run a separate stablepool preimage.
-      console.log(`Phase E.5: stablepool deferred — main BIL proposal must enact first (${msg})`);
+    if (/already registered/i.test(e?.message ?? "")) {
+      console.log(`Phase E.5: stablepool already live — skipping (${e.message})`);
     } else {
       throw e;
     }

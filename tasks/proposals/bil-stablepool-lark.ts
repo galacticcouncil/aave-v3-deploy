@@ -53,11 +53,19 @@ export async function buildBilStablepoolProposal(hre: any) {
  * larger `utility.batchAll` (e.g. by `bil.ts` to fold the bootstrap into
  * the main launch proposal).
  *
- * Idempotent at the proposal level: pre-flight checks throw if the
- * stablepool is already live (asset 10055 registered), so callers can
- * catch and skip when running against a network where it's done.
+ * `inline = true` means the caller is `bil.ts` folding this into the main
+ * launch batch, so asset 55 (BIL aToken) will be registered earlier in the
+ * SAME batch — skip the on-chain "asset 55 registered" precondition. The
+ * runtime still validates at execution time inside `batchAll`. The
+ * standalone `bil-stablepool-patch` task keeps the check (default false),
+ * since it runs against a chain where bil.ts has already enacted.
+ *
+ * Idempotent at the proposal level: still throws if the stablepool is
+ * already live (asset 10055 registered), so callers can catch and skip
+ * when running against a network where the bootstrap is done.
  */
-export async function buildStablepoolTxs(hre: any) {
+export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = {}) {
+  const inline = opts.inline === true;
   const { utils } = hre.ethers;
 
   // ====================================================================
@@ -124,12 +132,15 @@ export async function buildStablepoolTxs(hre: any) {
     );
   }
 
-  const bilInfo: any = await hydrationApi.query.assetRegistry.assets(BIL);
-  if (!bilInfo.isSome) {
-    throw new Error(
-      `Asset ${BIL} (BIL aToken receipt) is not registered. The bil.ts ` +
-        `proposal must execute first.`
-    );
+  if (!inline) {
+    const bilInfo: any = await hydrationApi.query.assetRegistry.assets(BIL);
+    if (!bilInfo.isSome) {
+      throw new Error(
+        `Asset ${BIL} (BIL aToken receipt) is not registered. The bil.ts ` +
+          `proposal must execute first (or pass { inline: true } to fold ` +
+          `into the same batch).`
+      );
+    }
   }
 
   // BILDepositZap must be max-approved on HOLLAR→Vault.
