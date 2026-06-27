@@ -230,6 +230,23 @@ if [ "$REUSE_HYDRATION_SINGLETONS" = "1" ] && [ "deployments/${NETWORK}" != "$HY
     reused=$((reused + 1))
   done
   info "seeded $reused reusable singleton(s) — hardhat-deploy will reuse, not redeploy"
+
+  # Strip transactionHash + receipt from EVERY existing artifact in the target
+  # dir. hardhat-deploy's `fetchIfDifferent` calls eth_getTransactionByHash on
+  # the stored hash; if the artifact came from another fork/chain (e.g. a prior
+  # chopsticks rehearsal), the hash won't resolve on the current RPC and the
+  # deploy hangs with `cannot get the transaction for X's previous deployment`.
+  # Stripping the hash makes hardhat-deploy fall back to bytecode comparison
+  # (eth_getCode at the recorded address), which works across forks.
+  stripped=0
+  for f in deployments/${NETWORK}/*.json; do
+    [ -f "$f" ] || continue
+    case "$(basename "$f")" in .chainId|solcInputs) continue ;; esac
+    if node -e "const fs=require('fs');const p='$f';const j=JSON.parse(fs.readFileSync(p));if(j.transactionHash||j.receipt){delete j.transactionHash;delete j.receipt;fs.writeFileSync(p,JSON.stringify(j,null,2));process.exit(0)}else{process.exit(1)}" 2>/dev/null; then
+      stripped=$((stripped + 1))
+    fi
+  done
+  [ "$stripped" -gt 0 ] && info "stripped stale tx hash from $stripped pre-existing artifact(s) to dodge fetchIfDifferent"
 fi
 
 # ===========================================================================
