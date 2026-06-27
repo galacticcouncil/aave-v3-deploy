@@ -303,6 +303,9 @@ contract BILVault is
     event MinReinvestAmountUpdated(uint256 newAmount);
     event MinRedeemAmountUpdated(uint256 newAmount);
     event OracleUpdated(address indexed oracle);
+    /// @notice Emitted when the admin updates the principal/yield mismatch
+    ///         circuit-breaker threshold. See `principalMismatchBpsThreshold`.
+    event PrincipalMismatchBpsUpdated(uint256 oldBps, uint256 newBps);
     event PoolRegistered(address indexed pool);
     event ActiveDepositPoolSet(address indexed pool);
     event PoolRetired(address indexed pool);
@@ -340,6 +343,29 @@ contract BILVault is
     error PoolTokenMismatch();
     error OnlyPoolNFTs();
     error PoolHasOpenPositions();
+    /// @notice Reverts pokeDecentral when Decentral pays back materially less
+    ///         principal than the vault recorded for the position. Defense in
+    ///         depth against H-02: a UUPS-upgraded Decentral impl could add a
+    ///         haircut path that atomically shocks the exchange rate (and any
+    ///         downstream Aave / stableswap oracle). Operators can pause,
+    ///         investigate, then either raise the threshold or pursue recovery
+    ///         off-chain before retrying.
+    error PrincipalDriftTooLarge(
+        uint256 positionIndex,
+        uint256 expected,
+        uint256 received,
+        uint256 shortfallBps
+    );
+    /// @notice Same shape, for the yield-execute branch. Yield haircuts are
+    ///         less severe than principal haircuts but a malicious upgrade
+    ///         could compound them, so we gate on the same threshold.
+    error YieldDriftTooLarge(
+        uint256 positionIndex,
+        uint256 expected,
+        uint256 received,
+        uint256 shortfallBps
+    );
+    error BpsAboveMax();
 
     // ═══════════════════════════════════════════════════════════════════════
     //                         INITIALIZER
@@ -381,6 +407,9 @@ contract BILVault is
         tvlCap = _tvlCap;
         minReinvestAmount = 10e18; // 10 HOLLAR
         minRedeemAmount = 1e18; // 1 BIL
+        // 1% default tolerance for Decentral payout drift (audit H-02). Anything
+        // above this trips the circuit breaker in pokeDecentral.
+        principalMismatchBpsThreshold = 100;
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(ADMIN_ROLE, _admin);
@@ -710,30 +739,25 @@ contract BILVault is
         if (
             pos.state == NFTState.Active && block.timestamp >= pos.maturityTime
         ) {
+            // Cap-at-maturity (audit H-01): if the position hasn't already been
+            // capped via cleanMaturedFromBucket, do it inline now. Decentral
+            // stops paying yield at maturityTime, so any accrual past maturity
+            // is phantom and must be excluded before we move the position to
+            // YieldWithdrawalRequested — otherwise totalPendingYield would
+            // record the inflated value and shareholders would absorb the
+            // shortfall at executeYieldWithdrawal time.
+            if (pos.pendingYield == 0) {
+                _capYieldAtMaturity(positionIndex);
+            }
+
             // Wrapped in try/catch like every other Decentral interaction in
             // this function — without it, a paused/shutdown Decentral pool at
             // a position's maturity would revert the whole call and leave the
             // position permanently stuck.
             try pool.requestYieldWithdrawal(pos.tokenId) {
-                // Decentral has now locked the yield amount Decentral will pay
-                // at execute. Stop the bucket from accruing more yield for
-                // this position from this point forward — anything beyond the
-                // locked amount is yield Decentral will not pay. The locked
-                // amount is tracked in pendingYield (and aggregated in
-                // totalPendingYield) so totalAssets() stays flat across the
-                // admin-approval delay.
-                uint256 expected = (pos.principal *
-                    pos.apyWad *
-                    (block.timestamp - pos.yieldStartTime)) /
-                    (SECONDS_PER_YEAR * WAD);
-                pos.pendingYield = expected;
-                totalPendingYield += expected;
-                _removeYieldFromBucket(
-                    pos.apyWad,
-                    pos.principal,
-                    pos.yieldStartTime
-                );
-
+                // Bucket bookkeeping (yield removal, pendingYield, and
+                // totalPendingYield bump) was already handled by
+                // _capYieldAtMaturity above. Just promote the state.
                 pos.state = NFTState.YieldWithdrawalRequested;
                 emit PositionProcessed(
                     positionIndex,
@@ -742,7 +766,10 @@ contract BILVault is
                 );
             } catch {
                 // Decentral may be paused/shutdown — no-op so the position
-                // stays Active. The next pokeDecentral call retries.
+                // stays Active. The cap remains locked in (pendingYield set,
+                // bucket cleared) so totalAssets() stays flat; the next
+                // pokeDecentral call retries the Decentral request and skips
+                // the cap step since pendingYield is already non-zero.
                 return;
             }
         }
@@ -750,9 +777,11 @@ contract BILVault is
         // YieldWithdrawalRequested → YieldClaimed
         if (pos.state == NFTState.YieldWithdrawalRequested) {
             uint256 balBefore = hollar.balanceOf(address(this));
+            uint256 expectedYield = pos.pendingYield;
+            uint256 yieldReceived;
+            bool yieldExecuted;
             try pool.executeYieldWithdrawal(pos.tokenId) {
-                uint256 yieldReceived = hollar.balanceOf(address(this)) -
-                    balBefore;
+                yieldReceived = hollar.balanceOf(address(this)) - balBefore;
 
                 // Bucket bookkeeping was already cleared at request time. Move
                 // the locked yield from pending → idle. Discrepancies between
@@ -769,9 +798,31 @@ contract BILVault is
                     pos.tokenId,
                     uint8(pos.state)
                 );
+                yieldExecuted = true;
             } catch {
                 // Not yet approved by Decentral — no-op, retry next cycle
                 return;
+            }
+
+            // H-02 circuit breaker: outside the try/catch so the revert
+            // propagates up. Only a shortfall trips it; surplus is benign and
+            // lifts the rate. Skipped when expectedYield is zero (no pending
+            // yield to compare against, e.g., dust-rounded positions).
+            if (
+                yieldExecuted &&
+                expectedYield > 0 &&
+                yieldReceived < expectedYield
+            ) {
+                uint256 shortfallBps = ((expectedYield - yieldReceived) *
+                    10_000) / expectedYield;
+                if (shortfallBps > principalMismatchBpsThreshold) {
+                    revert YieldDriftTooLarge(
+                        positionIndex,
+                        expectedYield,
+                        yieldReceived,
+                        shortfallBps
+                    );
+                }
             }
         }
 
@@ -793,29 +844,32 @@ contract BILVault is
         // PrincipalWithdrawalRequested → Redeemed
         if (pos.state == NFTState.PrincipalWithdrawalRequested) {
             uint256 balBefore = hollar.balanceOf(address(this));
+            uint256 expectedPrincipal = pos.principal;
+            uint256 principalReceived;
+            bool principalExecuted;
             try pool.executePrincipalWithdrawal(pos.tokenId) {
-                uint256 principalReceived = hollar.balanceOf(address(this)) -
-                    balBefore;
+                principalReceived = hollar.balanceOf(address(this)) - balBefore;
 
                 // Surface any drift between the principal Decentral paid and
-                // what the vault recorded. Mismatches are silently absorbed
-                // into idleHollar (positive delta) or come out of the
-                // exchange rate (negative delta) — the event lets operators
-                // monitor for repeated drift without changing the
-                // socialization behavior.
-                if (principalReceived != pos.principal) {
+                // what the vault recorded. Sub-threshold mismatches are
+                // silently absorbed into idleHollar (positive delta) or come
+                // out of the exchange rate (negative delta) — the event lets
+                // operators monitor for repeated drift without changing the
+                // socialization behavior. Catastrophic shortfalls trip the
+                // circuit breaker below (audit H-02).
+                if (principalReceived != expectedPrincipal) {
                     int256 delta = int256(principalReceived) -
-                        int256(pos.principal);
+                        int256(expectedPrincipal);
                     emit PrincipalMismatch(
                         positionIndex,
                         pos.tokenId,
-                        pos.principal,
+                        expectedPrincipal,
                         principalReceived,
                         delta
                     );
                 }
 
-                _removePrincipalFromBucket(pos.principal);
+                _removePrincipalFromBucket(expectedPrincipal);
 
                 idleHollar += principalReceived;
                 pos.state = NFTState.Redeemed;
@@ -833,11 +887,73 @@ contract BILVault is
                     uint256 rate = exchangeRate();
                     _processQueueWithHollar(idleHollar, rate);
                 }
+                principalExecuted = true;
             } catch {
                 // Not yet approved or delay not elapsed — no-op
                 return;
             }
+
+            // H-02 circuit breaker: outside the try/catch so the revert
+            // propagates up. Only a shortfall trips it; surplus is benign and
+            // lifts the rate. The whole transaction reverts (including the
+            // state and bucket changes above), so the vault refuses to absorb
+            // a catastrophic shock atomically. Operations can pause and
+            // investigate before retrying.
+            if (
+                principalExecuted &&
+                expectedPrincipal > 0 &&
+                principalReceived < expectedPrincipal
+            ) {
+                uint256 shortfallBps = ((expectedPrincipal -
+                    principalReceived) * 10_000) / expectedPrincipal;
+                if (shortfallBps > principalMismatchBpsThreshold) {
+                    revert PrincipalDriftTooLarge(
+                        positionIndex,
+                        expectedPrincipal,
+                        principalReceived,
+                        shortfallBps
+                    );
+                }
+            }
         }
+    }
+
+    /// @notice Cap a matured position's yield accrual at `maturityTime`
+    ///         WITHOUT advancing its Decentral lifecycle (audit H-01).
+    /// @dev Permissionless. For any `Active` position past `maturityTime` that
+    ///      has not yet been moved to `YieldWithdrawalRequested`, this freezes
+    ///      the yield contribution at the maturity-capped amount, removes the
+    ///      position from the live yield bucket, and locks the capped amount
+    ///      into `totalPendingYield`.
+    ///
+    ///      Why this exists: `totalAssets()` derives accrued yield from the
+    ///      aggregate `(block.timestamp * yieldRateSum - yieldOffsetSum)`,
+    ///      which grows linearly with `block.timestamp` and has no per-position
+    ///      maturity awareness. Real Decentral stops paying yield at
+    ///      `maturityTime`, so a position that lingers in `Active` past
+    ///      maturity (e.g., a delayed keeper) silently inflates the rate.
+    ///      Anyone — a keeper bot, an arbitrage-prevention bot, or a user
+    ///      about to redeem — may call this atomically before any rate-sensitive
+    ///      operation to lock the bucket at the honest value.
+    ///
+    ///      Idempotent: if the position is already capped (`pendingYield != 0`
+    ///      while still `Active`) or has moved past `Active`, the call is a
+    ///      no-op. Reverts only when the position is not yet past maturity, so
+    ///      callers can probe safely.
+    /// @param positionIndex Index of the position in `positions`
+    function cleanMaturedFromBucket(uint256 positionIndex) external nonReentrant whenNotPaused {
+        NFTPosition storage pos = positions[positionIndex];
+        // Only cap positions still in Active state — past that, the bucket
+        // has already been settled and pendingYield/totalPendingYield manage
+        // accounting until execute.
+        if (pos.state != NFTState.Active) return;
+        // Already capped — no-op (idempotent).
+        if (pos.pendingYield != 0) return;
+        // Refuse to cap pre-maturity positions: bucket math is correct for
+        // live positions and the per-position storage would be wasted.
+        if (block.timestamp < pos.maturityTime) return;
+
+        _capYieldAtMaturity(positionIndex);
     }
 
     /// @notice Process queued redemptions, then reinvest remaining idle HOLLAR
@@ -1367,6 +1483,25 @@ contract BILVault is
         emit OracleUpdated(_oracle);
     }
 
+    /// @notice Update the circuit-breaker threshold for Decentral payout drift.
+    /// @dev    Defense in depth against H-02. A shortfall (bps of the recorded
+    ///         expected amount) above this threshold reverts `pokeDecentral`
+    ///         in both the yield- and principal-execute branches, refusing to
+    ///         atomically socialize a catastrophic shock into `exchangeRate()`.
+    ///         Surplus is always tolerated (lifts the rate). Set to `10000`
+    ///         (100%) to effectively disable; set to `0` to be maximally strict
+    ///         (any sub-expected payout reverts).
+    /// @param  bps  New threshold in basis points. Must be <= 10_000.
+    function setPrincipalMismatchBpsThreshold(uint256 bps)
+        external
+        onlyRole(ADMIN_ROLE)
+    {
+        if (bps > 10_000) revert BpsAboveMax();
+        uint256 old = principalMismatchBpsThreshold;
+        principalMismatchBpsThreshold = bps;
+        emit PrincipalMismatchBpsUpdated(old, bps);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     //                       POOL REGISTRY (ADMIN)
     // ═══════════════════════════════════════════════════════════════════════
@@ -1543,6 +1678,29 @@ contract BILVault is
         yieldOffsetSum += apyWad * principal * yieldStartTime;
     }
 
+    /// @dev Cap a position's yield at `maturityTime` and freeze it into
+    ///      `pendingYield` / `totalPendingYield` (audit H-01).
+    ///      Pre-conditions enforced by callers:
+    ///        - pos.state == Active
+    ///        - pos.pendingYield == 0 (not yet capped)
+    ///        - block.timestamp >= pos.maturityTime
+    ///      Removes the position's contribution from the live yield bucket so
+    ///      `totalAssets()` no longer over-counts virtual post-maturity yield.
+    function _capYieldAtMaturity(uint256 positionIndex) internal {
+        NFTPosition storage pos = positions[positionIndex];
+        uint256 capped = (pos.principal *
+            pos.apyWad *
+            (pos.maturityTime - pos.yieldStartTime)) /
+            (SECONDS_PER_YEAR * WAD);
+        pos.pendingYield = capped;
+        totalPendingYield += capped;
+        _removeYieldFromBucket(
+            pos.apyWad,
+            pos.principal,
+            pos.yieldStartTime
+        );
+    }
+
     /// @dev Stop a position from accruing yield without touching its principal.
     ///      Used at Active → YieldWithdrawalRequested when Decentral has locked
     ///      the payout amount.
@@ -1604,10 +1762,17 @@ contract BILVault is
     ///      cancel-spam DoS that bloated queueTail with deleted slots.
     mapping(address => uint256[]) internal _settledByController;
 
+    /// @notice Circuit-breaker threshold (bps) for Decentral payout drift on
+    ///         the yield- and principal-execute branches of `pokeDecentral`.
+    ///         A shortfall above this threshold reverts the call (audit H-02
+    ///         defense in depth — see `setPrincipalMismatchBpsThreshold`).
+    ///         Default 100 (1%). Bounded to [0, 10_000].
+    uint256 public principalMismatchBpsThreshold;
+
     // ═══════════════════════════════════════════════════════════════════════
     //                         STORAGE GAP
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @dev Reserved storage slots for future upgrades.
-    uint256[49] private __gap;
+    uint256[48] private __gap;
 }

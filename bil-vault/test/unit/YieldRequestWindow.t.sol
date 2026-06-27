@@ -73,13 +73,26 @@ contract YieldRequestWindowTest is BaseTest {
 
         uint256 rateBefore = vault.exchangeRate();
 
-        // Approve and execute
+        // Approve and execute. Under H-01 fix, pendingYield is capped at
+        // maturityTime (60d) but the mock pays out at its own continuously-
+        // accruing schedule (61d worth, because _toYWR warped 61 days before
+        // requesting). The 1-day surplus is benign — it lifts the rate (the
+        // existing comment in pokeDecentral notes this surplus path
+        // explicitly). Tolerate the upward rate movement; assert only that
+        // the rate did not DROP — that's the bug the original test guarded.
         (uint256 tokenId, , , , , ) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
         vault.pokeDecentral(0);
 
         uint256 rateAfter = vault.exchangeRate();
-        assertApproxEqAbs(rateAfter, rateBefore, 10, "rate flat across yield-execute");
+        assertGe(rateAfter, rateBefore, "rate must not drop across yield-execute");
+        // Surplus is small (one day of yield on the 1.18x-APR-on-100k position
+        // divided over total supply). Bound it conservatively.
+        assertLt(
+            rateAfter - rateBefore,
+            5e15, // 0.5% of WAD
+            "surplus from maturity-cap is bounded"
+        );
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -97,10 +110,13 @@ contract YieldRequestWindowTest is BaseTest {
         // Trigger request
         vault.pokeDecentral(0);
 
-        // After request: pending = expected yield over [T0, T2]
-        uint256 expected = (100_000e18 * APY_18_PERCENT * 61 * SECONDS_PER_DAY) / (365 days * 1e18);
-        assertApproxEqRel(vault.totalPendingYield(), expected, 0.001e18, "totalPendingYield set");
-        assertApproxEqRel(_pendingYield(0), expected, 0.001e18, "pos.pendingYield set");
+        // After request: pending = expected yield over [T0, maturityTime].
+        // Audit H-01 fix: pendingYield is capped at the 60-day maturity, not
+        // the 61-day call timestamp — phantom post-maturity accrual is no
+        // longer recorded.
+        uint256 expected = (100_000e18 * APY_18_PERCENT * 60 * SECONDS_PER_DAY) / (365 days * 1e18);
+        assertApproxEqRel(vault.totalPendingYield(), expected, 0.001e18, "totalPendingYield set (capped at maturity)");
+        assertApproxEqRel(_pendingYield(0), expected, 0.001e18, "pos.pendingYield set (capped at maturity)");
 
         // Yield bookkeeping in bucket should be zero (we removed it)
         assertEq(vault.yieldRateSum(), 0, "bucket yield cleared at request");

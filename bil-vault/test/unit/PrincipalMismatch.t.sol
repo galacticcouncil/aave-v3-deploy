@@ -136,15 +136,19 @@ contract PrincipalMismatchTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function test_principalRedemption_shortfallReducesExchangeRate() public {
+        // Sub-threshold (50 bps on 10K principal = 50 HOLLAR). The
+        // PrincipalDriftTooLarge circuit breaker tolerates this — the loss
+        // socialises through the exchange rate as before. Larger haircuts
+        // revert; see DecentralPrincipalShockCircuitBreaker.t.sol for the
+        // breaker-fires path.
         uint256 tokenId = _readyForPrincipalRedemption();
-        pool.setPayoutDelta(tokenId, -1_000e18); // 1000 HOLLAR shortfall
+        pool.setPayoutDelta(tokenId, -50e18);
 
         uint256 rateBefore = vault.exchangeRate();
         vault.pokeDecentral(0);
         uint256 rateAfter = vault.exchangeRate();
 
-        // Rate should drop because the vault is short 1000 HOLLAR
-        assertLt(rateAfter, rateBefore, "rate drops on shortfall");
+        assertLt(rateAfter, rateBefore, "rate drops on sub-threshold shortfall");
     }
 
     function test_principalRedemption_bonusIncreasesExchangeRate() public {
@@ -189,8 +193,9 @@ contract PrincipalMismatchTest is BaseTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     function testFuzz_principalRedemption_arbitraryDelta(int128 delta) public {
-        // Bound the delta to a sensible range so we don't underflow the principal
-        delta = int128(bound(int256(delta), -1_000e18, 1_000e18));
+        // Bound the delta to sub-threshold (below 100 bps = 100 HOLLAR on 10K).
+        // PrincipalDriftTooLarge tested separately in CircuitBreaker suite.
+        delta = int128(bound(int256(delta), -99e18, 1_000e18));
         uint256 tokenId = _readyForPrincipalRedemption();
         pool.setPayoutDelta(tokenId, int256(delta));
 
