@@ -117,6 +117,21 @@ raises the ETH-per-pETH-share price. This is the entire "deposit ETH, earn more 
 mechanism — depositors never receive PRIME, HOLLAR, or any token but their own collateral;
 the swap happens once, inside `compound`, on their behalf.
 
+**No user action required at either step, and compounding auto-reinvests into more yield —
+not just idle balance.** `compound()` itself only supplies the swapped-in ETH — it does not
+borrow more HOLLAR or grow the loop in the same call. But that extra ETH raises the vault's
+collateral value, which is exactly what `rebalance()` (§ above, permissionless, called by a
+bot — never the user) watches for: once compounding (or price appreciation) has widened the
+gap between the vault's current LTV and the reserve's live max LTV past the 500bps band,
+`rebalance()` borrows more HOLLAR against the *new, larger* collateral base, mints the
+matching synthetic, and deploys that HOLLAR into the shared loop (`subLoop.deposit`) — growing
+the position's loop shares, and with them its slice of every future harvest. So a deposit left
+untouched compounds in two stages, both bot-driven and neither requiring the depositor to lift
+a finger: **harvest → compound()** lifts the share price immediately, and the next
+**rebalance()** re-levers the now-larger collateral base back into the loop, so subsequent
+harvests are skimmed off a bigger position. The user never re-deposits, re-stakes, or claims
+anything until they choose to redeem.
+
 ### 4. Redeem — cashing out at the appreciated share price
 
 `requestRedeem(shares, owner)` is async (ERC-7540-style), because unwinding the shared loop
@@ -162,7 +177,18 @@ your ETH's borrowing power ─► HOLLAR ─────┘
         compound(): PRIME ─(swap, oracle-fair floor)─► YOUR collateral ─► supplied to YOUR Main position
                     │
                     ▼
-        your vault's aToken balance ↑ ⇒ exchangeRate() ↑ ⇒ your pETH is worth more ETH
+        your vault's aToken balance ↑ ⇒ exchangeRate() ↑ ⇒ your pETH is worth more ETH  (no user action)
+                    │
+                    ▼
+        rebalance() [bot, permissionless]: LTV headroom from the bigger collateral base ⇒
+        borrow more HOLLAR ⇒ mint more synthetic ⇒ deposit into the shared SubLoop  (no user action)
+                    │
+                    └──────────────────────► loop shares ↑ ⇒ bigger cut of every future harvest ─┐
+                                                                                                   │
+                    ┌──────────────────────────────────────────────────────────────────────────────┘
+                    ▼
+        (repeats: bigger position ⇒ bigger harvests ⇒ bigger compounds ⇒ bigger rebalances — a user
+         who never touches their deposit still compounds through both stages, indefinitely)
                     │
                     ▼
         requestRedeem → (async, gradual unwind) → pokeSettle → claim: you receive > 1 ETH per ETH deposited
