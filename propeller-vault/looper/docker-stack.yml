@@ -1,0 +1,66 @@
+# Propeller Looper — Docker Swarm stack
+#
+# Drives the SubLoop ramp: each cycle calls the permissionless `pokeBorrow()`
+# to lever one tranche toward target HF, then idles once at target. This is the
+# off-chain loop that replaced the pallet-DCA gradual deploy.
+#
+# Deploy:
+#   docker stack deploy -c docker-stack.yml propeller-looper
+#
+# Env vars expected at deploy time:
+#   SUBLOOP_ADDRESS       — the SubLoop UUPS proxy
+#   LOOPER_PRIVATE_KEY    — signer key. pokeBorrow is PERMISSIONLESS, so this
+#                           account needs NO role — only enough HDX for gas.
+#   RPC_URL               — Hydration RPC (defaults below)
+#   POOL_ADDRESS          — aave main-market pool (for leverage logging)
+#   POLL_INTERVAL_MS      — cycle interval, default 30s
+#   RAMP_HF_BUFFER        — idle once HF ≤ target·(1+buffer), default 0.005
+#   ALERT_WEBHOOK         — Discord webhook URL (optional)
+#   IMAGE                 — override image (defaults to galacticcouncil/propeller-looper:latest)
+#
+# replicas MUST stay at 1 — two loopers would fight over the signer's tx
+# nonce every cycle. update_config is stop-first for the same reason.
+
+version: "3.8"
+
+services:
+  looper:
+    image: ${IMAGE:-galacticcouncil/propeller-looper:latest}
+    environment:
+      RPC_URL: ${RPC_URL:-https://rpc.nice.hydration.cloud}
+      SUBLOOP_ADDRESS: ${SUBLOOP_ADDRESS:?SUBLOOP_ADDRESS required}
+      LOOPER_PRIVATE_KEY: ${LOOPER_PRIVATE_KEY:?LOOPER_PRIVATE_KEY required}
+      POOL_ADDRESS: ${POOL_ADDRESS:-0x1b02E051683b5cfaC5929C25E84adb26ECf87B38}
+      POLL_INTERVAL_MS: ${POLL_INTERVAL_MS:-30000}
+      RAMP_HF_BUFFER: ${RAMP_HF_BUFFER:-0.005}
+      ALERT_WEBHOOK: ${ALERT_WEBHOOK:-}
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 10s
+        max_attempts: 0          # unbounded restarts — looper must always come back
+        window: 60s
+      update_config:
+        parallelism: 1
+        order: stop-first        # avoid nonce overlap with the outgoing task
+        delay: 5s
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+      labels:
+        com.hydration.role: "propeller-looper"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

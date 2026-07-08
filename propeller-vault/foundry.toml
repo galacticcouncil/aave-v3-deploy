@@ -1,0 +1,28 @@
+[profile.default]
+src = "src"
+out = "out"
+test = "test"
+script = "script"
+# Reuse the sibling hdcl-vault's already-installed libs (forge-std, OZ, OZ-upgradeable)
+# so this module compiles without a separate `forge install`. Vendor independently
+# before audit if a clean dependency boundary is wanted.
+libs = ["../hdcl-vault/lib"]
+solc_version = "0.8.22"
+optimizer = true
+# runtime-gas weighted: the keeper pokes every cycle, and deploy size has 2-4kB
+# headroom even at runs=1000 (CollateralVault 22.5k / SubLoop 18.4k of 24.5k)
+optimizer_runs = 200
+evm_version = "paris"
+via_ir = true
+# read access for the verity forktest harness (reads bridge/forktest/bytecode/*.bin).
+fs_permissions = [{ access = "read", path = "./formal" }]
+
+[invariant]
+runs = 256
+depth = 50
+fail_on_revert = false
+shrink_run_limit = 0
+
+[rpc_endpoints]
+hydration = "${RPC_HYDRATION}"
+lark = "https://2.lark.hydration.cloud"
