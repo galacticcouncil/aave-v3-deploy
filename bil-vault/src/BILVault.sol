@@ -351,6 +351,10 @@ contract BILVault is
     );
     error BpsAboveMax();
     error MaturityBacklog();
+    /// @dev A new position would break the non-decreasing maturity ordering the
+    ///      `checkpointHead` clamp relies on (e.g. switching to a shorter-period
+    ///      pool while older positions are still active).
+    error NonMonotonicMaturity();
 
     // ═══════════════════════════════════════════════════════════════════════
     //                         INITIALIZER
@@ -412,12 +416,15 @@ contract BILVault is
     function totalAssets() public view returns (uint256) {
         uint256 accruedYield = 0;
         if (yieldRateSum > 0) {
-            // An overdue heap root clamps the entire live aggregate. Later
-            // positions may be conservatively under-counted until sync, but
-            // phantom post-maturity yield is impossible even without a keeper.
+            // The earliest un-checkpointed maturity clamps the entire live
+            // aggregate. Positions are appended in non-decreasing maturity
+            // order (enforced in _addToBucket), so positions[checkpointHead]
+            // is that earliest one. Later positions may be conservatively
+            // under-counted until sync, but phantom post-maturity yield is
+            // impossible even without a keeper.
             uint256 accrualTime = block.timestamp;
-            if (_maturityHeap.length > 0) {
-                uint256 earliest = _maturityHeap[0] >> 128;
+            if (checkpointHead < positions.length) {
+                uint256 earliest = positions[checkpointHead].maturityTime;
                 if (earliest < accrualTime) accrualTime = earliest;
             }
             uint256 gross = accrualTime * yieldRateSum;
@@ -729,7 +736,7 @@ contract BILVault is
         if (
             pos.state == QueueLib.NFTState.Active && block.timestamp >= pos.maturityTime
         ) {
-            // The chronological heap sync above must have capped this position
+            // The chronological sync above must have capped this position
             // before its Decentral lifecycle can advance. A larger overdue
             // backlog is drained over subsequent permissionless calls.
             if (!pos.yieldCapped) return;
@@ -1528,42 +1535,53 @@ contract BILVault is
     }
 
     /// @dev Record a fresh position: bump principal counter and add to the
-    ///      yield aggregates. Used by deposit and reinvest paths.
+    ///      yield aggregates. Used by deposit and reinvest paths. Called right
+    ///      after the position is pushed, so `positions[positionIndex]` is it.
     function _addToBucket(
         uint256 positionIndex,
         uint256 apyWad,
         uint256 principal,
         uint256 yieldStartTime
     ) internal {
+        // Enforce the non-decreasing maturity invariant the checkpointHead
+        // clamp relies on: the new position must not mature before its
+        // predecessor. Holds automatically for a single pool with a constant
+        // investment period; fails loudly if a shorter-period pool is switched
+        // in while older positions are still live.
+        if (
+            positionIndex > 0 &&
+            positions[positionIndex].maturityTime <
+            positions[positionIndex - 1].maturityTime
+        ) revert NonMonotonicMaturity();
+
         totalInvestedPrincipal += principal;
         yieldRateSum += apyWad * principal;
         yieldOffsetSum += apyWad * principal * yieldStartTime;
-        QueueLib.pushMaturity(
-            _maturityHeap,
-            positions[positionIndex].maturityTime,
-            positionIndex
-        );
     }
 
     function _syncMaturities(
         uint256 maxPositions
     ) internal returns (uint256 processed) {
+        uint256 startHead = checkpointHead;
+        uint256 newHead;
         uint256 newRateSum;
         uint256 newOffsetSum;
         uint256 pendingAdded;
-        (processed, newRateSum, newOffsetSum, pendingAdded) =
+        (newHead, newRateSum, newOffsetSum, pendingAdded) =
             QueueLib.processMaturities(
                 positions,
-                _maturityHeap,
+                checkpointHead,
                 maxPositions,
                 block.timestamp,
                 yieldRateSum,
                 yieldOffsetSum,
                 SECONDS_PER_YEAR * WAD
             );
+        checkpointHead = newHead;
         yieldRateSum = newRateSum;
         yieldOffsetSum = newOffsetSum;
         totalPendingYield += pendingAdded;
+        processed = newHead - startHead;
     }
 
     function _syncBeforeRateSensitiveAction() internal {
@@ -1575,10 +1593,11 @@ contract BILVault is
         if (_hasMaturedBacklog()) revert MaturityBacklog();
     }
 
+    /// @dev True while the earliest un-checkpointed position is already due.
     function _hasMaturedBacklog() internal view returns (bool) {
         return
-            _maturityHeap.length > 0 &&
-            (_maturityHeap[0] >> 128) <= block.timestamp;
+            checkpointHead < positions.length &&
+            positions[checkpointHead].maturityTime <= block.timestamp;
     }
 
     /// @dev Drop a position's principal contribution after Decentral has paid
@@ -1632,8 +1651,13 @@ contract BILVault is
     ///         Default 100 (1%). Bounded to [0, 10_000].
     uint256 public principalMismatchBpsThreshold;
 
-    /// @dev Min-heap of packed (maturityTime, positionIndex) entries.
-    uint256[] private _maturityHeap;
+    /// @notice Index of the earliest position whose yield has NOT yet been
+    ///         checkpointed at maturity (audit H-01). Everything below it is
+    ///         capped; `positions[checkpointHead]` is the earliest still
+    ///         contributing live yield, so `totalAssets()` clamps accrual there.
+    ///         Monotonic; advanced only by `syncMaturities`. Valid because
+    ///         positions are appended in non-decreasing maturity order.
+    uint256 public checkpointHead;
 
     // ═══════════════════════════════════════════════════════════════════════
     //                         STORAGE GAP

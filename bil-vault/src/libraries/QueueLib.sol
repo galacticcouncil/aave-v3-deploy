@@ -10,7 +10,6 @@ import {IAggregatorV3Interface} from "../interfaces/IAggregatorV3Interface.sol";
 ///         reference explicitly; accounting helpers return aggregate deltas
 ///         for the vault to apply at the call boundary.
 library QueueLib {
-    uint256 private constant MATURITY_SHIFT = 128;
 
     enum NFTState {
         Active,
@@ -71,33 +70,17 @@ library QueueLib {
         uint256 pendingYield
     );
 
-    /// @notice Add a packed `(maturity, positionIndex)` entry to the min-heap.
-    /// @dev Kept in the linked library so heap maintenance does not consume
-    ///      the vault's EIP-170 bytecode budget.
-    function pushMaturity(
-        uint256[] storage heap,
-        uint256 maturityTime,
-        uint256 positionIndex
-    ) public {
-        require(maturityTime <= type(uint128).max, "maturity overflow");
-        require(positionIndex <= type(uint128).max, "position overflow");
-        uint256 entry = (maturityTime << MATURITY_SHIFT) | positionIndex;
-        heap.push(entry);
-        uint256 cursor = heap.length - 1;
-        while (cursor > 0) {
-            uint256 parent = (cursor - 1) / 2;
-            if (heap[parent] <= entry) break;
-            heap[cursor] = heap[parent];
-            cursor = parent;
-        }
-        heap[cursor] = entry;
-    }
-
-    /// @notice Cap up to `maxPositions` due heap roots and return aggregate
-    ///         accounting deltas to the vault.
+    /// @notice Checkpoint up to `maxPositions` due positions starting at
+    ///         `checkpointHead`, capping each one's yield at its maturity and
+    ///         returning aggregate accounting deltas + the advanced head.
+    /// @dev Positions are appended in non-decreasing maturity order (the vault
+    ///      enforces this in `_addToBucket`), so a single monotonic
+    ///      `checkpointHead` is the earliest un-checkpointed position — no heap
+    ///      needed. Kept in the linked library so the loop does not consume the
+    ///      vault's EIP-170 bytecode budget.
     function processMaturities(
         NFTPosition[] storage positions,
-        uint256[] storage heap,
+        uint256 checkpointHead,
         uint256 maxPositions,
         uint256 timestamp,
         uint256 rateSum,
@@ -106,55 +89,39 @@ library QueueLib {
     )
         public
         returns (
-            uint256 processed,
+            uint256 newHead,
             uint256 newRateSum,
             uint256 newOffsetSum,
             uint256 pendingYieldAdded
         )
     {
+        newHead = checkpointHead;
         newRateSum = rateSum;
         newOffsetSum = offsetSum;
-        while (processed < maxPositions && heap.length > 0) {
-            uint256 entry = heap[0];
-            uint256 maturityTime = entry >> MATURITY_SHIFT;
-            if (maturityTime > timestamp) break;
-            uint256 positionIndex = uint128(entry);
-
-            _popMaturity(heap);
-            NFTPosition storage pos = positions[positionIndex];
-            uint256 rate = pos.apyWad * pos.principal;
-            uint256 capped = (rate * (maturityTime - pos.yieldStartTime)) /
-                denominator;
-            pos.pendingYield = capped;
-            pos.yieldCapped = true;
-            newRateSum -= rate;
-            newOffsetSum -= rate * pos.yieldStartTime;
-            pendingYieldAdded += capped;
-            emit PositionYieldCapped(positionIndex, maturityTime, capped);
-            unchecked { ++processed; }
+        uint256 len = positions.length;
+        uint256 processed;
+        while (processed < maxPositions && newHead < len) {
+            NFTPosition storage pos = positions[newHead];
+            // Earliest un-checkpointed position; stop once it isn't due yet.
+            if (pos.maturityTime > timestamp) break;
+            // Defensive: a position can only advance past Active after it has
+            // been checkpointed, so this is normally false at the head.
+            if (!pos.yieldCapped) {
+                uint256 rate = pos.apyWad * pos.principal;
+                uint256 capped = (rate *
+                    (pos.maturityTime - pos.yieldStartTime)) / denominator;
+                pos.pendingYield = capped;
+                pos.yieldCapped = true;
+                newRateSum -= rate;
+                newOffsetSum -= rate * pos.yieldStartTime;
+                pendingYieldAdded += capped;
+                emit PositionYieldCapped(newHead, pos.maturityTime, capped);
+            }
+            unchecked {
+                ++newHead;
+                ++processed;
+            }
         }
-    }
-
-    function _popMaturity(uint256[] storage heap) private {
-        uint256 lastIndex = heap.length - 1;
-        uint256 last = heap[lastIndex];
-        heap.pop();
-        if (lastIndex == 0) return;
-
-        uint256 cursor;
-        uint256 len = heap.length;
-        while (true) {
-            uint256 left = cursor * 2 + 1;
-            if (left >= len) break;
-            uint256 right = left + 1;
-            uint256 smallest = right < len && heap[right] < heap[left]
-                ? right
-                : left;
-            if (heap[smallest] >= last) break;
-            heap[cursor] = heap[smallest];
-            cursor = smallest;
-        }
-        heap[cursor] = last;
     }
 
     function estimatedWaitTime(

@@ -8,63 +8,60 @@ import {MockDecentralPool} from "../mocks/MockDecentralPool.sol";
 import {MockPoolToken} from "../mocks/MockPoolToken.sol";
 
 contract MaturityCheckpointTest is BaseTest {
-    function test_heapOrdersOutOfOrderMaturitiesAndSyncsBounded() public {
+    /// @notice The FIFO clamp relies on positions being appended in
+    ///         non-decreasing maturity order. A deposit into a shorter-period
+    ///         pool while an older, longer-maturity position is still live must
+    ///         revert rather than silently corrupt the checkpointHead ordering.
+    function test_outOfOrderMaturityDepositReverts() public {
         pool.setMinimumInvestmentPeriodSeconds(90 days);
-        _deposit(alice, TEN_THOUSAND_HOLLAR); // index 0, maturity 90d
+        _deposit(alice, TEN_THOUSAND_HOLLAR); // index 0, maturity now+90d
 
+        // Switch to a 10-day pool: a new position would mature BEFORE index 0.
         MockDecentralPool pool10 = _newPool(10 days);
         _activate(pool10);
-        _deposit(alice, TEN_THOUSAND_HOLLAR); // index 1, maturity 10d
+        vm.expectRevert(BILVault.NonMonotonicMaturity.selector);
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+    }
 
-        MockDecentralPool pool40 = _newPool(40 days);
-        _activate(pool40);
-        _deposit(alice, TEN_THOUSAND_HOLLAR); // index 2, maturity 40d
+    /// @notice With in-order (constant-period) maturities, the unsynced view
+    ///         clamps at the earliest un-checkpointed maturity, `syncMaturities`
+    ///         advances the head one position per unit, and once fully drained
+    ///         `totalAssets` is time-invariant.
+    function test_inOrderMaturitiesClampAndBoundedSync() public {
+        // Three staggered deposits into the default 60-day pool → maturities
+        // are strictly increasing (t0+60, t5+60, t10+60), so FIFO holds.
+        _deposit(alice, TEN_THOUSAND_HOLLAR); // index 0
+        _warpDays(5);
+        _deposit(alice, TEN_THOUSAND_HOLLAR); // index 1
+        _warpDays(5);
+        _deposit(alice, TEN_THOUSAND_HOLLAR); // index 2
 
-        _warpDays(100);
+        // Warp well past all three maturities without any sync.
+        _warpDays(120);
 
-        uint256 principal = 30_000e18;
-        uint256 y10 = _yield(10 days);
-        uint256 y40 = _yield(40 days);
-        uint256 y90 = _yield(90 days);
+        // Unsynced accounting is frozen at the earliest maturity: advancing
+        // time cannot inflate it (the H-01 guarantee, keeper-free).
+        uint256 clampedAssets = vault.totalAssets();
+        _warpDays(30);
+        assertEq(vault.totalAssets(), clampedAssets, "unsynced view is time-frozen");
 
-        // Before stateful sync the oracle safely clamps every live rate to
-        // the earliest root (10d).
-        assertApproxEqAbs(
-            vault.totalAssets(),
-            principal + 3 * y10,
-            3,
-            "unsynced view clamps at 10d root"
-        );
+        // Bounded sync advances one position per unit, in order.
+        assertEq(vault.checkpointHead(), 0, "nothing checkpointed yet");
+        assertEq(vault.syncMaturities(1), 1, "one processed");
+        assertEq(vault.checkpointHead(), 1, "head advanced by one");
+        assertGt(_pendingYield(0), 0, "index 0 capped");
+        assertEq(_pendingYield(1), 0, "index 1 still live");
 
-        assertEq(vault.syncMaturities(1), 1, "one root processed");
-        assertApproxEqAbs(_pendingYield(1), y10, 1, "10d position is first heap root");
-        assertEq(_pendingYield(0), 0, "90d position remains live");
-        assertEq(_pendingYield(2), 0, "40d position remains live");
-        assertApproxEqAbs(vault.totalPendingYield(), y10, 1, "10d position capped first");
-        assertApproxEqAbs(
-            vault.totalAssets(),
-            principal + y10 + 2 * y40,
-            3,
-            "remaining live rates advance only to 40d root"
-        );
-
-        assertEq(vault.syncMaturities(1), 1, "second root processed");
-        assertApproxEqAbs(_pendingYield(2), y40, 1, "40d position is second heap root");
-        assertEq(_pendingYield(0), 0, "90d position remains live after two syncs");
-        assertApproxEqAbs(vault.totalPendingYield(), y10 + y40, 2, "40d position capped second");
-        assertApproxEqAbs(
-            vault.totalAssets(),
-            principal + y10 + y40 + y90,
-            3,
-            "90d root caps final live rate"
-        );
+        // Drain the rest; NAV rises (conservative under-count corrects upward)
+        // then becomes time-invariant once fully checkpointed.
+        assertEq(vault.syncMaturities(50), 2, "remaining two processed");
+        assertEq(vault.checkpointHead(), 3, "all checkpointed");
+        assertGe(vault.totalAssets(), clampedAssets, "sync corrects upward, never down");
 
         uint256 fullyCapped = vault.totalAssets();
-        assertEq(vault.syncMaturities(1), 1, "third root processed");
-        assertApproxEqAbs(_pendingYield(0), y90, 1, "90d position is final heap root");
-        assertApproxEqAbs(vault.totalAssets(), fullyCapped, 1, "final sync is accounting-neutral");
         _warpDays(30);
         assertEq(vault.totalAssets(), fullyCapped, "time cannot move fully capped assets");
+        assertEq(vault.syncMaturities(1), 0, "nothing left to process");
     }
 
     function test_rateSensitiveDepositRevertsUntilLargeBacklogIsDrained() public {
@@ -126,7 +123,7 @@ contract MaturityCheckpointTest is BaseTest {
 
         assertEq(vault.syncMaturities(1), 1);
         assertEq(vault.totalPendingYield(), 0, "zero yield remains zero");
-        assertEq(vault.syncMaturities(1), 0, "heap entry cannot be removed twice");
+        assertEq(vault.syncMaturities(1), 0, "position cannot be checkpointed twice");
         assertEq(vault.totalPendingYield(), 0, "zero-yield sync is idempotent");
         vault.pokeDecentral(0);
         (, , , , , uint8 state) = vault.getPosition(0);

@@ -12,11 +12,12 @@ import {BILOracle} from "../../src/BILOracle.sol";
 ///         until `executeYieldWithdrawal` revealed the actual (lower) Decentral
 ///         payout and the shortfall was socialised through `exchangeRate()`.
 ///
-///         The fix indexes active positions in a maturity min-heap. View
-///         accounting clamps the aggregate at the earliest unprocessed
-///         maturity, so the oracle is safe without a keeper transaction.
-///         Queue settlement synchronizes a bounded set of due roots, while
-///         deposits refuse to proceed until the backlog is explicitly drained.
+///         The fix tracks active positions in maturity (FIFO) order with a
+///         monotonic `checkpointHead`. View accounting clamps the aggregate at
+///         the earliest unprocessed maturity, so the oracle is safe without a
+///         keeper transaction. Queue settlement synchronizes a bounded set of
+///         due positions, while deposits refuse to proceed until the backlog
+///         is explicitly drained.
 ///
 ///         These tests assert the post-fix behaviour: (a) the rate and oracle
 ///         are stable past maturity without cleanup, (b) pendingYield equals
