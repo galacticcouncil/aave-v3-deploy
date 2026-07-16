@@ -321,17 +321,20 @@ task(
   const bilATokenInfo: any = await api.query.assetRegistry.assets(BIL_ATOKEN_ASSET_ID);
   const dclInfo: any = await api.query.assetRegistry.assets(DCL_ASSET_ID);
 
-  // ---- BIL (asset 550): underlying vault → assetRegistry.register or update ----
+  // ---- uBIL (asset 550): unwrapped vault share → assetRegistry.register or update ----
+  // The raw (unwrapped / "naked") vault share, distinct from the user-facing
+  // BIL (asset 55, the aToken users hold). Named uBIL so it doesn't collide
+  // with BIL — assetRegistry enforces unique names+symbols.
   if (!dclInfo.isSome) {
-    console.log(`---------> register BIL (asset ${DCL_ASSET_ID}) Erc20 → vault proxy`);
+    console.log(`---------> register uBIL (asset ${DCL_ASSET_ID}) Erc20 → vault proxy`);
     txs.push(
       hydrationTx.assetRegistry.register(
         ...Object.values({
           id: DCL_ASSET_ID,
-          name: "BIL",
+          name: "uBIL",
           assetType: "Erc20",
-          existentialDeposit: "20000000000000000", // 0.02 BIL
-          symbol: "BIL",
+          existentialDeposit: "20000000000000000", // 0.02 uBIL
+          symbol: "uBIL",
           decimals: 18,
           location: location(BIL_VAULT_PROXY),
           xcmRateLimit: null,
@@ -363,19 +366,19 @@ task(
     }
   }
 
-  // ---- aBIL (asset 55): aToken receipt → assetRegistry.register or update ----
-  // Distinct name+symbol from the underlying BIL (asset 550): assetRegistry
-  // enforces unique names+symbols, so the aToken receipt is registered as aBIL.
+  // ---- BIL (asset 55): aToken receipt → assetRegistry.register or update ----
+  // This is the user-facing BIL — the aToken users actually hold after
+  // supplying. The underlying unwrapped vault share is uBIL (asset 550).
   if (!bilATokenInfo.isSome) {
-    console.log(`---------> register aBIL (asset ${BIL_ATOKEN_ASSET_ID}) Erc20 → BIL aToken proxy`);
+    console.log(`---------> register BIL (asset ${BIL_ATOKEN_ASSET_ID}) Erc20 → BIL aToken proxy`);
     txs.push(
       hydrationTx.assetRegistry.register(
         ...Object.values({
           id: BIL_ATOKEN_ASSET_ID,
-          name: "aBIL",
+          name: "BIL",
           assetType: "Erc20",
           existentialDeposit: "20000000000000000",
-          symbol: "aBIL",
+          symbol: "BIL",
           decimals: 18,
           location: location(bilATokenAddress),
           xcmRateLimit: null,

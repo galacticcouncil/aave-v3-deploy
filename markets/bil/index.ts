@@ -16,11 +16,11 @@ export const BILConfig: IAaveConfiguration = {
   VariableDebtTokenNamePrefix: "BIL",
   SymbolPrefix: "BIL",
   ProviderId: 22222255,
-  // The underlying reserve in this pool is BIL (asset 550, the vault token).
-  // The aToken users actually hold is at asset 55 with registry name "aBIL"
-  // — see Phase D in tasks/proposals/bil.ts for the asset-registry wiring.
-  // (Name+symbol differ from the underlying because assetRegistry enforces
-  // uniqueness across both fields.)
+  // The underlying reserve in this pool is the unwrapped vault share, named
+  // "uBIL" (asset 550, precompile 0x…0226). The aToken users actually hold is
+  // at asset 55 and carries the user-facing name "BIL" — see Phase D in
+  // tasks/proposals/bil.ts for the asset-registry wiring. (Names differ so
+  // assetRegistry's uniqueness constraint on name+symbol is satisfied.)
   ReservesConfig: {
     BIL: strategyDCL,
   },

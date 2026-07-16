@@ -70,8 +70,8 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
   // ====================================================================
 
   // Asset IDs (mainnet-aligned naming, used on lark-2 too as of refs #383+):
-  //   BIL (asset 55,  precompile 0x…0037) — aToken receipt; what users hold
-  //   BIL  (asset 550, precompile 0x…0226) — vault underlying; the pool's reserve
+  //   BIL  (asset 55,  precompile 0x…0037) — aToken receipt; what users hold
+  //   uBIL (asset 550, precompile 0x…0226) — unwrapped vault share; the pool's reserve
   //   2-Pool-BIL (asset 10055)            — NEW stableswap LP token
   // The stableswap pair is (BIL aToken ↔ HOLLAR) so a redeem-without-queue
   // path means swapping the aToken receipt directly into HOLLAR.
