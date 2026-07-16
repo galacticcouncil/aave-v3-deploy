@@ -142,6 +142,112 @@ contract MaturityCheckpointTest is BaseTest {
         assertEq(vault.syncMaturities(1), 1);
     }
 
+    /// @notice Heap stress: eight positions created with scrambled maturities
+    ///         must be checkpointed in ascending-maturity order across bounded
+    ///         batches, each capped exactly once, with the live yield aggregate
+    ///         fully drained at the end. Exercises repeated sift-down.
+    function test_heapDrainsScrambledMaturitiesInOrder() public {
+        // Deposit order -> period(days). Ascending maturity order is therefore
+        // idx 3(10),1(20),5(30),7(40),0(50),4(60),6(70),2(80).
+        uint16[8] memory periods = [uint16(50), 20, 80, 10, 60, 30, 70, 40];
+        for (uint256 i = 0; i < 8; i++) {
+            MockDecentralPool p = _newPool(uint256(periods[i]) * 1 days);
+            _activate(p);
+            _deposit(alice, TEN_THOUSAND_HOLLAR); // all at the same timestamp
+        }
+
+        _warpDays(90); // past the latest (80d) maturity; all due
+
+        // Batch 1: the three earliest maturities (10d,20d,30d = idx 3,1,5).
+        assertEq(vault.syncMaturities(3), 3, "batch 1 caps three");
+        _assertCapped(3);
+        _assertCapped(1);
+        _assertCapped(5);
+        _assertLive(7); // 40d not yet
+        _assertLive(0); // 50d not yet
+
+        // Batch 2: 40d,50d,60d = idx 7,0,4.
+        assertEq(vault.syncMaturities(3), 3, "batch 2 caps three");
+        _assertCapped(7);
+        _assertCapped(0);
+        _assertCapped(4);
+        _assertLive(6); // 70d not yet
+        _assertLive(2); // 80d not yet
+
+        // Batch 3: 70d,80d = idx 6,2 (only two remain).
+        assertEq(vault.syncMaturities(3), 2, "batch 3 caps the last two");
+        _assertCapped(6);
+        _assertCapped(2);
+
+        // Every position capped exactly once => the live rate aggregate is
+        // fully drained (no under/over-subtraction), and totalPendingYield is
+        // the exact sum of each position's maturity-capped yield.
+        assertEq(vault.yieldRateSum(), 0, "live yield aggregate fully drained");
+        uint256 expected;
+        for (uint256 i = 0; i < 8; i++) {
+            expected += _yield(uint256(periods[i]) * 1 days);
+        }
+        assertApproxEqAbs(
+            vault.totalPendingYield(),
+            expected,
+            8,
+            "totalPendingYield equals the sum of capped yields"
+        );
+
+        // Fully capped: further time cannot move NAV, and sync is a no-op.
+        uint256 assetsNow = vault.totalAssets();
+        _warpDays(30);
+        assertEq(vault.totalAssets(), assetsNow, "time cannot move fully capped assets");
+        assertEq(vault.syncMaturities(8), 0, "nothing left to process");
+    }
+
+    /// @notice Heap re-ordering: a deposit made AFTER a partial drain, whose
+    ///         maturity falls between already-capped and still-live positions,
+    ///         must be checkpointed before the older-but-later-maturing one.
+    ///         Exercises sift-up placing a fresh minimum at the root.
+    function test_heapReordersInterleavedDeposit() public {
+        MockDecentralPool p40 = _newPool(40 days);
+        _activate(p40);
+        _deposit(alice, TEN_THOUSAND_HOLLAR); // idx 0, maturity t0+40d
+
+        MockDecentralPool p60 = _newPool(60 days);
+        _activate(p60);
+        _deposit(alice, TEN_THOUSAND_HOLLAR); // idx 1, maturity t0+60d
+
+        _warpDays(45); // idx0 (40d) due; idx1 (60d) not
+        assertEq(vault.syncMaturities(1), 1, "caps the 40d position");
+        _assertCapped(0);
+        _assertLive(1);
+
+        // Interleave a new position maturing at t0+50d — EARLIER than idx1's
+        // 60d. The heap must sift it above idx1.
+        MockDecentralPool p5 = _newPool(5 days);
+        _activate(p5);
+        _deposit(alice, TEN_THOUSAND_HOLLAR); // idx 2, maturity now(t0+45)+5 = t0+50d
+
+        _warpDays(20); // now t0+65: both idx1(60d) and idx2(50d) are due
+
+        // The next checkpoint must take idx2 (50d), NOT idx1 (60d), proving the
+        // heap re-ordered after the interleaved insert.
+        assertEq(vault.syncMaturities(1), 1, "one more capped");
+        _assertCapped(2);
+        _assertLive(1);
+
+        assertEq(vault.syncMaturities(1), 1, "final capped");
+        _assertCapped(1);
+        assertEq(vault.yieldRateSum(), 0, "fully drained after interleave");
+    }
+
+    function _assertCapped(uint256 idx) internal view {
+        (, , , , , , , bool capped, ) = vault.positions(idx);
+        assertTrue(capped, "position should be capped");
+    }
+
+    function _assertLive(uint256 idx) internal view {
+        (, , , , , , , bool capped, ) = vault.positions(idx);
+        assertFalse(capped, "position should still be live");
+    }
+
     function _newPool(uint256 period) internal returns (MockDecentralPool created) {
         MockPoolToken token = new MockPoolToken();
         created = new MockDecentralPool(address(hollar), address(token), APY_18_PERCENT);
