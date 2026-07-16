@@ -394,6 +394,7 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
 
         // T=60d: switch active to pool 3 (16%); charlie deposits
         _warpDays(30);
+        vault.syncMaturities(1); // checkpoint alice at her 60d maturity
         _registerAndActivatePool16();
         _deposit(charlie, 10_000e18);
 
@@ -412,7 +413,7 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         // T=90d: all three have accrued for different durations
         _warpDays(30);
 
-        uint256 y0 = _expectedYield(10_000e18, APY_18_PERCENT, 90 days);
+        uint256 y0 = _expectedYield(10_000e18, APY_18_PERCENT, 60 days);
         uint256 y1 = _expectedYield(10_000e18, APY_22,         60 days);
         uint256 y2 = _expectedYield(10_000e18, APY_16,         30 days);
         uint256 expectedTotalAssets = 30_000e18 + y0 + y1 + y2;
@@ -454,13 +455,15 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         // rates (18% for alice, 22% for bob).
         assertApproxEqRel(vault.totalAssets(), expectedAt45d, 0.001e18, "cut alone changes nothing");
 
-        // T=75d: another 30 days. Alice's 18% AND bob's 22% should keep
-        // accruing — the active pool is 16% but it has zero positions.
+        // T=75d: another 30 days. Alice is capped at her T=60 maturity while
+        // Bob's snapshotted 22% position continues accruing. The active pool
+        // is 16% but it still has zero positions.
         _warpDays(30);
+        vault.syncMaturities(1); // alice capped at T=60d; bob remains live
 
-        uint256 aliceAccrual75d = _expectedYield(10_000e18, APY_18_PERCENT, 75 days);
+        uint256 aliceAccrual60d = _expectedYield(10_000e18, APY_18_PERCENT, 60 days);
         uint256 bobAccrual45d   = _expectedYield(10_000e18, APY_22,         45 days);
-        uint256 expectedAt75d = 20_000e18 + aliceAccrual75d + bobAccrual45d;
+        uint256 expectedAt75d = 20_000e18 + aliceAccrual60d + bobAccrual45d;
         assertApproxEqRel(
             vault.totalAssets(),
             expectedAt75d,
@@ -476,10 +479,9 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         // The blended rate continues to grow — slower than before — but
         // existing positions are unaffected.
         _warpDays(15); // T=90d
-        uint256 aliceAccrual90d  = _expectedYield(10_000e18, APY_18_PERCENT, 90 days);
         uint256 bobAccrual60d    = _expectedYield(10_000e18, APY_22,         60 days);
         uint256 charlieAccrual15d = _expectedYield(10_000e18, APY_16,        15 days);
-        uint256 expectedAt90d = 30_000e18 + aliceAccrual90d + bobAccrual60d + charlieAccrual15d;
+        uint256 expectedAt90d = 30_000e18 + aliceAccrual60d + bobAccrual60d + charlieAccrual15d;
         assertApproxEqRel(vault.totalAssets(), expectedAt90d, 0.001e18, "post-cut blend");
     }
 
@@ -502,6 +504,7 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
 
         // T=60d: switch to 16%; charlie deposits
         _warpDays(30);
+        vault.syncMaturities(1); // checkpoint alice before the new deposit
         _registerAndActivatePool16();
         _deposit(charlie, 10_000e18);
 

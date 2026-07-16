@@ -503,6 +503,7 @@ contract ProcessPositionTest is BaseTest {
 
         // Mature all positions simultaneously.
         _warpDays(61);
+        vault.syncMaturities(n);
 
         // Redeem positions [n-1, n-2, ..., 1], leaving 0 Active so that
         // _advancePositionHead won't advance during the loop.

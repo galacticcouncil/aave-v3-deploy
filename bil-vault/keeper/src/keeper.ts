@@ -85,6 +85,13 @@ const VAULT_ABI = [
     outputs: [{ name: '', type: 'uint256' }],
   },
   {
+    name: 'syncMaturities',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'maxPositions', type: 'uint256' }],
+    outputs: [{ name: 'processed', type: 'uint256' }],
+  },
+  {
     name: 'pokeDecentral',
     type: 'function',
     stateMutability: 'nonpayable',
@@ -183,6 +190,10 @@ export class BILKeeper {
     const now = Math.floor(Date.now() / 1000);
     console.log(`\n[${new Date().toISOString()}] Running keeper cycle...`);
 
+    // Keep maturity accounting current even while the vault is paused, when
+    // pokeDecentral and pokeQueue are intentionally unavailable.
+    await this.syncMaturitiesIfDue();
+
     // 1. Read vault state
     const [positionCount, positionHead, idleHollar, totalQueuedBil, minReinvestAmount] =
       await Promise.all([
@@ -237,6 +248,25 @@ export class BILKeeper {
     await this.autoClaimSettled();
 
     console.log('  Cycle complete.');
+  }
+
+  private async syncMaturitiesIfDue(): Promise<void> {
+    const batch = 50n;
+    try {
+      const { result } = await this.publicClient.simulateContract({
+        account: this.account,
+        address: this.vaultAddress,
+        abi: VAULT_ABI,
+        functionName: 'syncMaturities',
+        args: [batch],
+      });
+      if ((result as bigint) === 0n) return;
+
+      console.log(`  Synchronizing up to ${batch} matured positions...`);
+      await this.writeContract('syncMaturities', [batch]);
+    } catch (err) {
+      console.error('  syncMaturities() failed:', err);
+    }
   }
 
   // ─── Auto-claim for opted-in controllers ─────────────────────────────

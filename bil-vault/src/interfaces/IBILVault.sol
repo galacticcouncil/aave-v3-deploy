@@ -110,6 +110,7 @@ interface IBILVault {
     // ──────────────────────────────────────────────
 
     function pokeDecentral(uint256 positionIndex) external;
+    function syncMaturities(uint256 maxPositions) external returns (uint256 processed);
     function pokeQueue() external;
 
     // ──────────────────────────────────────────────

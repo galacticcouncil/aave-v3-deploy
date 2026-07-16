@@ -1,16 +1,37 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
+import {IDecentralPool} from "../interfaces/IDecentralPool.sol";
+import {IAggregatorV3Interface} from "../interfaces/IAggregatorV3Interface.sol";
+
 /// @title QueueLib
-/// @notice FIFO redemption queue mechanics extracted from BILVault to keep
-///         the vault under EIP-170. All three functions are `public` so they
-///         deploy as a separate library contract and the vault DELEGATECALLs
-///         them — saving ~3 KB on the vault's deployed bytecode.
-/// @dev    Library functions do NOT touch `idleHollar` or `totalReservedHollar`
-///         directly — those live on the vault. Library returns deltas; the
-///         vault applies them. This keeps the storage write surface explicit
-///         in the calling contract for audit clarity.
+/// @notice Shared BILVault mechanics deployed as a linked library to keep the
+///         vault below EIP-170. Storage-bearing helpers receive each storage
+///         reference explicitly; accounting helpers return aggregate deltas
+///         for the vault to apply at the call boundary.
 library QueueLib {
+    uint256 private constant MATURITY_SHIFT = 128;
+
+    enum NFTState {
+        Active,
+        YieldWithdrawalRequested,
+        YieldClaimed,
+        PrincipalWithdrawalRequested,
+        Redeemed
+    }
+
+    struct NFTPosition {
+        uint256 tokenId;
+        uint256 principal;
+        uint256 apyWad;
+        uint256 depositTime;
+        uint256 maturityTime;
+        uint256 yieldStartTime;
+        NFTState state;
+        bool yieldCapped;
+        uint256 pendingYield;
+    }
+
     /// @notice A queued redemption request.
     struct Request {
         address user;          // controller (= owner under standard flow)
@@ -20,6 +41,17 @@ library QueueLib {
     }
 
     error InsufficientClaimable();
+    error PoolHasOpenPositions();
+    error ZeroAddress();
+    error PoolAlreadyRegistered();
+    error PoolWrongStablecoin();
+    error PoolNoNFTContract();
+    error PoolTokenMismatch();
+    error OracleNotSet();
+    error OracleInvalidAnswer();
+    error OracleRoundIncomplete();
+    error OracleStaleRound();
+    error OracleDecimalsOutOfRange();
 
     event RedemptionFulfilled(
         uint256 indexed requestId,
@@ -33,6 +65,262 @@ library QueueLib {
         uint256 hollarAmount,
         uint256 bilBurned
     );
+    event PositionYieldCapped(
+        uint256 indexed positionIndex,
+        uint256 maturityTime,
+        uint256 pendingYield
+    );
+
+    /// @notice Add a packed `(maturity, positionIndex)` entry to the min-heap.
+    /// @dev Kept in the linked library so heap maintenance does not consume
+    ///      the vault's EIP-170 bytecode budget.
+    function pushMaturity(
+        uint256[] storage heap,
+        uint256 maturityTime,
+        uint256 positionIndex
+    ) public {
+        require(maturityTime <= type(uint128).max, "maturity overflow");
+        require(positionIndex <= type(uint128).max, "position overflow");
+        uint256 entry = (maturityTime << MATURITY_SHIFT) | positionIndex;
+        heap.push(entry);
+        uint256 cursor = heap.length - 1;
+        while (cursor > 0) {
+            uint256 parent = (cursor - 1) / 2;
+            if (heap[parent] <= entry) break;
+            heap[cursor] = heap[parent];
+            cursor = parent;
+        }
+        heap[cursor] = entry;
+    }
+
+    /// @notice Cap up to `maxPositions` due heap roots and return aggregate
+    ///         accounting deltas to the vault.
+    function processMaturities(
+        NFTPosition[] storage positions,
+        uint256[] storage heap,
+        uint256 maxPositions,
+        uint256 timestamp,
+        uint256 rateSum,
+        uint256 offsetSum,
+        uint256 denominator
+    )
+        public
+        returns (
+            uint256 processed,
+            uint256 newRateSum,
+            uint256 newOffsetSum,
+            uint256 pendingYieldAdded
+        )
+    {
+        newRateSum = rateSum;
+        newOffsetSum = offsetSum;
+        while (processed < maxPositions && heap.length > 0) {
+            uint256 entry = heap[0];
+            uint256 maturityTime = entry >> MATURITY_SHIFT;
+            if (maturityTime > timestamp) break;
+            uint256 positionIndex = uint128(entry);
+
+            _popMaturity(heap);
+            NFTPosition storage pos = positions[positionIndex];
+            uint256 rate = pos.apyWad * pos.principal;
+            uint256 capped = (rate * (maturityTime - pos.yieldStartTime)) /
+                denominator;
+            pos.pendingYield = capped;
+            pos.yieldCapped = true;
+            newRateSum -= rate;
+            newOffsetSum -= rate * pos.yieldStartTime;
+            pendingYieldAdded += capped;
+            emit PositionYieldCapped(positionIndex, maturityTime, capped);
+            unchecked { ++processed; }
+        }
+    }
+
+    function _popMaturity(uint256[] storage heap) private {
+        uint256 lastIndex = heap.length - 1;
+        uint256 last = heap[lastIndex];
+        heap.pop();
+        if (lastIndex == 0) return;
+
+        uint256 cursor;
+        uint256 len = heap.length;
+        while (true) {
+            uint256 left = cursor * 2 + 1;
+            if (left >= len) break;
+            uint256 right = left + 1;
+            uint256 smallest = right < len && heap[right] < heap[left]
+                ? right
+                : left;
+            if (heap[smallest] >= last) break;
+            heap[cursor] = heap[smallest];
+            cursor = smallest;
+        }
+        heap[cursor] = last;
+    }
+
+    function estimatedWaitTime(
+        mapping(uint256 => Request) storage queue,
+        NFTPosition[] storage positions,
+        mapping(uint256 => IDecentralPool) storage positionPool,
+        uint256 requestId,
+        uint256 queueHead,
+        uint256 positionHead,
+        uint256 rate,
+        uint256 wad,
+        uint256 idleHollar,
+        uint256 denominator,
+        uint256 timestamp
+    ) public view returns (uint256) {
+        if (queue[requestId].user == address(0)) return 0;
+
+        uint256 hollarNeeded;
+        for (uint256 i = queueHead; i <= requestId; i++) {
+            Request storage r = queue[i];
+            if (r.user == address(0)) continue;
+            hollarNeeded += ((r.bilAmount - r.bilSettled) * rate) / wad;
+        }
+        if (idleHollar >= hollarNeeded) return 0;
+        hollarNeeded -= idleHollar;
+
+        uint256 accumulated;
+        for (uint256 i = positionHead; i < positions.length; i++) {
+            NFTPosition storage pos = positions[i];
+            if (pos.state == NFTState.Redeemed) continue;
+            uint256 expectedYield = (pos.principal *
+                pos.apyWad *
+                (pos.maturityTime - pos.yieldStartTime)) / denominator;
+            accumulated += pos.principal + expectedYield;
+            if (accumulated >= hollarNeeded) {
+                uint256 readyAt = pos.maturityTime +
+                    positionPool[i].principalWithdrawalDelaySeconds();
+                return readyAt > timestamp ? readyAt - timestamp : 0;
+            }
+        }
+        return type(uint256).max;
+    }
+
+    function sumSettled(
+        mapping(uint256 => Request) storage queue,
+        uint256[] storage ids,
+        address controller,
+        bool assets
+    ) public view returns (uint256 total) {
+        uint256 len = ids.length;
+        for (uint256 i = 0; i < len; i++) {
+            Request storage r = queue[ids[i]];
+            if (r.user == controller) {
+                total += assets ? r.hollarOwed : r.bilSettled;
+            }
+        }
+    }
+
+    function advanceQueueHead(
+        mapping(uint256 => Request) storage queue,
+        uint256 head,
+        uint256 tail,
+        uint256 maxIterations
+    ) public view returns (uint256) {
+        uint256 swept;
+        while (
+            head < tail &&
+            swept < maxIterations &&
+            queue[head].user == address(0)
+        ) {
+            unchecked { ++head; ++swept; }
+        }
+        return head;
+    }
+
+    function advancePositionHead(
+        NFTPosition[] storage positions,
+        uint256 head,
+        uint256 maxIterations
+    ) public view returns (uint256) {
+        uint256 len = positions.length;
+        uint256 swept;
+        while (
+            head < len &&
+            swept < maxIterations &&
+            positions[head].state == NFTState.Redeemed
+        ) {
+            unchecked { ++head; ++swept; }
+        }
+        return head;
+    }
+
+    function removePool(
+        NFTPosition[] storage positions,
+        mapping(uint256 => IDecentralPool) storage positionPool,
+        IDecentralPool[] storage pools,
+        uint256 positionHead,
+        IDecentralPool pool
+    ) public {
+        uint256 len = positions.length;
+        for (uint256 i = positionHead; i < len; i++) {
+            if (
+                positions[i].state != NFTState.Redeemed &&
+                positionPool[i] == pool
+            ) revert PoolHasOpenPositions();
+        }
+
+        len = pools.length;
+        for (uint256 i; i < len; i++) {
+            if (pools[i] == pool) {
+                pools[i] = pools[len - 1];
+                pools.pop();
+                return;
+            }
+        }
+    }
+
+    function registerPool(
+        mapping(IDecentralPool => bool) storage isPoolRegistered,
+        mapping(address => bool) storage isRegisteredPoolToken,
+        IDecentralPool[] storage pools,
+        IDecentralPool newPool,
+        address expectedStablecoin,
+        address expectedPoolToken
+    ) public returns (address poolTokenAddr) {
+        if (address(newPool) == address(0)) revert ZeroAddress();
+        if (isPoolRegistered[newPool]) revert PoolAlreadyRegistered();
+        if (address(newPool.stablecoin()) != expectedStablecoin) {
+            revert PoolWrongStablecoin();
+        }
+        poolTokenAddr = address(newPool.poolToken());
+        if (poolTokenAddr == address(0)) revert PoolNoNFTContract();
+        if (
+            expectedPoolToken != address(0) &&
+            poolTokenAddr != expectedPoolToken
+        ) revert PoolTokenMismatch();
+
+        isPoolRegistered[newPool] = true;
+        isRegisteredPoolToken[poolTokenAddr] = true;
+        pools.push(newPool);
+    }
+
+    function validateOracle(IAggregatorV3Interface candidate) public view {
+        (, int256 answer, , uint256 updatedAt, ) = candidate.latestRoundData();
+        if (answer <= 0) revert OracleInvalidAnswer();
+        if (updatedAt == 0) revert OracleRoundIncomplete();
+        uint8 decimals = candidate.decimals();
+        if (decimals < 6 || decimals > 18) revert OracleDecimalsOutOfRange();
+    }
+
+    function oraclePrice(
+        IAggregatorV3Interface oracle
+    ) public view returns (uint256) {
+        if (address(oracle) == address(0)) revert OracleNotSet();
+        (
+            uint80 roundId,
+            int256 answer,
+            ,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        ) = oracle.latestRoundData();
+        if (answer <= 0) revert OracleInvalidAnswer();
+        if (roundId == 0 || updatedAt == 0) revert OracleRoundIncomplete();
+        if (answeredInRound < roundId) revert OracleStaleRound();
+        return (uint256(answer) * 1e18) / (10 ** oracle.decimals());
+    }
 
     /// @notice Settle pending requests in FIFO order using `available` HOLLAR
     ///         at the supplied `rate`. Locks HOLLAR into request.hollarOwed

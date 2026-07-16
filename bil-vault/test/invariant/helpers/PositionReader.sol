@@ -13,10 +13,10 @@ contract PositionReader {
     }
 
     function principal(uint256 idx) external view returns (uint256 _principal) {
-        (, _principal,,,,,,) = vault.positions(idx);
+        (, _principal,,,,,,,) = vault.positions(idx);
     }
 
     function pendingYield(uint256 idx) external view returns (uint256 _pendingYield) {
-        (,,,,,,, _pendingYield) = vault.positions(idx);
+        (,,,,,,,, _pendingYield) = vault.positions(idx);
     }
 }
