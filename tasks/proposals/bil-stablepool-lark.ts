@@ -1,7 +1,4 @@
 // @ts-nocheck
-import * as fs from "fs";
-import * as path from "path";
-
 import {
   aaveManagerCall,
   generateProposalV2,
@@ -21,9 +18,9 @@ task(
   `bil-stablepool-patch`,
   `Stablepool delta for BIL — registers 2-Pool-BIL (10055), creates the ` +
     `BIL/HOLLAR stableswap, and bootstraps 300K/300K liquidity from the ` +
-    `Treasury (via 600K HOLLAR borrow on main MM + zap). Use this when the ` +
-    `main bil.ts proposal has already executed on a network and only the ` +
-    `stablepool piece is missing (lark-2).`
+    `Treasury's own HOLLAR (topped up 40K from the HOLLAR treasury; no ` +
+    `main-MM borrow). Use this when the main bil.ts proposal has already ` +
+    `executed on a network and only the stablepool piece is missing (lark-2).`
 ).setAction(async function (_, hre) {
   const preimage = await buildBilStablepoolProposal(hre);
   const decoder = new ProposalDecoder(hre);
@@ -83,8 +80,18 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
   const POOL_LP = 10055;
 
   // Treasury substrate address. Same on lark since lark forks mainnet.
-  // Reused from heurc-launch / hollar-pools-launch.
+  // Reused from heurc-launch / hollar-pools-launch. Holds ~597K HOLLAR; the
+  // bootstrap tops it up with 40K from the HOLLAR collector (below) so it can
+  // fund the full 600K from its own balance (no main-MM borrow).
   const treasury = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
+
+  // HOLLAR collector / treasury: the Aave Collector EVM contract where HOLLAR
+  // borrow interest accrues (main-market GhoAToken.getGhoTreasury). It is a
+  // contract, not a substrate account, so the 40K move is an EVM
+  // Collector.transfer gated by FUNDS_ADMIN — which is the Aave admin, so we
+  // wrap it in an aave-manager dispatch (same origin used for the oracle
+  // consolidation above), not a substrate tokens.transfer.
+  const HOLLAR_COLLECTOR = "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9";
 
   // Stableswap pool params — see BIL-MAINNET-HANDOVER.md "Mainnet
   // single-batch launch composition" for the rationale on each.
@@ -92,11 +99,13 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
   const FEE = 1000; // 0.1%
   const MAX_PEG_UPDATE = 200; // gigasol-style "≥10× expected APY"
 
-  // Bootstrap amounts. Treasury borrows 600K HOLLAR from the main MM,
-  // pairs 300K HOLLAR with 300K BIL (zap-minted) into the new stablepool.
-  const HOLLAR_BORROW_AMOUNT = utils.parseEther("600000").toString();
+  // Bootstrap amounts. Treasury funds the whole 600K from its OWN HOLLAR (no
+  // borrow): 300K is zap-minted into BIL, 300K is paired alongside it into the
+  // new stablepool.
   const HOLLAR_DEPOSIT_AMOUNT = utils.parseEther("300000").toString();
   const HOLLAR_PAIR_AMOUNT = utils.parseEther("300000").toString();
+  // Topped up from the HOLLAR treasury just before the bootstrap runs.
+  const HOLLAR_TREASURY_TOPUP = utils.parseEther("40000").toString();
 
   // ====================================================================
   // API + deployment lookups
@@ -109,15 +118,9 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
   const zapAddr = (await hre.deployments.get("BILDepositZap")).address;
   const hollarAddr = (await hre.deployments.get("HOLLAR")).address;
 
-  // Main MM Pool-Proxy lives at the canonical mainnet address. Lark
-  // inherits this via the fork; the artifact only exists in
-  // deployments/hydration/, not in the per-network BIL deployments dir.
-  const mainPoolAddr = readMainHydrationPool(__dirname);
-
   console.log("BILOracleAdapter:    ", oracleAdapter);
   console.log("BILDepositZap:       ", zapAddr);
   console.log("HOLLAR:               ", hollarAddr);
-  console.log("Main MM Pool-Proxy:   ", mainPoolAddr);
 
   // ====================================================================
   // Pre-flight checks — fail fast if state isn't right
@@ -160,31 +163,27 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
     );
   }
 
-  // Treasury must have ≥600K HOLLAR worth of borrowing capacity on the
-  // main MM. availableBorrowsBase is in 8-decimal USD units; HOLLAR is
-  // $-pegged so 600K HOLLAR ≈ 600_000 × 1e8 base units.
+  // Treasury funds the bootstrap from its OWN HOLLAR (no main-MM borrow),
+  // after a 40K top-up moved from the HOLLAR treasury by this proposal. So the
+  // Treasury needs (600K - 40K) = 560K of its own HOLLAR pre-proposal; the
+  // top-up brings the usable balance to >= the 600K bootstrap need.
   const treasuryEvm = await evmAddress(treasury);
-  const mainPoolRO = new hre.ethers.Contract(
-    mainPoolAddr,
-    [
-      "function getUserAccountData(address) view returns (uint256 totalCollateralBase, uint256 totalDebtBase, uint256 availableBorrowsBase, uint256 currentLiquidationThreshold, uint256 ltv, uint256 healthFactor)",
-    ],
-    hre.ethers.provider
-  );
-  const acct = await mainPoolRO.getUserAccountData(treasuryEvm);
-  const availableBorrowsBase = acct.availableBorrowsBase.toBigInt();
-  const required600KBase = 600_000n * 10n ** 8n;
-  if (availableBorrowsBase < required600KBase) {
+  const treasuryHollar = (
+    await hydrationApi.query.tokens.accounts(treasury, HOLLAR)
+  ).free.toBigInt();
+  const bootstrapNeed = BigInt(HOLLAR_DEPOSIT_AMOUNT) + BigInt(HOLLAR_PAIR_AMOUNT);
+  const afterTopUp = treasuryHollar + BigInt(HOLLAR_TREASURY_TOPUP);
+  if (afterTopUp < bootstrapNeed) {
     console.warn(
-      `\n!!! WARNING: Treasury main-MM availableBorrowsBase (${availableBorrowsBase}) ` +
-        `< 600K HOLLAR (${required600KBase}).\n` +
-        `    The borrow step will revert. Verify Treasury's main-MM collateral ` +
+      `\n!!! WARNING: Treasury HOLLAR ${treasuryHollar} + ${HOLLAR_TREASURY_TOPUP} ` +
+        `top-up = ${afterTopUp} < bootstrap need ${bootstrapNeed}.\n    The ` +
+        `zap/pair steps will revert. Verify Treasury + HOLLAR-treasury balances ` +
         `before submitting.\n`
     );
   } else {
     console.log(
-      `Treasury main-MM borrow capacity OK: ${availableBorrowsBase} ` +
-        `(need ${required600KBase})`
+      `Treasury HOLLAR ${treasuryHollar} + ${HOLLAR_TREASURY_TOPUP} top-up = ` +
+        `${afterTopUp} (need ${bootstrapNeed}) OK`
     );
   }
 
@@ -370,17 +369,46 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
     txs.push(hydrationTx.router.forceInsertRoute(pair, route));
   }
 
+  // -------- 3b. Top the Treasury up: 40K HOLLAR from the HOLLAR collector ----
+  // Runs immediately with the proposal (main `txs`, not the scheduled batch)
+  // so the funds land in the Treasury before the +1-block bootstrap needs
+  // them. The collector is the Aave Collector EVM contract; its `transfer` is
+  // FUNDS_ADMIN-gated and FUNDS_ADMIN == the Aave admin, so we wrap the EVM
+  // call in an aave-manager dispatch. Recipient is the Treasury's bound EVM
+  // address — the HOLLAR ERC20 precompile credits the same substrate asset-222
+  // balance (7L53) that the bootstrap's addAssetsLiquidity reads.
+  console.log(
+    `---------> move ${HOLLAR_TREASURY_TOPUP} HOLLAR: collector ${HOLLAR_COLLECTOR} -> Treasury (${treasuryEvm})`
+  );
+  {
+    const collectorIface = new utils.Interface([
+      "function transfer(address token, address to, uint256 amount)",
+    ]);
+    const collectorXfer = collectorIface.encodeFunctionData("transfer", [
+      hollarAddr,
+      treasuryEvm,
+      HOLLAR_TREASURY_TOPUP,
+    ]);
+    txs.push(
+      await aaveManagerCall({
+        from: "0xaa7e0000000000000000000000000000000aa7e0",
+        to: HOLLAR_COLLECTOR,
+        data: collectorXfer,
+        gasLimit: "300000",
+      })
+    );
+  }
+
   // -------- 4. Treasury bootstrap (scheduled +1 block) --------
   // Pool must exist before liquidity flows, so the bootstrap is scheduled
-  // 1 block after the proposal's pool-creation step.
+  // 1 block after the proposal's pool-creation step. The Treasury funds the
+  // full 600K from its OWN HOLLAR balance (topped up by step 3b) — no main-MM
+  // borrow.
   //
   // Steps (all dispatched as Treasury):
-  //   4a. EVM:       MainPool.borrow(HOLLAR, 600K, variable, 0, treasury)
-  //                  borrow happens on the MAIN money market, against
-  //                  Treasury's existing collateral there.
-  //   4b. EVM:       HOLLAR.approve(zap, 300K)
-  //   4c. EVM:       zap.depositAndSupply(300K HOLLAR) → mints ~300K BIL aToken atomically
-  //   4d. Substrate: stableswap.addAssetsLiquidity([BIL: BIL_SUPPLY_AMOUNT, HOLLAR: 300K])
+  //   4a. EVM:       HOLLAR.approve(zap, 300K)
+  //   4b. EVM:       zap.depositAndSupply(300K HOLLAR) → mints ~300K BIL aToken atomically
+  //   4c. Substrate: stableswap.addAssetsLiquidity([BIL: BIL_SUPPLY_AMOUNT, HOLLAR: 300K])
   //
   // Treasury's bound EVM address is derived from its substrate AccountId
   // (default truncation). pallet_evm's source-validation requires the
@@ -388,39 +416,7 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
 
   console.log("Treasury bound EVM address:", treasuryEvm);
 
-  // 4a. Treasury borrows 600K HOLLAR from the main MM.
-  // Aave V3 borrow: msg.sender pays the debt and receives the asset;
-  // onBehalfOf is the user whose collateral is used. For self-borrow,
-  // msg.sender == onBehalfOf == Treasury.
-  const mainPoolIface = new utils.Interface([
-    "function borrow(address asset, uint256 amount, uint256 interestRateMode, uint16 referralCode, address onBehalfOf)",
-  ]);
-  const borrowCalldata = mainPoolIface.encodeFunctionData("borrow", [
-    hollarAddr,
-    HOLLAR_BORROW_AMOUNT,
-    2, // interestRateMode = variable (HOLLAR via GhoAToken facilitator requires variable)
-    0, // referralCode
-    treasuryEvm, // onBehalfOf = Treasury itself
-  ]);
-  last.push(
-    await dispatchAs(
-      treasury,
-      hydrationTx.evm.call(
-        treasuryEvm,
-        mainPoolAddr,
-        borrowCalldata,
-        "0", // value
-        "1500000", // gasLimit — Aave V3 borrow is heavy (interest, debt mint, GHO mint)
-        "600000000", // gasPrice
-        undefined, // maxPriorityFeePerGas
-        undefined, // nonce
-        [], // accessList
-        []
-      )
-    )
-  );
-
-  // 4b. Treasury approves the zap on HOLLAR.
+  // 4a. Treasury approves the zap on HOLLAR.
   const erc20Iface = new utils.Interface([
     "function approve(address spender, uint256 value) returns (bool)",
   ]);
@@ -446,7 +442,7 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
     )
   );
 
-  // 4c. Treasury calls zap.depositAndSupply(300K HOLLAR).
+  // 4b. Treasury calls zap.depositAndSupply(300K HOLLAR).
   // Atomic: HOLLAR.transferFrom + vault.deposit + pool.supply.
   const zapIface = new utils.Interface([
     "function depositAndSupply(uint256 hollarAmount)",
@@ -472,7 +468,7 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
     )
   );
 
-  // 4d. Treasury adds liquidity to the new pool.
+  // 4c. Treasury adds liquidity to the new pool.
   // Asset order: ascending (BIL=55 first, HOLLAR=222 second).
   // Inverting silently produces wrong pool composition — see handover doc.
   last.push(
@@ -512,25 +508,4 @@ async function readVaultAddress(hre: any, oracleAdapterAddr: string) {
     hre.ethers.provider
   );
   return await oracle.vault();
-}
-
-/**
- * Read the canonical Hydration main-MM Pool-Proxy address from the
- * mainnet deployments folder. Lark inherits the same address via the
- * fork — the artifact isn't replicated in deployments/lark/ because
- * lark only has BIL-specific deploys.
- */
-function readMainHydrationPool(taskDir: string): string {
-  const artifactPath = path.join(
-    taskDir,
-    "../../deployments/hydration/Pool-Proxy-Hydration.json"
-  );
-  const raw = fs.readFileSync(artifactPath, "utf-8");
-  const artifact = JSON.parse(raw);
-  if (!artifact.address) {
-    throw new Error(
-      `Could not read main MM Pool-Proxy address from ${artifactPath}`
-    );
-  }
-  return artifact.address;
 }

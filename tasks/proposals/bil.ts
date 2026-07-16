@@ -138,15 +138,15 @@ task(
     addTransaction(tx);
   }
 
-  console.log("---------> enable HOLLAR borrowing");
-  {
-    const tx = await poolConfigurator.populateTransaction.setReserveBorrowing(
-      HOLLAR_ADDRESS,
-      true,
-      { gasLimit: 1_000_000 }
-    );
-    addTransaction(tx);
-  }
+  // NOTE: HOLLAR borrowing is intentionally NOT enabled at launch. Phase 1 of
+  // the BIL rollout is the base supply product only (users supply BIL, earn the
+  // ~18% APR); no leveraged loops. The HOLLAR reserve, GhoAToken facilitator,
+  // and oracle are still wired below so a later stage-2 governance proposal only
+  // has to (a) setReserveBorrowing(HOLLAR, true) and (b) put BIL in isolation
+  // mode with the first debt ceiling ($200K), then bump the ceiling in stages
+  // ($500K -> $750K -> $1M) as HSM capacity allows. Leaving borrowing off at
+  // launch guarantees zero borrow with no isolation edge cases.
+  console.log("---------> HOLLAR borrowing left DISABLED at launch (staged rollout)");
 
   console.log("---------> set HOLLAR oracle in BIL AaveOracle");
   {
@@ -464,9 +464,9 @@ task(
   // ===================================================================
   // Registers the 2-Pool-BIL LP asset (10055), creates the stableswap
   // (assets [55, 222], A=100, fee=0.10%, MMOracle peg), and bootstraps
-  // 300K BIL / 300K HOLLAR from the Treasury (Treasury borrows 600K
-  // HOLLAR from the main MM, zaps half into BIL, pairs both into the
-  // pool, all scheduled 1 block after pool creation).
+  // 300K BIL / 300K HOLLAR from the Treasury's OWN HOLLAR (topped up 40K
+  // from the HOLLAR treasury; no main-MM borrow) — zaps half into BIL, pairs
+  // both into the pool, scheduled 1 block after pool creation.
   //
   // Idempotent: pre-flight throws if asset 10055 already exists. On
   // re-runs against a network where the stablepool is done, skip with a
