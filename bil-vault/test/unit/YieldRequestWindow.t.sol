@@ -14,7 +14,7 @@ import {BILVault} from "../../src/BILVault.sol";
 contract YieldRequestWindowTest is BaseTest {
     /// @dev Per-position pendingYield via the public struct getter (last tuple element).
     function _pendingYield(uint256 idx) internal view returns (uint256 py) {
-        (,,,,,,, py) = vault.positions(idx);
+        (,,,,,,,, py) = vault.positions(idx);
     }
 
     /// @dev Bring position 0 to YieldWithdrawalRequested.

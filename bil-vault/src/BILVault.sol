@@ -60,6 +60,11 @@ contract BILVault is
     ///      cadence keeps head in sync without requiring a fresh redemption.
     uint256 internal constant MAX_POSITION_HEAD_SWEEP = 50;
 
+    /// @dev Maximum due maturities folded into a queue or lifecycle call.
+    ///      Deposits remain disabled until permissionless synchronization has
+    ///      drained every overdue root.
+    uint256 internal constant MAX_MATURITY_SYNC = 50;
+
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     /// @notice Fast-path role for the Hydration technical committee.
@@ -80,32 +85,6 @@ contract BILVault is
     // ═══════════════════════════════════════════════════════════════════════
     //                          STRUCTS & ENUMS
     // ═══════════════════════════════════════════════════════════════════════
-
-    enum NFTState {
-        Active,
-        YieldWithdrawalRequested,
-        YieldClaimed,
-        PrincipalWithdrawalRequested,
-        Redeemed
-    }
-
-    struct NFTPosition {
-        uint256 tokenId;
-        uint256 principal;
-        uint256 apyWad;
-        uint256 depositTime;
-        uint256 maturityTime;
-        uint256 yieldStartTime;
-        NFTState state;
-        // Yield amount Decentral has locked in for this position after the
-        // requestYieldWithdrawal call but before executeYieldWithdrawal. While
-        // the position is in YieldWithdrawalRequested, this is the deterministic
-        // amount that will land in idleHollar at execute. The bucket is no
-        // longer accruing yield for this position from request-time onward, so
-        // pendingYield (plus totalPendingYield in totalAssets) keeps the
-        // accounting flat across the admin-approval delay.
-        uint256 pendingYield;
-    }
 
     // RedemptionRequest struct moved to QueueLib.Request — see libraries/QueueLib.sol
 
@@ -185,7 +164,7 @@ contract BILVault is
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice All NFT positions, ordered by deposit time
-    NFTPosition[] public positions;
+    QueueLib.NFTPosition[] public positions;
     /// @notice Index of the first non-redeemed position
     uint256 public positionHead;
 
@@ -309,6 +288,11 @@ contract BILVault is
     event PoolRegistered(address indexed pool);
     event ActiveDepositPoolSet(address indexed pool);
     event PoolRetired(address indexed pool);
+    event PositionYieldCapped(
+        uint256 indexed positionIndex,
+        uint256 maturityTime,
+        uint256 pendingYield
+    );
 
     // ═══════════════════════════════════════════════════════════════════════
     //                            ERRORS
@@ -366,6 +350,7 @@ contract BILVault is
         uint256 shortfallBps
     );
     error BpsAboveMax();
+    error MaturityBacklog();
 
     // ═══════════════════════════════════════════════════════════════════════
     //                         INITIALIZER
@@ -427,7 +412,15 @@ contract BILVault is
     function totalAssets() public view returns (uint256) {
         uint256 accruedYield = 0;
         if (yieldRateSum > 0) {
-            uint256 gross = block.timestamp * yieldRateSum;
+            // An overdue heap root clamps the entire live aggregate. Later
+            // positions may be conservatively under-counted until sync, but
+            // phantom post-maturity yield is impossible even without a keeper.
+            uint256 accrualTime = block.timestamp;
+            if (_maturityHeap.length > 0) {
+                uint256 earliest = _maturityHeap[0] >> 128;
+                if (earliest < accrualTime) accrualTime = earliest;
+            }
+            uint256 gross = accrualTime * yieldRateSum;
             if (gross > yieldOffsetSum) {
                 accruedYield =
                     (gross - yieldOffsetSum) /
@@ -465,6 +458,7 @@ contract BILVault is
     ) external nonReentrant whenNotPaused returns (uint256 shares) {
         if (receiver == address(0)) revert ZeroAddress();
         shares = _validateAndPreviewShares(assets);
+        _requireNoMaturityBacklog();
         _deposit(msg.sender, receiver, assets, shares);
     }
 
@@ -479,6 +473,7 @@ contract BILVault is
     ) external nonReentrant whenNotPaused returns (uint256 assets) {
         if (receiver == address(0)) revert ZeroAddress();
         if (shares == 0) revert ZeroAmount();
+        _requireNoMaturityBacklog();
         assets = previewMint(shares);
         // Reuse the same validation path: paused/zero/cap checks
         // run again on the computed asset amount.
@@ -513,20 +508,21 @@ contract BILVault is
 
         uint256 idx = positions.length;
         positions.push(
-            NFTPosition({
+            QueueLib.NFTPosition({
                 tokenId: tokenId,
                 principal: amount,
                 apyWad: apyWad,
                 depositTime: block.timestamp,
                 maturityTime: block.timestamp + _investmentPeriod(pool),
                 yieldStartTime: block.timestamp,
-                state: NFTState.Active,
+                state: QueueLib.NFTState.Active,
+                yieldCapped: false,
                 pendingYield: 0
             })
         );
         positionPool[idx] = pool;
 
-        _addToBucket(apyWad, amount, block.timestamp);
+        _addToBucket(idx, apyWad, amount, block.timestamp);
     }
 
     /// @notice ERC-7540 async-redemption request. Escrows `shares` hDCL
@@ -623,20 +619,12 @@ contract BILVault is
             // Head sweep — same logic as before, bounded by MAX_QUEUE_ITERATIONS
             // so the canceller's gas stays bounded even with many head holes.
             if (requestId == queueHead) {
-                uint256 head = queueHead;
-                uint256 tail = queueTail;
-                uint256 swept;
-                while (
-                    head < tail &&
-                    swept < MAX_QUEUE_ITERATIONS &&
-                    redemptionQueue[head].user == address(0)
-                ) {
-                    unchecked {
-                        head++;
-                        swept++;
-                    }
-                }
-                queueHead = head;
+                queueHead = QueueLib.advanceQueueHead(
+                    redemptionQueue,
+                    queueHead,
+                    queueTail,
+                    MAX_QUEUE_ITERATIONS
+                );
             }
         }
     }
@@ -730,56 +718,54 @@ contract BILVault is
     function pokeDecentral(
         uint256 positionIndex
     ) external nonReentrant whenNotPaused {
-        NFTPosition storage pos = positions[positionIndex];
-        if (pos.state == NFTState.Redeemed) revert PositionAlreadyRedeemed();
+        QueueLib.NFTPosition storage pos = positions[positionIndex];
+        if (pos.state == QueueLib.NFTState.Redeemed) revert PositionAlreadyRedeemed();
+
+        _syncMaturities(MAX_MATURITY_SYNC);
 
         IDecentralPool pool = positionPool[positionIndex];
 
         // Active → YieldWithdrawalRequested
         if (
-            pos.state == NFTState.Active && block.timestamp >= pos.maturityTime
+            pos.state == QueueLib.NFTState.Active && block.timestamp >= pos.maturityTime
         ) {
-            // Cap-at-maturity (audit H-01): if the position hasn't already been
-            // capped via cleanMaturedFromBucket, do it inline now. Decentral
-            // stops paying yield at maturityTime, so any accrual past maturity
-            // is phantom and must be excluded before we move the position to
-            // YieldWithdrawalRequested — otherwise totalPendingYield would
-            // record the inflated value and shareholders would absorb the
-            // shortfall at executeYieldWithdrawal time.
-            if (pos.pendingYield == 0) {
-                _capYieldAtMaturity(positionIndex);
-            }
+            // The chronological heap sync above must have capped this position
+            // before its Decentral lifecycle can advance. A larger overdue
+            // backlog is drained over subsequent permissionless calls.
+            if (!pos.yieldCapped) return;
 
-            // Wrapped in try/catch like every other Decentral interaction in
-            // this function — without it, a paused/shutdown Decentral pool at
-            // a position's maturity would revert the whole call and leave the
-            // position permanently stuck.
-            try pool.requestYieldWithdrawal(pos.tokenId) {
-                // Bucket bookkeeping (yield removal, pendingYield, and
-                // totalPendingYield bump) was already handled by
-                // _capYieldAtMaturity above. Just promote the state.
-                pos.state = NFTState.YieldWithdrawalRequested;
+            // A zero-APY or dust-rounded position has no yield withdrawal to
+            // request. Skip directly to the principal path; using pendingYield
+            // itself as the cap marker would leave this position stuck Active.
+            if (pos.pendingYield == 0) {
+                pos.state = QueueLib.NFTState.YieldClaimed;
                 emit PositionProcessed(
                     positionIndex,
                     pos.tokenId,
                     uint8(pos.state)
                 );
-            } catch {
-                // Decentral may be paused/shutdown — no-op so the position
-                // stays Active. The cap remains locked in (pendingYield set,
-                // bucket cleared) so totalAssets() stays flat; the next
-                // pokeDecentral call retries the Decentral request and skips
-                // the cap step since pendingYield is already non-zero.
-                return;
+            } else {
+                // Wrapped in try/catch like every other Decentral interaction
+                // so a paused/shutdown pool can be retried later.
+                try pool.requestYieldWithdrawal(pos.tokenId) {
+                    pos.state = QueueLib.NFTState.YieldWithdrawalRequested;
+                    emit PositionProcessed(
+                        positionIndex,
+                        pos.tokenId,
+                        uint8(pos.state)
+                    );
+                } catch {
+                    // The cap remains locked in while the request is retried.
+                    return;
+                }
             }
         }
 
         // YieldWithdrawalRequested → YieldClaimed
-        if (pos.state == NFTState.YieldWithdrawalRequested) {
+        if (pos.state == QueueLib.NFTState.YieldWithdrawalRequested) {
             uint256 balBefore = hollar.balanceOf(address(this));
             uint256 expectedYield = pos.pendingYield;
             uint256 yieldReceived;
-            bool yieldExecuted;
             try pool.executeYieldWithdrawal(pos.tokenId) {
                 yieldReceived = hollar.balanceOf(address(this)) - balBefore;
 
@@ -792,13 +778,12 @@ contract BILVault is
                 pos.pendingYield = 0;
                 idleHollar += yieldReceived;
 
-                pos.state = NFTState.YieldClaimed;
+                pos.state = QueueLib.NFTState.YieldClaimed;
                 emit PositionProcessed(
                     positionIndex,
                     pos.tokenId,
                     uint8(pos.state)
                 );
-                yieldExecuted = true;
             } catch {
                 // Not yet approved by Decentral — no-op, retry next cycle
                 return;
@@ -808,11 +793,7 @@ contract BILVault is
             // propagates up. Only a shortfall trips it; surplus is benign and
             // lifts the rate. Skipped when expectedYield is zero (no pending
             // yield to compare against, e.g., dust-rounded positions).
-            if (
-                yieldExecuted &&
-                expectedYield > 0 &&
-                yieldReceived < expectedYield
-            ) {
+            if (expectedYield > 0 && yieldReceived < expectedYield) {
                 uint256 shortfallBps = ((expectedYield - yieldReceived) *
                     10_000) / expectedYield;
                 if (shortfallBps > principalMismatchBpsThreshold) {
@@ -827,9 +808,9 @@ contract BILVault is
         }
 
         // YieldClaimed → PrincipalWithdrawalRequested
-        if (pos.state == NFTState.YieldClaimed) {
+        if (pos.state == QueueLib.NFTState.YieldClaimed) {
             try pool.requestPrincipalWithdrawal(pos.tokenId) {
-                pos.state = NFTState.PrincipalWithdrawalRequested;
+                pos.state = QueueLib.NFTState.PrincipalWithdrawalRequested;
                 emit PositionProcessed(
                     positionIndex,
                     pos.tokenId,
@@ -842,11 +823,10 @@ contract BILVault is
         }
 
         // PrincipalWithdrawalRequested → Redeemed
-        if (pos.state == NFTState.PrincipalWithdrawalRequested) {
+        if (pos.state == QueueLib.NFTState.PrincipalWithdrawalRequested) {
             uint256 balBefore = hollar.balanceOf(address(this));
             uint256 expectedPrincipal = pos.principal;
             uint256 principalReceived;
-            bool principalExecuted;
             try pool.executePrincipalWithdrawal(pos.tokenId) {
                 principalReceived = hollar.balanceOf(address(this)) - balBefore;
 
@@ -872,7 +852,7 @@ contract BILVault is
                 _removePrincipalFromBucket(expectedPrincipal);
 
                 idleHollar += principalReceived;
-                pos.state = NFTState.Redeemed;
+                pos.state = QueueLib.NFTState.Redeemed;
                 _advancePositionHead();
 
                 emit PositionRedeemed(
@@ -883,11 +863,14 @@ contract BILVault is
                 );
 
                 // Distribute available HOLLAR to queue
-                if (totalQueuedBil > 0 && idleHollar > 0) {
+                if (
+                    totalQueuedBil > 0 &&
+                    idleHollar > 0 &&
+                    !_hasMaturedBacklog()
+                ) {
                     uint256 rate = exchangeRate();
                     _processQueueWithHollar(idleHollar, rate);
                 }
-                principalExecuted = true;
             } catch {
                 // Not yet approved or delay not elapsed — no-op
                 return;
@@ -899,11 +882,7 @@ contract BILVault is
             // state and bucket changes above), so the vault refuses to absorb
             // a catastrophic shock atomically. Operations can pause and
             // investigate before retrying.
-            if (
-                principalExecuted &&
-                expectedPrincipal > 0 &&
-                principalReceived < expectedPrincipal
-            ) {
+            if (principalReceived < expectedPrincipal) {
                 uint256 shortfallBps = ((expectedPrincipal -
                     principalReceived) * 10_000) / expectedPrincipal;
                 if (shortfallBps > principalMismatchBpsThreshold) {
@@ -918,48 +897,20 @@ contract BILVault is
         }
     }
 
-    /// @notice Cap a matured position's yield accrual at `maturityTime`
-    ///         WITHOUT advancing its Decentral lifecycle (audit H-01).
-    /// @dev Permissionless. For any `Active` position past `maturityTime` that
-    ///      has not yet been moved to `YieldWithdrawalRequested`, this freezes
-    ///      the yield contribution at the maturity-capped amount, removes the
-    ///      position from the live yield bucket, and locks the capped amount
-    ///      into `totalPendingYield`.
-    ///
-    ///      Why this exists: `totalAssets()` derives accrued yield from the
-    ///      aggregate `(block.timestamp * yieldRateSum - yieldOffsetSum)`,
-    ///      which grows linearly with `block.timestamp` and has no per-position
-    ///      maturity awareness. Real Decentral stops paying yield at
-    ///      `maturityTime`, so a position that lingers in `Active` past
-    ///      maturity (e.g., a delayed keeper) silently inflates the rate.
-    ///      Anyone — a keeper bot, an arbitrage-prevention bot, or a user
-    ///      about to redeem — may call this atomically before any rate-sensitive
-    ///      operation to lock the bucket at the honest value.
-    ///
-    ///      Idempotent: if the position is already capped (`pendingYield != 0`
-    ///      while still `Active`) or has moved past `Active`, the call is a
-    ///      no-op. Reverts only when the position is not yet past maturity, so
-    ///      callers can probe safely.
-    /// @param positionIndex Index of the position in `positions`
-    function cleanMaturedFromBucket(uint256 positionIndex) external nonReentrant whenNotPaused {
-        NFTPosition storage pos = positions[positionIndex];
-        // Only cap positions still in Active state — past that, the bucket
-        // has already been settled and pendingYield/totalPendingYield manage
-        // accounting until execute.
-        if (pos.state != NFTState.Active) return;
-        // Already capped — no-op (idempotent).
-        if (pos.pendingYield != 0) return;
-        // Refuse to cap pre-maturity positions: bucket math is correct for
-        // live positions and the per-position storage would be wasted.
-        if (block.timestamp < pos.maturityTime) return;
-
-        _capYieldAtMaturity(positionIndex);
+    /// @notice Permissionlessly cap up to `maxPositions` due maturities in
+    ///         chronological order. Safe to call while the vault is paused.
+    /// @dev Deposits and mints remain disabled while any due root remains.
+    function syncMaturities(
+        uint256 maxPositions
+    ) external returns (uint256 processed) {
+        processed = _syncMaturities(maxPositions);
     }
 
     /// @notice Process queued redemptions, then reinvest remaining idle HOLLAR
     /// @dev Callable by anyone (bot or user). Processes first MAX_QUEUE_ITERATIONS withdrawals,
     ///      then reinvests remaining idle HOLLAR if the queue couldn't progress.
     function pokeQueue() external nonReentrant whenNotPaused {
+        _syncBeforeRateSensitiveAction();
         uint256 rate = exchangeRate();
 
         // Always invoke the queue processor. With funds, it processes redemptions;
@@ -1043,28 +994,7 @@ contract BILVault is
         }
         if (amount < minReinvestAmount) return;
 
-        IDecentralPool pool = activeDepositPool;
-        uint256 apyWad = pool.fixedAPYWad();
-        hollar.safeApprove(address(pool), 0);
-        hollar.safeApprove(address(pool), amount);
-        uint256 tokenId = pool.deposit(amount);
-
-        uint256 idx = positions.length;
-        positions.push(
-            NFTPosition({
-                tokenId: tokenId,
-                principal: amount,
-                apyWad: apyWad,
-                depositTime: block.timestamp,
-                maturityTime: block.timestamp + _investmentPeriod(pool),
-                yieldStartTime: block.timestamp,
-                state: NFTState.Active,
-                pendingYield: 0
-            })
-        );
-        positionPool[idx] = pool;
-
-        _addToBucket(apyWad, amount, block.timestamp);
+        uint256 tokenId = _depositIntoDecentral(amount);
         idleHollar -= amount;
 
         emit Reinvested(amount, tokenId);
@@ -1097,11 +1027,11 @@ contract BILVault is
     }
 
     /// @notice Max HOLLAR `receiver` can deposit right now.
-    /// @dev    Returns 0 if deposits are paused (at either level) or if the
-    ///         TVL cap is already reached. Otherwise the remaining headroom
-    ///         under the cap.
+    /// @dev    Returns 0 if deposits are paused, a maturity checkpoint is due,
+    ///         or the TVL cap is already reached. Otherwise returns the
+    ///         remaining headroom under the cap.
     function maxDeposit(address /* receiver */) public view returns (uint256) {
-        if (paused() || depositsPaused) return 0;
+        if (paused() || depositsPaused || _hasMaturedBacklog()) return 0;
         uint256 totalA = totalAssets();
         if (totalA >= tvlCap) return 0;
         return tvlCap - totalA;
@@ -1119,27 +1049,24 @@ contract BILVault is
     ///         cancel-spam DoS). Per ERC-7540 §maxRedeem/maxWithdraw, returns
     ///         the value of all settled-but-unclaimed requests for the caller.
     function maxWithdraw(address controller) external view returns (uint256 max) {
-        uint256[] storage ids = _settledByController[controller];
-        uint256 len = ids.length;
-        for (uint256 i = 0; i < len; i++) {
-            QueueLib.Request storage r = redemptionQueue[ids[i]];
-            // Defensive: the index may briefly hold stale entries that claim
-            // hasn't swap-popped yet. Filter on user match keeps the answer
-            // accurate without requiring eager index pruning.
-            if (r.user == controller) max += r.hollarOwed;
-        }
+        return QueueLib.sumSettled(
+            redemptionQueue,
+            _settledByController[controller],
+            controller,
+            true
+        );
     }
 
     /// @notice ERC-7540 `maxRedeem`: total hDCL currently claimable by
     ///         `controller` across all of their settled requests. Same
     ///         iteration bound as `maxWithdraw`.
     function maxRedeem(address controller) external view returns (uint256 max) {
-        uint256[] storage ids = _settledByController[controller];
-        uint256 len = ids.length;
-        for (uint256 i = 0; i < len; i++) {
-            QueueLib.Request storage r = redemptionQueue[ids[i]];
-            if (r.user == controller) max += r.bilSettled;
-        }
+        return QueueLib.sumSettled(
+            redemptionQueue,
+            _settledByController[controller],
+            controller,
+            false
+        );
     }
 
     /// @notice Preview how much HOLLAR is needed to mint exactly `shares` hDCL.
@@ -1237,49 +1164,19 @@ contract BILVault is
     function getEstimatedWaitTime(
         uint256 requestId
     ) external view returns (uint256 estimatedSeconds) {
-        QueueLib.Request storage request = redemptionQueue[requestId];
-        if (request.user == address(0)) return 0;
-
-        uint256 rate = exchangeRate();
-
-        // Sum total HOLLAR needed for all queue entries ahead of and including this request
-        uint256 hollarNeeded = 0;
-        for (uint256 i = queueHead; i <= requestId; i++) {
-            QueueLib.Request storage r = redemptionQueue[i];
-            if (r.user == address(0)) continue;
-            uint256 remainingBil = r.bilAmount - r.bilSettled;
-            hollarNeeded += (remainingBil * rate) / WAD;
-        }
-
-        // Subtract currently available idle HOLLAR
-        if (idleHollar >= hollarNeeded) return 0;
-        hollarNeeded -= idleHollar;
-
-        // Walk through positions to find when enough matures
-        uint256 accumulated = 0;
-        for (uint256 i = positionHead; i < positions.length; i++) {
-            NFTPosition storage pos = positions[i];
-            if (pos.state == NFTState.Redeemed) continue;
-
-            // Expected return: principal + yield.
-            uint256 expectedYield = (pos.principal *
-                pos.apyWad *
-                (pos.maturityTime - pos.yieldStartTime)) /
-                (SECONDS_PER_YEAR * WAD);
-            accumulated += pos.principal + expectedYield;
-
-            if (accumulated >= hollarNeeded) {
-                uint256 maturityWithDelay = pos.maturityTime +
-                    _decentralWithdrawalDelay(positionPool[i]);
-                if (maturityWithDelay > block.timestamp) {
-                    return maturityWithDelay - block.timestamp;
-                }
-                return 0;
-            }
-        }
-
-        // If we can't cover it with known positions, return max estimate
-        return type(uint256).max;
+        return QueueLib.estimatedWaitTime(
+            redemptionQueue,
+            positions,
+            positionPool,
+            requestId,
+            queueHead,
+            positionHead,
+            exchangeRate(),
+            WAD,
+            idleHollar,
+            SECONDS_PER_YEAR * WAD,
+            block.timestamp
+        );
     }
 
     /// @notice Get redemption request details
@@ -1315,7 +1212,7 @@ contract BILVault is
             uint8 state
         )
     {
-        NFTPosition storage pos = positions[positionIndex];
+        QueueLib.NFTPosition storage pos = positions[positionIndex];
         return (
             pos.tokenId,
             pos.principal,
@@ -1377,16 +1274,7 @@ contract BILVault is
     ///           - `answeredInRound >= roundId` — answer isn't carry-over
     ///             from a prior round (stale data).
     function getOraclePrice() external view returns (uint256) {
-        if (address(oracle) == address(0)) revert OracleNotSet();
-        (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) =
-            oracle.latestRoundData();
-        if (answer <= 0) revert OracleInvalidAnswer();
-        if (roundId == 0) revert OracleRoundIncomplete();
-        if (updatedAt == 0) revert OracleRoundIncomplete();
-        if (answeredInRound < roundId) revert OracleStaleRound();
-
-        uint8 oracleDecimals = oracle.decimals();
-        return (uint256(answer) * WAD) / (10 ** oracleDecimals);
+        return QueueLib.oraclePrice(oracle);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -1473,11 +1361,7 @@ contract BILVault is
         if (_oracle == address(0)) revert ZeroAddress();
 
         IAggregatorV3Interface candidate = IAggregatorV3Interface(_oracle);
-        (, int256 answer, , uint256 updatedAt, ) = candidate.latestRoundData();
-        if (answer <= 0) revert OracleInvalidAnswer();
-        if (updatedAt == 0) revert OracleRoundIncomplete();
-        uint8 d = candidate.decimals();
-        if (d < 6 || d > 18) revert OracleDecimalsOutOfRange();
+        QueueLib.validateOracle(candidate);
 
         oracle = candidate;
         emit OracleUpdated(_oracle);
@@ -1532,29 +1416,16 @@ contract BILVault is
         if (!isPoolRegistered[pool]) revert PoolNotRegistered();
         if (pool == activeDepositPool) revert CannotRetireActivePool();
 
-        // Reject if any non-redeemed position references this pool.
-        uint256 len = positions.length;
-        for (uint256 i = positionHead; i < len; i++) {
-            if (
-                positions[i].state != NFTState.Redeemed &&
-                positionPool[i] == pool
-            ) {
-                revert PoolHasOpenPositions();
-            }
-        }
+        QueueLib.removePool(
+            positions,
+            positionPool,
+            pools,
+            positionHead,
+            pool
+        );
 
         isPoolRegistered[pool] = false;
         isRegisteredPoolToken[address(pool.poolToken())] = false;
-
-        // Swap-and-pop from pools[]
-        uint256 plen = pools.length;
-        for (uint256 i = 0; i < plen; i++) {
-            if (pools[i] == pool) {
-                pools[i] = pools[plen - 1];
-                pools.pop();
-                break;
-            }
-        }
 
         emit PoolRetired(address(pool));
     }
@@ -1570,18 +1441,14 @@ contract BILVault is
     ///      param (which would otherwise be unused). Pass `address(0)` to
     ///      skip the assertion.
     function _registerPool(IDecentralPool newPool, address expectedPoolToken) internal {
-        if (address(newPool) == address(0)) revert ZeroAddress();
-        if (isPoolRegistered[newPool]) revert PoolAlreadyRegistered();
-        if (address(newPool.stablecoin()) != address(hollar)) revert PoolWrongStablecoin();
-        address poolTokenAddr = address(newPool.poolToken());
-        if (poolTokenAddr == address(0)) revert PoolNoNFTContract();
-        if (expectedPoolToken != address(0)) {
-            if (poolTokenAddr != expectedPoolToken) revert PoolTokenMismatch();
-        }
-
-        isPoolRegistered[newPool] = true;
-        isRegisteredPoolToken[poolTokenAddr] = true;
-        pools.push(newPool);
+        QueueLib.registerPool(
+            isPoolRegistered,
+            isRegisteredPoolToken,
+            pools,
+            newPool,
+            address(hollar),
+            expectedPoolToken
+        );
 
         emit PoolRegistered(address(newPool));
     }
@@ -1653,22 +1520,17 @@ contract BILVault is
 
     /// @dev Advance positionHead past redeemed positions
     function _advancePositionHead() internal {
-        uint256 head = positionHead;
-        uint256 len = positions.length;
-        uint256 swept;
-        while (
-            head < len &&
-            positions[head].state == NFTState.Redeemed &&
-            swept < MAX_POSITION_HEAD_SWEEP
-        ) {
-            unchecked { head++; swept++; }
-        }
-        positionHead = head;
+        positionHead = QueueLib.advancePositionHead(
+            positions,
+            positionHead,
+            MAX_POSITION_HEAD_SWEEP
+        );
     }
 
     /// @dev Record a fresh position: bump principal counter and add to the
     ///      yield aggregates. Used by deposit and reinvest paths.
     function _addToBucket(
+        uint256 positionIndex,
         uint256 apyWad,
         uint256 principal,
         uint256 yieldStartTime
@@ -1676,41 +1538,47 @@ contract BILVault is
         totalInvestedPrincipal += principal;
         yieldRateSum += apyWad * principal;
         yieldOffsetSum += apyWad * principal * yieldStartTime;
-    }
-
-    /// @dev Cap a position's yield at `maturityTime` and freeze it into
-    ///      `pendingYield` / `totalPendingYield` (audit H-01).
-    ///      Pre-conditions enforced by callers:
-    ///        - pos.state == Active
-    ///        - pos.pendingYield == 0 (not yet capped)
-    ///        - block.timestamp >= pos.maturityTime
-    ///      Removes the position's contribution from the live yield bucket so
-    ///      `totalAssets()` no longer over-counts virtual post-maturity yield.
-    function _capYieldAtMaturity(uint256 positionIndex) internal {
-        NFTPosition storage pos = positions[positionIndex];
-        uint256 capped = (pos.principal *
-            pos.apyWad *
-            (pos.maturityTime - pos.yieldStartTime)) /
-            (SECONDS_PER_YEAR * WAD);
-        pos.pendingYield = capped;
-        totalPendingYield += capped;
-        _removeYieldFromBucket(
-            pos.apyWad,
-            pos.principal,
-            pos.yieldStartTime
+        QueueLib.pushMaturity(
+            _maturityHeap,
+            positions[positionIndex].maturityTime,
+            positionIndex
         );
     }
 
-    /// @dev Stop a position from accruing yield without touching its principal.
-    ///      Used at Active → YieldWithdrawalRequested when Decentral has locked
-    ///      the payout amount.
-    function _removeYieldFromBucket(
-        uint256 apyWad,
-        uint256 principal,
-        uint256 yieldStartTime
-    ) internal {
-        yieldRateSum -= apyWad * principal;
-        yieldOffsetSum -= apyWad * principal * yieldStartTime;
+    function _syncMaturities(
+        uint256 maxPositions
+    ) internal returns (uint256 processed) {
+        uint256 newRateSum;
+        uint256 newOffsetSum;
+        uint256 pendingAdded;
+        (processed, newRateSum, newOffsetSum, pendingAdded) =
+            QueueLib.processMaturities(
+                positions,
+                _maturityHeap,
+                maxPositions,
+                block.timestamp,
+                yieldRateSum,
+                yieldOffsetSum,
+                SECONDS_PER_YEAR * WAD
+            );
+        yieldRateSum = newRateSum;
+        yieldOffsetSum = newOffsetSum;
+        totalPendingYield += pendingAdded;
+    }
+
+    function _syncBeforeRateSensitiveAction() internal {
+        _syncMaturities(MAX_MATURITY_SYNC);
+        _requireNoMaturityBacklog();
+    }
+
+    function _requireNoMaturityBacklog() internal view {
+        if (_hasMaturedBacklog()) revert MaturityBacklog();
+    }
+
+    function _hasMaturedBacklog() internal view returns (bool) {
+        return
+            _maturityHeap.length > 0 &&
+            (_maturityHeap[0] >> 128) <= block.timestamp;
     }
 
     /// @dev Drop a position's principal contribution after Decentral has paid
@@ -1722,11 +1590,6 @@ contract BILVault is
     /// @dev Returns the minimum investment period from a specific Decentral pool
     function _investmentPeriod(IDecentralPool pool) internal view returns (uint256) {
         return pool.minimumInvestmentPeriodSeconds();
-    }
-
-    /// @dev Returns the principal withdrawal delay from a specific Decentral pool
-    function _decentralWithdrawalDelay(IDecentralPool pool) internal view returns (uint256) {
-        return pool.principalWithdrawalDelaySeconds();
     }
 
     /// @dev Authorize UUPS upgrade — only UPGRADER_ROLE
@@ -1769,10 +1632,13 @@ contract BILVault is
     ///         Default 100 (1%). Bounded to [0, 10_000].
     uint256 public principalMismatchBpsThreshold;
 
+    /// @dev Min-heap of packed (maturityTime, positionIndex) entries.
+    uint256[] private _maturityHeap;
+
     // ═══════════════════════════════════════════════════════════════════════
     //                         STORAGE GAP
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @dev Reserved storage slots for future upgrades.
-    uint256[48] private __gap;
+    uint256[47] private __gap;
 }
