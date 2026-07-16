@@ -24,6 +24,8 @@ import {
   http,
   parseAbi,
   encodeFunctionData,
+  encodeDeployData,
+  parseTransaction,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -91,16 +93,68 @@ console.log("deployer/admin:", account.address);
 const bal = await pub.getBalance({ address: account.address });
 console.log(`balance: ${bal}\n`);
 
+// Frontier's `ethereum.transact` decoder requires the ECDSA r and s to each
+// serialize to a full 32 bytes. viem (RLP) encodes them minimally, so when r
+// or s has a zero high byte (~1/256 chance each) the raw tx is rejected with
+// "failed on r/s: H256: Expected input with 32 bytes, found 31 bytes". ECDSA
+// is deterministic (RFC 6979), so re-signing the SAME tx reproduces the same
+// bad signature — on an idle chain that means a permanent stall. We instead
+// sign locally, check both r and s are full-width, and nudge gasPrice by 1 wei
+// per retry (changing the signed payload) until the signature is clean, then
+// broadcast the raw tx ourselves. Nonce is managed locally so a rejected
+// candidate never consumes it.
+let _nonce = await pub.getTransactionCount({
+  address: account.address,
+  blockTag: "pending",
+});
+
+const _fullWidthSig = (sig) =>
+  BigInt(sig.r) >> 248n !== 0n && BigInt(sig.s) >> 248n !== 0n;
+
+async function _sendSafe(data, to) {
+  const nonce = _nonce++;
+  for (let i = 0; i < 64; i++) {
+    const req = {
+      ...(to ? { to } : {}),
+      data,
+      value: 0n,
+      gas: txOpts.gas,
+      gasPrice: GAS_PRICE + BigInt(i), // nudge payload until r,s are 32 bytes
+      nonce,
+      type: "legacy",
+      chainId: chain.id,
+    };
+    const signed = await account.signTransaction(req);
+    if (_fullWidthSig(parseTransaction(signed))) {
+      if (i > 0) console.log(`  (re-signed ${i}x for full-width signature)`);
+      return await wallet.sendRawTransaction({ serializedTransaction: signed });
+    }
+  }
+  throw new Error(
+    "could not produce a 32-byte r,s signature after 64 gasPrice nudges"
+  );
+}
+
+async function deploySafe(abi, bytecode, args = []) {
+  const data = encodeDeployData({ abi, bytecode, args });
+  const hash = await _sendSafe(data, undefined);
+  return await pub.waitForTransactionReceipt({ hash });
+}
+
+async function writeSafe(address, abi, functionName, args = []) {
+  const data = encodeFunctionData({ abi, functionName, args });
+  const hash = await _sendSafe(data, address);
+  return await pub.waitForTransactionReceipt({ hash });
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // Step 1: QueueLib
 // ════════════════════════════════════════════════════════════════════════
 console.log("--- 1: deploy QueueLib ---");
-const queueLibHash = await wallet.deployContract({
-  abi: queueLibArt.abi,
-  bytecode: queueLibArt.bytecode.object,
-  ...txOpts,
-});
-const queueLibReceipt = await pub.waitForTransactionReceipt({ hash: queueLibHash });
+const queueLibReceipt = await deploySafe(
+  queueLibArt.abi,
+  queueLibArt.bytecode.object
+);
 const queueLib = queueLibReceipt.contractAddress;
 console.log(`  QueueLib: ${queueLib}  gasUsed=${queueLibReceipt.gasUsed}\n`);
 
@@ -123,12 +177,7 @@ console.log("  ✅ all QueueLib placeholders linked\n");
 // Step 3: BILVault implementation
 // ════════════════════════════════════════════════════════════════════════
 console.log("--- 3: deploy BILVault impl ---");
-const implHash = await wallet.deployContract({
-  abi: vaultArt.abi,
-  bytecode: linkedBytecode,
-  ...txOpts,
-});
-const implReceipt = await pub.waitForTransactionReceipt({ hash: implHash });
+const implReceipt = await deploySafe(vaultArt.abi, linkedBytecode);
 const impl = implReceipt.contractAddress;
 console.log(`  Implementation: ${impl}  gasUsed=${implReceipt.gasUsed}\n`);
 
@@ -143,13 +192,10 @@ const initData = encodeFunctionData({
 });
 console.log(`  initdata length: ${initData.length} chars`);
 console.log(`  args: pool=${DECENTRAL_POOL.slice(0, 10)} token=${POOL_TOKEN.slice(0, 10)} hollar=${HOLLAR.slice(0, 10)} cap=2M admin=${account.address.slice(0, 10)}`);
-const proxyHash = await wallet.deployContract({
-  abi: proxyArt.abi,
-  bytecode: proxyArt.bytecode.object,
-  args: [impl, initData],
-  ...txOpts,
-});
-const proxyReceipt = await pub.waitForTransactionReceipt({ hash: proxyHash });
+const proxyReceipt = await deploySafe(proxyArt.abi, proxyArt.bytecode.object, [
+  impl,
+  initData,
+]);
 if (proxyReceipt.status !== "success") {
   console.error("  ❌ proxy deploy/initialize reverted");
   process.exit(1);
@@ -161,13 +207,9 @@ console.log(`  Proxy (Vault): ${vault}  gasUsed=${proxyReceipt.gasUsed}\n`);
 // Step 5: BILOracle(vault)
 // ════════════════════════════════════════════════════════════════════════
 console.log("--- 5: deploy BILOracle ---");
-const oracleHash = await wallet.deployContract({
-  abi: oracleArt.abi,
-  bytecode: oracleArt.bytecode.object,
-  args: [vault],
-  ...txOpts,
-});
-const oracleReceipt = await pub.waitForTransactionReceipt({ hash: oracleHash });
+const oracleReceipt = await deploySafe(oracleArt.abi, oracleArt.bytecode.object, [
+  vault,
+]);
 const oracle = oracleReceipt.contractAddress;
 console.log(`  BILOracle: ${oracle}  gasUsed=${oracleReceipt.gasUsed}\n`);
 
@@ -175,14 +217,12 @@ console.log(`  BILOracle: ${oracle}  gasUsed=${oracleReceipt.gasUsed}\n`);
 // Step 6: vault.setOracle(oracle)  (deployer holds ADMIN_ROLE per init)
 // ════════════════════════════════════════════════════════════════════════
 console.log("--- 6: vault.setOracle ---");
-const setOracleHash = await wallet.writeContract({
-  address: vault,
-  abi: parseAbi(["function setOracle(address) external"]),
-  functionName: "setOracle",
-  args: [oracle],
-  ...txOpts,
-});
-const setOracleReceipt = await pub.waitForTransactionReceipt({ hash: setOracleHash });
+const setOracleReceipt = await writeSafe(
+  vault,
+  parseAbi(["function setOracle(address) external"]),
+  "setOracle",
+  [oracle]
+);
 console.log(`  status=${setOracleReceipt.status}  gasUsed=${setOracleReceipt.gasUsed}\n`);
 
 // ════════════════════════════════════════════════════════════════════════
