@@ -81,17 +81,19 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
 
   // Treasury substrate address. Same on lark since lark forks mainnet.
   // Reused from heurc-launch / hollar-pools-launch. Holds ~597K HOLLAR; the
-  // bootstrap tops it up with 40K from the HOLLAR collector (below) so it can
-  // fund the full 600K from its own balance (no main-MM borrow).
+  // bootstrap tops it up by sweeping the main-MM HOLLAR aToken's accrued fees
+  // (~44K, see step 3b) so it can fund the full 600K from its own balance.
   const treasury = "7L53bUTBopuwFt3mKUfmkzgGLayYa1Yvn1hAg9v5UMrQzTfh";
 
-  // HOLLAR collector / treasury: the Aave Collector EVM contract where HOLLAR
-  // borrow interest accrues (main-market GhoAToken.getGhoTreasury). It is a
-  // contract, not a substrate account, so the 40K move is an EVM
-  // Collector.transfer gated by FUNDS_ADMIN — which is the Aave admin, so we
-  // wrap it in an aave-manager dispatch (same origin used for the oracle
-  // consolidation above), not a substrate tokens.transfer.
-  const HOLLAR_COLLECTOR = "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9";
+  // Main money-market HOLLAR GhoAToken. HOLLAR borrow interest does NOT sit in
+  // the Aave Collector (0xE525 holds <1K) — it accrues inside this aToken (~44K)
+  // and is only realised by distributeFeesToTreasury(), which pays out to the
+  // aToken's configured ghoTreasury. Step 3b taps it to top up the Treasury.
+  // ORIG_GHO_TREASURY is its normal fee sink (the Collector), restored right
+  // after the sweep — all atomic within this batch.
+  const MAIN_GHO_ATOKEN = "0x8C0f3b9602374198974d2B2679d14a386f5b108e";
+  const ORIG_GHO_TREASURY = "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9";
+  const AAVE_MANAGER = "0xaa7e0000000000000000000000000000000aa7e0";
 
   // Stableswap pool params — see BIL-MAINNET-HANDOVER.md "Mainnet
   // single-batch launch composition" for the rationale on each.
@@ -104,8 +106,9 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
   // new stablepool.
   const HOLLAR_DEPOSIT_AMOUNT = utils.parseEther("300000").toString();
   const HOLLAR_PAIR_AMOUNT = utils.parseEther("300000").toString();
-  // Topped up from the HOLLAR treasury just before the bootstrap runs.
-  const HOLLAR_TREASURY_TOPUP = utils.parseEther("40000").toString();
+  // Top-up is dynamic: step 3b sweeps whatever HOLLAR fees have accrued in the
+  // main-MM aToken (~44K) into the Treasury; the balance check below reads the
+  // live accrued amount to confirm the bootstrap will be funded.
 
   // ====================================================================
   // API + deployment lookups
@@ -163,26 +166,31 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
     );
   }
 
-  // Treasury funds the bootstrap from its OWN HOLLAR (no main-MM borrow),
-  // after a 40K top-up moved from the HOLLAR treasury by this proposal. So the
-  // Treasury needs (600K - 40K) = 560K of its own HOLLAR pre-proposal; the
-  // top-up brings the usable balance to >= the 600K bootstrap need.
+  // Treasury funds the bootstrap from its OWN HOLLAR (no main-MM borrow), after
+  // step 3b sweeps the main-MM aToken's accrued HOLLAR fees into it. Validate
+  // that (Treasury balance + accrued aToken fees) covers the 600K need.
   const treasuryEvm = await evmAddress(treasury);
   const treasuryHollar = (
     await hydrationApi.query.tokens.accounts(treasury, HOLLAR)
   ).free.toBigInt();
+  const aTokenAccrued = (
+    await new hre.ethers.Contract(
+      hollarAddr,
+      ["function balanceOf(address) view returns (uint256)"],
+      hre.ethers.provider
+    ).balanceOf(MAIN_GHO_ATOKEN)
+  ).toBigInt();
   const bootstrapNeed = BigInt(HOLLAR_DEPOSIT_AMOUNT) + BigInt(HOLLAR_PAIR_AMOUNT);
-  const afterTopUp = treasuryHollar + BigInt(HOLLAR_TREASURY_TOPUP);
+  const afterTopUp = treasuryHollar + aTokenAccrued;
   if (afterTopUp < bootstrapNeed) {
     console.warn(
-      `\n!!! WARNING: Treasury HOLLAR ${treasuryHollar} + ${HOLLAR_TREASURY_TOPUP} ` +
-        `top-up = ${afterTopUp} < bootstrap need ${bootstrapNeed}.\n    The ` +
-        `zap/pair steps will revert. Verify Treasury + HOLLAR-treasury balances ` +
-        `before submitting.\n`
+      `\n!!! WARNING: Treasury HOLLAR ${treasuryHollar} + aToken fees ${aTokenAccrued} ` +
+        `= ${afterTopUp} < bootstrap need ${bootstrapNeed}.\n    The zap/pair steps ` +
+        `will revert. Fund the Treasury or shrink the seed before submitting.\n`
     );
   } else {
     console.log(
-      `Treasury HOLLAR ${treasuryHollar} + ${HOLLAR_TREASURY_TOPUP} top-up = ` +
+      `Treasury HOLLAR ${treasuryHollar} + aToken fees ${aTokenAccrued} = ` +
         `${afterTopUp} (need ${bootstrapNeed}) OK`
     );
   }
@@ -369,31 +377,54 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
     txs.push(hydrationTx.router.forceInsertRoute(pair, route));
   }
 
-  // -------- 3b. Top the Treasury up: 40K HOLLAR from the HOLLAR collector ----
-  // Runs immediately with the proposal (main `txs`, not the scheduled batch)
-  // so the funds land in the Treasury before the +1-block bootstrap needs
-  // them. The collector is the Aave Collector EVM contract; its `transfer` is
-  // FUNDS_ADMIN-gated and FUNDS_ADMIN == the Aave admin, so we wrap the EVM
-  // call in an aave-manager dispatch. Recipient is the Treasury's bound EVM
-  // address — the HOLLAR ERC20 precompile credits the same substrate asset-222
-  // balance (7L53) that the bootstrap's addAssetsLiquidity reads.
+  // -------- 3b. Top the Treasury up by sweeping the main-MM aToken fees -------
+  // Runs immediately with the proposal (main `txs`, not the scheduled batch) so
+  // the funds land in the Treasury before the +1-block bootstrap needs them.
+  //
+  // HOLLAR borrow interest is NOT held by the Collector (0xE525, <1K) — it
+  // accrues inside the main GhoAToken (~44K) and is only realised by
+  // distributeFeesToTreasury(), which pays the aToken's configured ghoTreasury.
+  // So, atomically within this batch:
+  //   (i)   repoint the aToken's ghoTreasury to the bootstrap Treasury,
+  //   (ii)  distributeFeesToTreasury() -> sweeps accrued HOLLAR to the Treasury,
+  //   (iii) restore the original ghoTreasury (the Collector).
+  // updateGhoTreasury is onlyPoolAdmin on the main pool (the aave-manager holds
+  // that role and is NOT the aToken's proxy admin, so no transparent-proxy wall);
+  // distributeFeesToTreasury is permissionless. Recipient is the Treasury's bound
+  // EVM address; the HOLLAR ERC20 credits the same 7L53 balance the bootstrap's
+  // addAssetsLiquidity reads.
   console.log(
-    `---------> move ${HOLLAR_TREASURY_TOPUP} HOLLAR: collector ${HOLLAR_COLLECTOR} -> Treasury (${treasuryEvm})`
+    `---------> sweep main-MM aToken ${MAIN_GHO_ATOKEN} HOLLAR fees -> Treasury (${treasuryEvm})`
   );
   {
-    const collectorIface = new utils.Interface([
-      "function transfer(address token, address to, uint256 amount)",
+    const atokenIface = new utils.Interface([
+      "function updateGhoTreasury(address newGhoTreasury)",
+      "function distributeFeesToTreasury()",
     ]);
-    const collectorXfer = collectorIface.encodeFunctionData("transfer", [
-      hollarAddr,
-      treasuryEvm,
-      HOLLAR_TREASURY_TOPUP,
-    ]);
+    // (i) redirect the aToken's fee sink to the Treasury
     txs.push(
       await aaveManagerCall({
-        from: "0xaa7e0000000000000000000000000000000aa7e0",
-        to: HOLLAR_COLLECTOR,
-        data: collectorXfer,
+        from: AAVE_MANAGER,
+        to: MAIN_GHO_ATOKEN,
+        data: atokenIface.encodeFunctionData("updateGhoTreasury", [treasuryEvm]),
+        gasLimit: "300000",
+      })
+    );
+    // (ii) sweep accrued HOLLAR fees to the Treasury
+    txs.push(
+      await aaveManagerCall({
+        from: AAVE_MANAGER,
+        to: MAIN_GHO_ATOKEN,
+        data: atokenIface.encodeFunctionData("distributeFeesToTreasury", []),
+        gasLimit: "400000",
+      })
+    );
+    // (iii) restore the original fee sink (the Collector)
+    txs.push(
+      await aaveManagerCall({
+        from: AAVE_MANAGER,
+        to: MAIN_GHO_ATOKEN,
+        data: atokenIface.encodeFunctionData("updateGhoTreasury", [ORIG_GHO_TREASURY]),
         gasLimit: "300000",
       })
     );
