@@ -565,6 +565,11 @@ contract CollateralVault is
         compoundSlippageBps = bps;
     }
 
+    function setSwapper(address newSwapper) external onlyRole(ADMIN_ROLE) {
+        if (newSwapper == address(0)) revert ZeroAddress();
+        swapper = ISwapper(newSwapper);
+    }
+
     function pauseDeposits() external onlyRole(GUARDIAN_ROLE) {
         depositsPaused = true;
     }
