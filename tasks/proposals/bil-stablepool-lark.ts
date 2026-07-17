@@ -170,16 +170,17 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
   // step 3b sweeps the main-MM aToken's accrued HOLLAR fees into it. Validate
   // that (Treasury balance + accrued aToken fees) covers the 600K need.
   const treasuryEvm = await evmAddress(treasury);
-  const treasuryHollar = (
-    await hydrationApi.query.tokens.accounts(treasury, HOLLAR)
-  ).free.toBigInt();
-  const aTokenAccrued = (
-    await new hre.ethers.Contract(
-      hollarAddr,
-      ["function balanceOf(address) view returns (uint256)"],
-      hre.ethers.provider
-    ).balanceOf(MAIN_GHO_ATOKEN)
-  ).toBigInt();
+  // HOLLAR (asset 222) is an Erc20-type asset — its balance lives in the ERC20
+  // contract (asset 222's location IS 0x531a…), NOT in tokens.accounts, which
+  // reads 0. Read balanceOf, which is what the zap and the stableswap Erc20 leg
+  // actually pull from (and where distributeFeesToTreasury credits the sweep).
+  const hollarErc20 = new hre.ethers.Contract(
+    hollarAddr,
+    ["function balanceOf(address) view returns (uint256)"],
+    hre.ethers.provider
+  );
+  const treasuryHollar = (await hollarErc20.balanceOf(treasuryEvm)).toBigInt();
+  const aTokenAccrued = (await hollarErc20.balanceOf(MAIN_GHO_ATOKEN)).toBigInt();
   const bootstrapNeed = BigInt(HOLLAR_DEPOSIT_AMOUNT) + BigInt(HOLLAR_PAIR_AMOUNT);
   const afterTopUp = treasuryHollar + aTokenAccrued;
   if (afterTopUp < bootstrapNeed) {
