@@ -1,0 +1,74 @@
+{
+  "name": "BIL on Hydration",
+  "description": "Second Aave V3 money market instance on Hydration. BIL collateral-only (yield-bearing vault share over Decentral Protocol positions), HOLLAR borrow-only via GhoAToken facilitator.",
+  "network": {
+    "chainId": 222222,
+    "rpcUrl": "https://node0.lark.hydration.cloud",
+    "wsUrl": "wss://node0.lark.hydration.cloud",
+    "marketId": "BIL",
+    "providerId": 22222255
+  },
+  "core": {
+    "Pool": "0xd10b84Ee54dc5B81366b56bABBF4D32303629835",
+    "PoolAddressesProvider": "0x08D80c63A87746487d673b488FF40386c68cE192",
+    "PoolConfigurator": "0x233379cCad565122d93eBf2C76e793d0403fDE94",
+    "ACLManager": "0x04Ed8a7cF648f16BBCf54CF2EB75a40B0d4aA142",
+    "AaveOracle": "0xbBcd40c0b9Ee8Aa43F1a9519c05d2770F967CcC5",
+    "PoolDataProvider": "0x653DFc382b74E7399dae06DC4d07202E28b5990B",
+    "PoolAddressesProviderRegistry": "0xEdEcE54767182abc1b04FE699A96CF7e97a3CcF2",
+    "Treasury": "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9",
+    "IncentivesProxy": "0x8Ec25A204668226943254DCd4af1697bfB7EC346",
+    "EmissionManager": "0x4d680C4A9C7b71e82Ba98B57f891DE7987A79971"
+  },
+  "vault": {
+    "BILOracleAdapter": "0x52f934a10dB0Ef0aef953CF265Ed8EEe98e3689e",
+    "DepositZap": "0xFF14a4Bf1Fe038D23b68d738B81cF900FD6E9D8B"
+  },
+  "admin": "0xaa7e0000000000000000000000000000000aa7e0",
+  "reserves": {
+    "BIL": {
+      "underlying": "0x0000000000000000000000000000000100000226",
+      "substrateAssetId": 550,
+      "aToken": "0x0000000000000000000000000000000000000000",
+      "substrateATokenAssetId": 55,
+      "variableDebtToken": "0x0000000000000000000000000000000000000000",
+      "stableDebtToken": "0x0000000000000000000000000000000000000000",
+      "interestRateStrategy": "0x0000000000000000000000000000000000000000",
+      "oracleSource": "0x52f934a10dB0Ef0aef953CF265Ed8EEe98e3689e",
+      "risk": "LTV 80%, LT 85%, LB 7%, RF 20%, supply-only, 3M supply cap"
+    },
+    "HOLLAR": {
+      "underlying": "0x531a654d1696ED52e7275A8cede955E82620f99a",
+      "aToken_GhoAToken": "0x0000000000000000000000000000000000000000",
+      "variableDebtToken": "0x0000000000000000000000000000000000000000",
+      "stableDebtToken": "0x0000000000000000000000000000000000000000",
+      "interestRateStrategy": "0x0000000000000000000000000000000000000000",
+      "oracleSource_GhoOracle": "0x6096C9D71F7c06024578a62F4B608a1Bb06834F8",
+      "risk": "no collateral value, borrow-only. 1M HOLLAR facilitator bucket on HOLLAR token."
+    }
+  },
+  "implementations": {
+    "AToken": "0xd1519b76c541B920737d2f97ddF7b3E7015b66A1",
+    "DelegationAwareAToken": "0x0C4C8Fa2D64a727FE8930B994c697ec7fb1DdCF1",
+    "StableDebtToken": "0x23c424780bC3259b94e90CdEf7feF7B84931Ea95",
+    "VariableDebtToken": "0x312a018F3889B9372266F38062cCa8f0E1a215a9",
+    "GhoAToken": "0xB9947CaCebD0F23de3b59c369cD710137739Cd83",
+    "GhoVariableDebtToken": "0xe08E03f3A1F02b758eefD64a85cD037dA04Fb09B",
+    "GhoStableDebtToken": "0x2D7D76b1B443464e5bC699303438cDbaee708bF2",
+    "GhoInterestRateStrategy": "0x75C28DbE7b035FC60ca92ec92676E0F41b7bd26B",
+    "Pool_Implementation": "0x9f4c83343Cd72d48d275B8D457aDd91bCb51bcd7",
+    "PoolConfigurator_Implementation": "0xAC611e17f191312003E9b13483Ddf1384cc6f1ef"
+  },
+  "rateStrategies": {
+    "Stables": "0xfDB15f9Fe2252044b08230449D4278CFd4DF52E1",
+    "StableOne": "0x33d8110371bdc7579763634d71DF8EF4233A1AB2",
+    "StableTwo": "0x9aAE5bB841eCE70260cA1Acb7a88e00e865270db",
+    "VolatileOne": "0xB9b10Daa8806BCCB99d104D978D124630e589235"
+  },
+  "existingMainnetAddresses": {
+    "HOLLAR_GhoToken": "0x531a654d1696ED52e7275A8cede955E82620f99a",
+    "GhoOracle": "0x6096C9D71F7c06024578a62F4B608a1Bb06834F8",
+    "AaveManager": "0xaa7e0000000000000000000000000000000aa7e0",
+    "ZeroDiscountRateStrategy": "0x33A7C640140FEBafEcC9801AF723A0C14420eEd7"
+  }
+}
