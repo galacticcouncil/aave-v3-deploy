@@ -218,7 +218,7 @@ Created via `stableswap.createPoolWithPegs(...)`:
 |---|---|---|
 | `shareAsset` | 10055 | The 2-Pool-BIL LP token registered above |
 | `assets` | `[55, 222]` | **Sorted ascending** — BIL(55) before HOLLAR(222). Inversion silently produces wrong pool composition. |
-| `amplification` | 100 | Matches gigaeth/gigasol — high stability for yield-bearing collateral with slow-drifting peg |
+| `amplification` | 50 | Below the gigaeth/gigasol 100: BIL exits are structurally one-way flow against the treasury LP (deposit zap mints at NAV, pool is the only instant exit), so a faster-growing imbalance discount protects the LP — ~1% marginal discount already at 62/38 composition vs 71/29 at amp 100 (runtime-wasm simulation, 300K/300K seed) |
 | `fee` | 1000 | 0.1%. Covers the secondary-market exit cost; 2× HEURC's 0.05% to mildly discourage instant exit unless really needed (queue is the cheaper path) |
 | `pegSource[0]` | `{ MMOracle: <BILOracleAdapter address> }` | BIL's peg source. **Reuses the same oracle deployed for the Aave reserve** — wraps `vault.exchangeRate()` and scaled 18→8 decimals. **Must implement Chainlink V3 `AggregatorV3Interface`** (`latestRoundData`, etc.) — the stableswap pallet's MMOracle resolver calls `latestRoundData()`, not the legacy `latestAnswer()`. Lesson 11 captures the lark debugging history; the current `BILOracleAdapter.sol` in this repo has both interfaces and works for both consumers. |
 | `pegSource[1]` | `{ value: [1, 1] }` | HOLLAR fixed 1:1 base reference |
@@ -366,7 +366,7 @@ checks (BIL aToken proxy non-zero, etc.):
 # Stableswap pool exists with the right shape
 polkadot-api:
   assetRegistry.assets(10055)              # name="2-Pool-BIL", type=StableSwap
-  stableswap.pools(10055)                  # assets=[55, 222]; amplification=100; fee=1000
+  stableswap.pools(10055)                  # assets=[55, 222]; amplification=50; fee=1000
   stableswap.pegs(10055)                   # peg sources match config
   multiTransactionPayment.acceptedCurrencies(10055)  # is Some
 
@@ -398,7 +398,7 @@ oracle + consolidation step landed clean):
 === Post-state ===
   assetRegistry.assets(10055):                       2-Pool-BIL, StableSwap, 18 dec ✓
   multiTransactionPayment.acceptedCurrencies(10055): set ✓
-  stableswap.pools(10055):                           assets=[222,550], amp=100, fee=0.10% ✓
+  stableswap.pools(10055):                           assets=[222,550], amp=50, fee=0.10% ✓
   treasury LP (10055):                               599,099.99 LP shares ✓
   treasury aBIL (550, via CurrenciesApi):           896.56 (= safety-buffer dust) ✓
   treasury HOLLAR (222, via CurrenciesApi):          572,464.91 (pre-state preserved) ✓
@@ -601,7 +601,7 @@ On the chopsticks fork:
 | Contracts at fixed addrs (HOLLAR, GhoOracle, etc.) | Same as mainnet (fork) | Canonical |
 | `aa7e...` precompile | Same | Same |
 | **Launch shape** | **Staged: BIL pool first, zap separately, stableswap deferred** | **Single-batch: vault + pool + governance + zap + stableswap + Treasury bootstrap, all in one referendum.** See "Mainnet single-batch launch composition" above. |
-| **Stableswap pool** | Not deployed (still unbuilt as of writing) | 2-Pool-BIL (10055), BIL/HOLLAR pair, amp=100, fee=0.1%, peg via existing BILOracleAdapter, maxPegUpdate=200 |
+| **Stableswap pool** | Not deployed (still unbuilt as of writing) | 2-Pool-BIL (10055), BIL/HOLLAR pair, amp=50, fee=0.1%, peg via existing BILOracleAdapter, maxPegUpdate=200 |
 | **Initial liquidity** | None | Treasury borrows 600K HOLLAR from main MM; pairs 300K HOLLAR + 300K BIL into the new pool; resulting LP shares stay in Treasury as protocol-owned liquidity |
 
 ## What went wrong on 0.lark — and how to avoid it

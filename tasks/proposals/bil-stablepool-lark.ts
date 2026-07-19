@@ -97,7 +97,10 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
 
   // Stableswap pool params — see BIL-MAINNET-HANDOVER.md "Mainnet
   // single-batch launch composition" for the rationale on each.
-  const AMPLIFICATION = 100;
+  // 50 (not the peers' 100-222): BIL exits are one-way flow against the
+  // treasury LP, so a faster-growing imbalance discount protects it — ~1%
+  // marginal discount at 62/38 instead of 71/29 (see amp-curve tables).
+  const AMPLIFICATION = 50;
   const FEE = 1000; // 0.1%
   const MAX_PEG_UPDATE = 200; // gigasol-style "≥10× expected APY"
 
