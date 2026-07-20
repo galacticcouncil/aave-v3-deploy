@@ -216,13 +216,45 @@ leave the queue and the filler receives the escrowed hDCL:
 /// Walk from queueHead. For each active entry that is listed with
 /// ask ≤ maxAskBps: pay controller pendingBil × rate × (1 − ask),
 /// receive the pending escrowed shares, remove entry from queue.
-/// Whole entries only — stop when the next fillable entry exceeds the
-/// remaining budget. Unlisted / over-ask entries are skipped (counted
-/// against maxSkips like settlement holes).
+/// When the remaining budget doesn't cover the next fillable entry,
+/// fill it PARTIALLY and stop — same arithmetic as partial settlement
+/// (QueueLib.sol:421): shares = budget × wad / (rate × (1 − ask))
+/// rounded down, payment derived from shares (truncation residue stays
+/// with the filler), `if (shares == 0) break` dust guard. Unlisted /
+/// over-ask entries are skipped (counted against maxSkips like
+/// settlement holes).
 function fillQueue(uint256 maxHollarIn, uint32 maxAskBps)
     external nonReentrant whenNotPaused
     returns (uint256 hollarSpent, uint256 bilReceived);
 ```
+
+### Partial fills — the whale answer
+
+Variant A had to reject partial fills (§10): buying part of a *spot*
+splits an entry into two owners. Variant B has no such problem — a
+partial fill just shrinks the entry's pending portion in place
+(`bilAmount −= sharesFilled`, `totalQueuedBil −= sharesFilled`), single
+owner throughout, entry stays at the cursor. That is *structurally
+identical to partial settlement*, which the queue already does on every
+underfunded `pokeQueue` — same rounding rules, same dust guard, same
+"entry remains until more HOLLAR arrives" semantics. Settled slices are
+unaffected as before.
+
+This closes the whale gap in B:
+
+- A 500K entry no longer needs a single 500K filler — it drains against
+  **aggregate** market capacity: ten 50K fillers over a week each take a
+  slice at the whale's ask. The whale streams liquidity instead of
+  waiting for one counterparty.
+- Interleaving is safe by construction: partial fill → partial settle →
+  partial fill on the same entry compose, because both operate on the
+  same `pending = bilAmount − bilSettled` and never touch each other's
+  slices. Cancel of the remainder keeps working (`cancelRedeem` refunds
+  whatever pending is left).
+- A sub-`minRedeemAmount` pending remainder after a partial fill is
+  acceptable for the same reason it is after partial settlement:
+  `minRedeemAmount` gates request creation, not queue residency, and the
+  tail gets cleaned up by the next settle or fill. No dust rule needed.
 
 Per entry, the effects are `cancelRedeem`'s (BILVault.sol:596) with two
 substitutions: the pending shares go to the **filler** instead of back to
@@ -273,7 +305,7 @@ entry out, never gates the queue behind it.
 |---|---|---|
 | Payment order | market (cherry-pick) | FIFO among sellers |
 | Others' wait | unchanged | shortened |
-| Whale in back | served directly | only after cheaper asks ahead clear |
+| Whale in back | served directly, needs one big filler | after listed asks ahead clear (which the filler buys, not burns — they wanted BIL anyway); drains against aggregate demand via partial fills |
 | Filler gets | queue spot near head | BIL (no priority) |
 | Viable discounts | tightest (short lockup) | ask must beat "just buy & hold BIL" |
 | Contract diff | controller reassignment + settled-slice purchase + index migration | cancel-with-different-destination + head walk |
@@ -301,8 +333,8 @@ shared, so A layers on later without migration.
 
 - Auction / wait-time-curve pricing (v1 is seller-set limit orders).
 - Public buyer-side order-book UI.
-- Partial fills (buy a slice of an entry) — rejected for v1: forces entry
-  splitting, which breaks the one-entry-one-owner simplicity and
-  re-introduces dust/minRedeem questions.
+- Partial fills **of Variant A spots** — rejected: buying part of a spot
+  splits an entry into two owners. (Variant B's partial fills have no
+  such problem and are in scope — see §9.)
 - Composability wrapper (tokenized queue positions) — explicitly against
   the product principle that users never touch NFTs/positions.
