@@ -334,7 +334,350 @@ query with fill rows.
 | 14 | iteration cap: 51 listed entries → 50 filled, head correct, second call finishes |
 | 15 | reinvest gate + wait-estimate assertions (§6) |
 
-## 9. Open questions (decide before implementation)
+## 9. Reference implementation
+
+Compilable-intent code (not yet in tree — this feature is post-launch;
+land it on a `feat/queue-fills` branch off the audited launch tag).
+
+### 9.1 QueueLib additions
+
+```solidity
+// ── constants ──
+uint256 private constant BPS = 10_000;
+
+// ── types ──
+struct FillPay { address controller; uint256 amount; }
+
+struct FillResult {
+    uint256 newQueueHead;
+    uint256 hollarSpent;
+    uint256 bilFilled;
+    uint256 count;       // populated length of pays
+    FillPay[] pays;
+}
+
+// ── events (mirrors RedemptionFulfilled placement, QueueLib.sol:56) ──
+event RequestFilled(
+    uint256 indexed requestId, address indexed controller,
+    uint256 hollarPaid, uint256 bilFilled
+);
+event RequestPartiallyFilled(
+    uint256 indexed requestId, address indexed controller,
+    uint256 hollarPaid, uint256 bilFilled
+);
+
+/// @notice Strict-FIFO fill walk. Mutates queue entries and asks;
+///         returns the payment plan for the vault to execute (escrow
+///         hDCL release needs the vault's internal `_transfer`, which a
+///         library cannot call — and deferring interactions to the
+///         caller gives CEI at the boundary).
+function fillWalk(
+    mapping(uint256 => Request) storage queue,
+    mapping(uint256 => uint32) storage askPlusOne,
+    uint256 queueHead_,
+    uint256 queueTail_,
+    uint256 budget,
+    uint256 minAskBps,
+    uint256 rate,
+    uint256 maxIterations,
+    uint256 maxSkips,
+    uint256 wad
+) public returns (FillResult memory res) {
+    res.newQueueHead = queueHead_;
+    res.pays = new FillPay[](maxIterations);
+
+    uint256 cursor = queueHead_;
+    uint256 iterations;
+    uint256 skips;
+
+    while (cursor < queueTail_ && iterations < maxIterations && skips < maxSkips) {
+        Request storage r = queue[cursor];
+
+        // Hole (cancelled) — sweep past, advance head while co-located.
+        if (r.user == address(0)) {
+            if (cursor == res.newQueueHead) { unchecked { res.newQueueHead++; } }
+            unchecked { cursor++; skips++; }
+            continue;
+        }
+
+        // Nothing pending (fully settled / fully filled earlier) —
+        // passable: stays in the mapping for claim walkers.
+        if (r.bilSettled == r.bilAmount) {
+            if (cursor == res.newQueueHead) { unchecked { res.newQueueHead++; } }
+            unchecked { cursor++; skips++; }
+            continue;
+        }
+
+        // Live entry: unlisted, or asking a smaller discount than the
+        // filler requires — skip WITHOUT head advance (head must never
+        // pass a live entry; co-location is broken from here on).
+        uint256 plusOne = askPlusOne[cursor];
+        if (plusOne == 0 || plusOne - 1 < minAskBps) {
+            unchecked { cursor++; skips++; }
+            continue;
+        }
+
+        if (budget == 0) break;
+        uint256 ask = plusOne - 1;
+        uint256 pending = r.bilAmount - r.bilSettled;
+        address user = r.user;   // hoisted: survives a delete below
+
+        // NAV value, settlement rounding (QueueLib.sol:389); then discount.
+        uint256 hollarValue = (pending * rate) / wad;
+        if (hollarValue == 0) break;            // catastrophic-rate guard
+        uint256 payFull = (hollarValue * (BPS - ask)) / BPS;
+        if (payFull == 0) break;
+
+        iterations++;
+
+        if (budget >= payFull) {
+            // ── full fill ──
+            budget -= payFull;
+            r.bilAmount = r.bilSettled;          // cancel-shrink (BILVault.sol:611)
+            delete askPlusOne[cursor];
+            if (r.bilSettled == 0) {
+                delete queue[cursor];            // becomes a hole
+            }
+            // Either way pending is now 0 — passable; advance if co-located.
+            if (cursor == res.newQueueHead) { unchecked { res.newQueueHead++; } }
+
+            res.pays[res.count++] = FillPay(user, payFull);
+            res.hollarSpent += payFull;
+            res.bilFilled += pending;
+            emit RequestFilled(cursor, user, payFull, pending);
+            unchecked { cursor++; }
+        } else {
+            // ── partial fill: mirrors partial settlement (QueueLib.sol:421) ──
+            uint256 shares = (budget * wad * BPS) / (rate * (BPS - ask));
+            if (shares == 0) break;              // dust guard
+            if (shares >= pending) shares = pending; // floor-rounding corner: complete the entry
+
+            // Recompute pay from shares (floor twice, matching quote path
+            // exactly) — guarantees pay ≤ budget.
+            uint256 pay = (((shares * rate) / wad) * (BPS - ask)) / BPS;
+
+            r.bilAmount -= shares;               // pending shrinks in place; ask persists
+            bool completed = (r.bilAmount == r.bilSettled);
+            if (completed) {
+                delete askPlusOne[cursor];
+                if (r.bilSettled == 0) delete queue[cursor];
+                if (cursor == res.newQueueHead) { unchecked { res.newQueueHead++; } }
+            }
+
+            res.pays[res.count++] = FillPay(user, pay);
+            res.hollarSpent += pay;
+            res.bilFilled += shares;
+            emit RequestPartiallyFilled(cursor, user, pay, shares);
+            break;                               // budget exhausted
+        }
+    }
+}
+```
+
+`previewFillWalk` — identical control flow, `view`, writes replaced by
+local accumulation. To prevent divergence, both walks share the pricing
+via internal pure helpers:
+
+```solidity
+function _priceFull(uint256 pending, uint256 rate, uint256 ask, uint256 wad)
+    internal pure returns (uint256 pay);
+function _priceShares(uint256 budget, uint256 rate, uint256 ask, uint256 wad)
+    internal pure returns (uint256 shares);
+```
+
+### 9.2 BILVault additions
+
+```solidity
+// ── constants (next to MAX_QUEUE_ITERATIONS, BILVault.sol:45) ──
+uint32 internal constant MAX_FILL_ASK_BPS = 2_000;   // 20%
+
+// ── storage (before __gap, BILVault.sol:1643; gap 47 → 45) ──
+mapping(uint256 => uint32) internal _fillAskPlusOne;
+bool public fillsEnabled;
+
+// ── events ──
+event FillAskSet(uint256 indexed requestId, address indexed controller, uint32 askBps);
+event FillAskCleared(uint256 indexed requestId);
+event QueueFilled(address indexed filler, uint256 hollarSpent, uint256 bilReceived, uint256 entriesTouched);
+event FillsEnabledSet(bool enabled);
+
+// ── errors ──
+error FillsDisabled(); error AskTooHigh(); error NothingPending();
+error NothingFilled(); error SlippageExceeded();
+
+function setFillAsk(uint256 requestId, uint32 askBps) external {
+    if (requestId >= queueTail) revert InvalidRequestId();
+    if (askBps > MAX_FILL_ASK_BPS) revert AskTooHigh();
+    QueueLib.Request storage r = redemptionQueue[requestId];
+    address controller = r.user;
+    if (controller == address(0)) revert RequestNotActive();
+    if (msg.sender != controller && !isOperator[controller][msg.sender])
+        revert NotRequestOwner();
+    if (r.bilAmount == r.bilSettled) revert NothingPending();
+    _fillAskPlusOne[requestId] = askBps + 1;
+    emit FillAskSet(requestId, controller, askBps);
+}
+
+function clearFillAsk(uint256 requestId) external {
+    QueueLib.Request storage r = redemptionQueue[requestId];
+    address controller = r.user;
+    if (controller == address(0)) revert RequestNotActive();
+    if (msg.sender != controller && !isOperator[controller][msg.sender])
+        revert NotRequestOwner();
+    if (_fillAskPlusOne[requestId] == 0) return;      // idempotent
+    delete _fillAskPlusOne[requestId];
+    emit FillAskCleared(requestId);
+}
+
+function fillQueue(uint256 maxHollarIn, uint32 minAskBps, uint256 minBilOut)
+    external nonReentrant whenNotPaused
+    returns (uint256 hollarSpent, uint256 bilReceived)
+{
+    if (!fillsEnabled) revert FillsDisabled();
+    if (maxHollarIn == 0) revert ZeroAmount();
+    _syncBeforeRateSensitiveAction();                 // BILVault.sol:1569
+    uint256 rate = exchangeRate();
+
+    QueueLib.FillResult memory res = QueueLib.fillWalk(
+        redemptionQueue, _fillAskPlusOne,
+        queueHead, queueTail,
+        maxHollarIn, minAskBps, rate,
+        MAX_QUEUE_ITERATIONS, MAX_QUEUE_SKIPS, WAD
+    );
+
+    if (res.bilFilled == 0) revert NothingFilled();
+    if (res.bilFilled < minBilOut) revert SlippageExceeded();
+
+    queueHead = res.newQueueHead;
+    totalQueuedBil -= res.bilFilled;
+
+    // Interactions last — all queue state written above (CEI). GHO has
+    // no transfer hooks; nonReentrant is belt-and-braces.
+    for (uint256 i; i < res.count; ++i) {
+        hollar.safeTransferFrom(msg.sender, res.pays[i].controller, res.pays[i].amount);
+    }
+    _transfer(address(this), msg.sender, res.bilFilled);
+
+    emit QueueFilled(msg.sender, res.hollarSpent, res.bilFilled, res.count);
+    return (res.hollarSpent, res.bilFilled);
+}
+
+/// Guardian can kill, only admin can arm (pause conventions, BILVault.sol:1284).
+function setFillsEnabled(bool enabled) external {
+    if (enabled) _checkRole(ADMIN_ROLE);
+    else _checkAdminOrGuardian();
+    fillsEnabled = enabled;
+    emit FillsEnabledSet(enabled);
+}
+
+function getFillAsk(uint256 requestId) external view returns (bool listed, uint32 askBps) {
+    uint32 v = _fillAskPlusOne[requestId];
+    return v == 0 ? (false, 0) : (true, v - 1);
+}
+
+/// UI/keeper quote. NOTE: cannot run the maturity sync (view) — if a
+/// maturity is due, the live call's rate may differ slightly; keepers
+/// should call syncMaturities() first when _hasMaturedBacklog().
+function previewFillQueue(uint256 maxHollarIn, uint32 minAskBps)
+    external view returns (uint256 hollarSpent, uint256 bilOut, uint256 entries)
+{
+    return QueueLib.previewFillWalk(
+        redemptionQueue, _fillAskPlusOne, queueHead, queueTail,
+        maxHollarIn, minAskBps, exchangeRate(),
+        MAX_QUEUE_ITERATIONS, MAX_QUEUE_SKIPS, WAD
+    );
+}
+```
+
+`cancelRedeem` diff (BILVault.sol:596) — one insertion after the auth
+checks:
+
+```solidity
+if (_fillAskPlusOne[requestId] != 0) {
+    delete _fillAskPlusOne[requestId];
+    emit FillAskCleared(requestId);
+}
+```
+
+### 9.3 IBILVault interface diff
+
+Add to `src/interfaces/IBILVault.sol`: the four vault events, five
+errors, and signatures for `setFillAsk`, `clearFillAsk`, `fillQueue`,
+`setFillsEnabled`, `getFillAsk`, `previewFillQueue`, `fillsEnabled()`.
+
+### 9.4 Upgrade script
+
+Extend `script/Upgrade.s.sol` pattern: deploy QueueLib, deploy impl with
+`--libraries src/libraries/QueueLib.sol:QueueLib:<addr>`, then the
+governance ref carries `vault.upgradeTo(newImpl)` via
+`dispatchAsAaveManager` (UPGRADER_ROLE holder). Pre-flight in CI:
+
+```bash
+forge inspect src/BILVault.sol:BILVault storage-layout > new.json
+# diff against the deployed layout: only _fillAskPlusOne + fillsEnabled
+# may appear, __gap 47→45, nothing else moves.
+```
+
+### 9.5 Keeper filler module
+
+`keeper/src/filler.ts`, config-gated (`FILLER_ENABLED=false` default):
+
+```ts
+type FillerConfig = {
+  enabled: boolean
+  budgetHollar: bigint        // per-run cap
+  minAskBps: number           // don't buy below this discount
+  maxTxPerHour: number
+  wallet: string              // ops account, HOLLAR-funded + approved
+}
+
+// loop (event-driven + periodic):
+//   on FillAskSet | every POLL_BLOCKS:
+//     if (await vault.hasMaturedBacklog()) await vault.syncMaturities(N)
+//     const [spend, bilOut] = await vault.previewFillQueue(budget, minAskBps)
+//     if (bilOut > 0 && rateLimiter.ok()) {
+//       await hollar.approve(vault, spend)            // or standing max-approve
+//       await vault.fillQueue(spend, minAskBps, bilOut * 995n / 1000n)
+//     }
+```
+
+Treasury economics: filler buys BIL at ≥`minAskBps` below NAV and holds
+(earning vault APY) or recycles via its own `requestRedeem` — both fine;
+the module doesn't need an exit strategy.
+
+### 9.6 UI implementation
+
+All in `hydration-ui/apps/main/src/modules/strategies/bil/`:
+
+- `hooks/useFillAsk.ts` — `useFillAsk(requestId)` (reads `getFillAsk`),
+  `useSetFillAsk()` / `useClearFillAsk()` mutations (EVM tx via the same
+  write pattern as `useVaultWrites.ts`).
+- `components/SellEarlyModal.tsx` — ask slider (0–20%, default from
+  current pool discount as anchor), proceeds preview
+  `pending × rate × (1 − ask)` vs "wait ≈N days for full NAV"
+  (`getEstimatedWaitTime`); reuses the queue-vs-instant comparison
+  layout from `WithdrawMethodPicker.tsx`.
+- `components/Withdrawals.columns.tsx` — row action "Sell early" (when
+  pending > 0 and fills enabled), badge `Listed @ x%`, "Delist" action.
+  Gate all of it on `fillsEnabled` (new read in `useVaultReads.ts`).
+- History: extend `useRedemptionHistory.ts` with
+  `RequestFilled`/`RequestPartiallyFilled` logs → rows
+  "Sold early — received X HOLLAR" keyed `requestId:logIndex` (one
+  request can fill many times).
+- i18n `strategies.json`: `bil.fill.sellEarly`, `bil.fill.listedAt`,
+  `bil.fill.delist`, `bil.fill.proceedsNow`, `bil.fill.vsQueue`,
+  `bil.fill.soldEarly`.
+
+### 9.7 Test skeletons
+
+`test/QueueFills.t.sol` (unit matrix §8) + extend
+`test/Invariants.t.sol` handlers with `setFillAsk`/`clearFillAsk`/
+`fillQueue` actions and the §5 assertions. Shared fixture: 5 queued
+requests (mixed sizes, one partially settled via an underfunded
+`pokeQueue`), 2 filler accounts. Gas snapshot: `forge snapshot --match
+fillQueue` at 1 / 10 / 50 entries.
+
+## 10. Open questions (decide before implementation)
 
 1. **Operator listing** — plan §3 says operators may list; payment always
    to controller. Confirm with team (matches `cancelRedeem` refund rule).
