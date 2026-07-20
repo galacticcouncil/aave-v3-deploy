@@ -1,8 +1,9 @@
 # Queue Fills v1 — implementation spec
 
-Buildable spec for **Variant B** of `QUEUE-FILLS-PLAN.md` (strict-FIFO
-early settlement with partial fills). The plan holds the rationale; this
-holds what to type. All line references are to current `feat/bil`.
+Buildable spec for the **accepted design** (decided 2026-07-20):
+Variant B of `QUEUE-FILLS-PLAN.md` — strict-FIFO early settlement with
+partial fills. The plan holds the rationale; this holds what to type.
+All line references are to current `feat/bil`.
 
 ## 0. Summary of the mechanism
 

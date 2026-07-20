@@ -7,11 +7,12 @@ filler earns the discount for waiting out the remaining queue time (while
 the escrowed shares keep accruing — settlement rate-locks at fulfillment,
 so a queue spot is never yield-dead).
 
-> **Two variants are specced below.** §1–§5 describe Variant A (spot
-> transfer — filler inherits the queue position). §9 describes Variant B
-> (strict-FIFO early settlement — external HOLLAR pays sellers head-first
-> and filled entries leave the queue). **§9's recommendation: ship B as
-> v1**; A layers on later if targeted fills prove necessary.
+> **DECIDED (2026-07-20): Variant B — strict-FIFO early settlement with
+> partial fills — is the design.** See §9 here for rationale and
+> `QUEUE-FILLS-SPEC.md` for the buildable spec. §1–§5 describe Variant A
+> (spot transfer — filler inherits the queue position), which was
+> **rejected** for v1; it is kept below because its fairness analysis
+> explains the shape of B, and its listing surface is what B reuses.
 
 **Status: post-mainnet-launch feature. Explicitly NOT in the launch scope.**
 The launch ships queue + stableswap only; this is an upgrade once the vault
@@ -319,15 +320,18 @@ maxAskBps)`; the §5 invariants swap "totalQueuedBil unchanged" for
 "totalQueuedBil decreases by exactly the pending shares transferred, and
 vault escrow balance decreases by the same".
 
-### Recommendation
+### Decision
 
-Ship **B as v1**. It answers the fairness question by construction, is a
-smaller and more familiar diff (cancel semantics + settlement-walk
-scaffolding, both existing audited surface), and serves the realistic
-buyer (someone who wants BIL at size without pool impact). Revisit A as
-a v2 *only* if practice shows demand for targeted mid-queue fills that
-strip-clearing doesn't satisfy — the storage and listing surface are
-shared, so A layers on later without migration.
+**B with partial fills is v1** (decided 2026-07-20). It answers the
+fairness question by construction, is a smaller and more familiar diff
+(cancel semantics + settlement-walk scaffolding, both existing audited
+surface), serves the realistic buyer (someone who wants BIL at size
+without pool impact), and partial fills close the whale gap by letting
+large entries drain against aggregate demand. Buildable spec:
+`QUEUE-FILLS-SPEC.md`. Revisit A *only* if practice shows demand for
+targeted mid-queue fills that strip-clearing doesn't satisfy — the
+storage and listing surface are shared, so A layers on later without
+migration.
 
 ## 10. Out of scope (v2 candidates)
 
