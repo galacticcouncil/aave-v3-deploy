@@ -7,6 +7,12 @@ filler earns the discount for waiting out the remaining queue time (while
 the escrowed shares keep accruing — settlement rate-locks at fulfillment,
 so a queue spot is never yield-dead).
 
+> **Two variants are specced below.** §1–§5 describe Variant A (spot
+> transfer — filler inherits the queue position). §9 describes Variant B
+> (strict-FIFO early settlement — external HOLLAR pays sellers head-first
+> and filled entries leave the queue). **§9's recommendation: ship B as
+> v1**; A layers on later if targeted fills prove necessary.
+
 **Status: post-mainnet-launch feature. Explicitly NOT in the launch scope.**
 The launch ships queue + stableswap only; this is an upgrade once the vault
 has real usage. Rationale: it touches the escrow/claim area where audit
@@ -190,7 +196,108 @@ reason the library exists, see garden spec §"QueueLib").
 5. Mainnet upgrade ref, `fillsEnabled = false` initially; enable by
    separate admin action once the keeper/indexer/UI pieces are live.
 
-## 9. Out of scope (v2 candidates)
+## 9. Variant B — strict-FIFO early settlement (recommended v1)
+
+Variant A (§1–§5, "spot transfer") leaves *settlement* strictly FIFO but
+makes *liquidity timing* a market: fillers cherry-pick entries, so a
+later requester can be paid before an earlier one. If the product norm is
+"whoever has waited longest has first claim on any early liquidity",
+there is a strictly-FIFO alternative — and it turns out to be simpler,
+not harder.
+
+### Mechanics
+
+The filler doesn't buy a queue *spot* — they buy the queued *BIL*, in
+queue order. External HOLLAR walks the queue from the head exactly like
+settlement does, paying opted-in exiters at their asks; filled entries
+leave the queue and the filler receives the escrowed hDCL:
+
+```solidity
+/// Walk from queueHead. For each active entry that is listed with
+/// ask ≤ maxAskBps: pay controller pendingBil × rate × (1 − ask),
+/// receive the pending escrowed shares, remove entry from queue.
+/// Whole entries only — stop when the next fillable entry exceeds the
+/// remaining budget. Unlisted / over-ask entries are skipped (counted
+/// against maxSkips like settlement holes).
+function fillQueue(uint256 maxHollarIn, uint32 maxAskBps)
+    external nonReentrant whenNotPaused
+    returns (uint256 hollarSpent, uint256 bilReceived);
+```
+
+Per entry, the effects are `cancelRedeem`'s (BILVault.sol:596) with two
+substitutions: the pending shares go to the **filler** instead of back to
+the controller, and the controller receives the filler's HOLLAR. Settled
+slices (`bilSettled`/`hollarOwed`) are untouched — they stay claimable by
+the original controller, so **no controller reassignment exists at all**:
+no `settledByController` index migration, no face-value purchase of
+settled slices, none of §4.3's duplicate-push concerns. The walk itself
+mirrors `QueueLib.processQueue` (QueueLib.sol:336) — same cursor/hole-skip
+/iteration-cap scaffolding, same head-compaction rules.
+
+Accounting: `totalQueuedBil` decreases and entries delete/shrink — the
+existing audited cancel semantics. `exchangeRate()`/`totalAssets()`
+unchanged (shares transfer, nothing burns; the payment never enters vault
+balances). Call `_syncBeforeRateSensitiveAction` before pricing, same as
+every other rate consumer.
+
+### Why skip, not stop, at non-sellers
+
+Strictly stopping at the first unlisted entry hands a veto to whoever is
+at the head: a 1-BIL entry that refuses to list would block early
+liquidity for a 500K entry behind it forever. Skipping preserves the
+real invariant — *among exiters willing to sell at the market's price,
+earlier requests are always paid first* — while making non-participation
+self-exclusion rather than griefing. Same argument for skipping asks
+above the filler's `maxAskBps`: an aggressive ask only prices its own
+entry out, never gates the queue behind it.
+
+### Emergent properties
+
+- **Fills shorten the queue for everyone.** Filled entries leave the
+  queue, so everyone behind moves up — `getEstimatedWaitTime` improves,
+  which shrinks the discount future sellers need. Fills are a public
+  good here; in Variant A they're neutral.
+- **Whale demand pays small sellers first.** A filler reaching for a
+  large attractive ask deep in the queue must clear every cheaper listed
+  ask ahead of it — small early exiters get paid as a side effect.
+- **The filler is a BIL buyer, not a queue arbitrageur.** They end up
+  holding BIL at NAV-minus-ask with no size impact — strictly better
+  than buying through the pool's convex curve. Natural demand is anyone
+  who wants BIL exposure at scale (incl. the treasury bot), not just
+  exit-flow speculators. They inherit no priority; if they later want
+  out, they queue at the back or use the pool like any holder.
+
+### Trade-offs vs Variant A
+
+| | A — spot transfer | B — strict-FIFO early settlement |
+|---|---|---|
+| Payment order | market (cherry-pick) | FIFO among sellers |
+| Others' wait | unchanged | shortened |
+| Whale in back | served directly | only after cheaper asks ahead clear |
+| Filler gets | queue spot near head | BIL (no priority) |
+| Viable discounts | tightest (short lockup) | ask must beat "just buy & hold BIL" |
+| Contract diff | controller reassignment + settled-slice purchase + index migration | cancel-with-different-destination + head walk |
+| ERC-7540 | transferable-request extension | none needed (entries just exit early) |
+| §4 races | 3 interactions to reason about | fill vs settle/cancel only; no settled-slice cases |
+
+The §2–§5 sections above carry over with these deltas: storage is the
+same `fillAskPlusOne` mapping + `fillsEnabled`; `setFillAsk` unchanged;
+`fulfillRequest(requestId, ...)` is replaced by `fillQueue(maxHollarIn,
+maxAskBps)`; the §5 invariants swap "totalQueuedBil unchanged" for
+"totalQueuedBil decreases by exactly the pending shares transferred, and
+vault escrow balance decreases by the same".
+
+### Recommendation
+
+Ship **B as v1**. It answers the fairness question by construction, is a
+smaller and more familiar diff (cancel semantics + settlement-walk
+scaffolding, both existing audited surface), and serves the realistic
+buyer (someone who wants BIL at size without pool impact). Revisit A as
+a v2 *only* if practice shows demand for targeted mid-queue fills that
+strip-clearing doesn't satisfy — the storage and listing surface are
+shared, so A layers on later without migration.
+
+## 10. Out of scope (v2 candidates)
 
 - Auction / wait-time-curve pricing (v1 is seller-set limit orders).
 - Public buyer-side order-book UI.
