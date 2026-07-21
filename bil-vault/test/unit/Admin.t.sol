@@ -169,7 +169,7 @@ contract AdminTest is BaseTest {
         // pokeDecentral still works (warp past maturity)
         _warpDays(61);
         vault.pokeDecentral(0);
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 1, "Position advances even with deposits paused");
     }
 

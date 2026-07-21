@@ -45,7 +45,7 @@ contract PullRedemptionTest is BaseTest {
         assertGt(vault.totalReservedHollar(), 0, "reserved increased");
 
         // Request is rate-locked: bilSettled == bilAmount
-        (, uint256 amt, uint256 settled, uint256 owed,) = vault.getRedemptionRequest(requestId);
+        (, uint256 amt, uint256 settled, uint256 owed,,) = vault.getRedemptionRequest(requestId);
         assertEq(settled, amt, "fully settled");
         assertGt(owed, 0, "HOLLAR locked for claim");
     }
@@ -177,7 +177,7 @@ contract PullRedemptionTest is BaseTest {
         vault.pokeQueue();
 
         // Get the request's owed HOLLAR
-        (,,, uint256 owed,) = vault.getRedemptionRequest(0);
+        (,,, uint256 owed,,) = vault.getRedemptionRequest(0);
 
         uint256 aliceHollarBefore = hollar.balanceOf(alice);
 
@@ -207,7 +207,7 @@ contract PullRedemptionTest is BaseTest {
         // pokeQueue partially settles bob
         vault.pokeQueue();
 
-        (, uint256 amt, uint256 settledBefore, uint256 owedBefore,) = vault.getRedemptionRequest(reqId);
+        (, uint256 amt, uint256 settledBefore, uint256 owedBefore,,) = vault.getRedemptionRequest(reqId);
         assertGt(settledBefore, 0, "partially settled");
         assertLt(settledBefore, amt, "not fully settled");
 
@@ -221,7 +221,7 @@ contract PullRedemptionTest is BaseTest {
         assertEq(bobBilAfter - bobBilBefore, amt - settledBefore, "unsettled refunded");
 
         // Request still alive with the settled portion
-        (, uint256 amtAfter, uint256 settledAfter, uint256 owedAfter, bool active) = vault.getRedemptionRequest(reqId);
+        (, uint256 amtAfter, uint256 settledAfter, uint256 owedAfter, bool active,) = vault.getRedemptionRequest(reqId);
         assertTrue(active, "request still alive");
         assertEq(amtAfter, settledBefore, "amount shrunk to settled");
         assertEq(settledAfter, settledBefore, "settled unchanged");

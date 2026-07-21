@@ -7,22 +7,11 @@ import {BILVault} from "../../src/BILVault.sol";
 /// @title getEstimatedWaitTime — View Liveness
 contract EstimatedWaitTimeTest is BaseTest {
     function _readYieldStartTime(uint256 idx) internal view returns (uint256 yst) {
-        // NFTPosition layout offsets (see BILVault struct):
-        //   slot 0: tokenId, 1: principal, 2: apyWad, 3: depositTime,
-        //   slot 4: maturityTime, 5: yieldStartTime, ...
-        (bool ok, bytes memory data) = address(vault).staticcall(
-            abi.encodeWithSignature("positions(uint256)", idx)
-        );
-        require(ok);
-        assembly { yst := mload(add(data, 192)) }
+        (,,,,,,,, yst) = vault.getPosition(idx);
     }
 
     function _readMaturityTime(uint256 idx) internal view returns (uint256 m) {
-        (bool ok, bytes memory data) = address(vault).staticcall(
-            abi.encodeWithSignature("positions(uint256)", idx)
-        );
-        require(ok);
-        assembly { m := mload(add(data, 160)) }
+        (,,,, m,,,,) = vault.getPosition(idx);
     }
 
     // ═══════════════════════════════════════════════════════════════════════

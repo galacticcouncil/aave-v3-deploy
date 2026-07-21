@@ -127,7 +127,7 @@ contract ExchangeRateTest is BaseTest {
         vault.pokeDecentral(0);
 
         // Approve and execute yield withdrawal
-        (uint256 tokenId,,,,, ) = vault.getPosition(0);
+        (uint256 tokenId,,,,,,,,) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
         vault.pokeDecentral(0);
 

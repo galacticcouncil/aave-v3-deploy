@@ -92,7 +92,7 @@ contract QueueGriefTest is BaseTest {
         _spamCreateAndCancelReverse(bob, 200);
 
         assertEq(vault.queueHead(), 0, "queueHead unchanged (none were at head)");
-        assertEq(vault.getRedemptionQueueLength(), 201, "201 total slots");
+        assertEq(vault.queueTail(), 201, "201 total slots");
 
         // Now mature alice's deposit and process to fill idleHollar.
         _warpDays(61);

@@ -99,7 +99,7 @@ contract MaturityCheckpointTest is BaseTest {
         uint256 requestId = _requestRedeem(bob, vault.balanceOf(bob));
         vm.expectRevert(BILVault.MaturityBacklog.selector);
         vault.pokeQueue();
-        (, , uint256 settledBefore, uint256 owedBefore, ) = vault
+        (, , uint256 settledBefore, uint256 owedBefore, ,) = vault
             .getRedemptionRequest(requestId);
         assertEq(settledBefore, 0, "queue cannot lock a conservative rate");
         assertEq(owedBefore, 0, "no HOLLAR reserved while backlog remains");
@@ -115,7 +115,7 @@ contract MaturityCheckpointTest is BaseTest {
         assertEq(vault.getPositionCount(), countBefore + 1, "deposit resumes after backlog fits bound");
 
         vault.pokeQueue();
-        (, , uint256 settledAfter, , ) = vault.getRedemptionRequest(requestId);
+        (, , uint256 settledAfter, ,,) = vault.getRedemptionRequest(requestId);
         assertGt(settledAfter, 0, "queue resumes at the exact synchronized rate");
     }
 
@@ -129,7 +129,7 @@ contract MaturityCheckpointTest is BaseTest {
         assertEq(vault.syncMaturities(1), 0, "heap entry cannot be removed twice");
         assertEq(vault.totalPendingYield(), 0, "zero-yield sync is idempotent");
         vault.pokeDecentral(0);
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 3, "zero-yield position advances to principal request");
     }
 
@@ -239,12 +239,12 @@ contract MaturityCheckpointTest is BaseTest {
     }
 
     function _assertCapped(uint256 idx) internal view {
-        (, , , , , , , bool capped, ) = vault.positions(idx);
+        (, , , , , , bool capped,,) = vault.getPosition(idx);
         assertTrue(capped, "position should be capped");
     }
 
     function _assertLive(uint256 idx) internal view {
-        (, , , , , , , bool capped, ) = vault.positions(idx);
+        (, , , , , , bool capped,,) = vault.getPosition(idx);
         assertFalse(capped, "position should still be live");
     }
 
@@ -269,6 +269,6 @@ contract MaturityCheckpointTest is BaseTest {
     }
 
     function _pendingYield(uint256 positionIndex) internal view returns (uint256 pending) {
-        (, , , , , , , , pending) = vault.positions(positionIndex);
+        (, , , , , , , pending,) = vault.getPosition(positionIndex);
     }
 }

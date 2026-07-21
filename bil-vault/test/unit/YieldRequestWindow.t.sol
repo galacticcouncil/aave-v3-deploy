@@ -14,7 +14,7 @@ import {BILVault} from "../../src/BILVault.sol";
 contract YieldRequestWindowTest is BaseTest {
     /// @dev Per-position pendingYield via the public struct getter (last tuple element).
     function _pendingYield(uint256 idx) internal view returns (uint256 py) {
-        (,,,,,,,, py) = vault.positions(idx);
+        (,,,,,,, py,) = vault.getPosition(idx);
     }
 
     /// @dev Bring position 0 to YieldWithdrawalRequested.
@@ -80,7 +80,7 @@ contract YieldRequestWindowTest is BaseTest {
         // existing comment in pokeDecentral notes this surplus path
         // explicitly). Tolerate the upward rate movement; assert only that
         // the rate did not DROP — that's the bug the original test guarded.
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
         vault.pokeDecentral(0);
 
@@ -122,7 +122,7 @@ contract YieldRequestWindowTest is BaseTest {
         assertEq(vault.yieldRateSum(), 0, "bucket yield cleared at request");
 
         // Execute
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
         vault.pokeDecentral(0);
 
@@ -181,7 +181,7 @@ contract YieldRequestWindowTest is BaseTest {
         rPrev = rDelayed;
 
         // Execute (T3)
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
         vault.pokeDecentral(0);
         uint256 rExecute = vault.exchangeRate();

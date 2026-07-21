@@ -60,7 +60,7 @@ contract PrincipalMismatchTest is BaseTest {
         _warpDays(61);
 
         vault.pokeDecentral(0); // Active → YWR
-        (tokenId,,,,,) = vault.getPosition(0);
+        (tokenId,,,,,,,,) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
         vault.pokeDecentral(0); // YWR → YC → PWR cascade
         pool.approvePrincipalWithdrawal(tokenId);
@@ -81,7 +81,7 @@ contract PrincipalMismatchTest is BaseTest {
         assertEq(ms.length, 0, "no PrincipalMismatch event when payout is exact");
 
         // Sanity: position is Redeemed
-        (,,,,, uint8 state) = vault.getPosition(0);
+        (,,,,, uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 4, "position redeemed");
         tokenId; // suppress unused
     }

@@ -86,7 +86,7 @@ contract RedeemTest is BaseTest {
 
         uint256 requestId = _requestRedeem(alice, redeemAmt);
 
-        (address user, uint256 amount, uint256 settled, , bool active) =
+        (address user, uint256 amount, uint256 settled, , bool active,) =
             vault.getRedemptionRequest(requestId);
 
         assertEq(user, alice);
@@ -116,7 +116,7 @@ contract RedeemTest is BaseTest {
 
         assertEq(id0, 0);
         assertEq(id1, 1);
-        assertEq(vault.getRedemptionQueueLength(), 2);
+        assertEq(vault.queueTail(), 2);
     }
 
     /// @notice Spec: emit RedemptionRequested(requestId, msg.sender, wdclAmount)
@@ -180,7 +180,7 @@ contract RedeemTest is BaseTest {
         assertEq(vault.balanceOf(alice), aliceBefore + redeemAmt, "BIL returned");
         assertEq(vault.totalQueuedBil(), 0, "totalQueuedBil zeroed");
 
-        (, , , , bool active) = vault.getRedemptionRequest(requestId);
+        (, , , , bool active,) = vault.getRedemptionRequest(requestId);
         assertFalse(active, "Request inactive after cancel");
     }
 
@@ -203,7 +203,7 @@ contract RedeemTest is BaseTest {
         // Process queue: Alice fully fulfilled (FIFO), Bob partially
         vault.pokeQueue();
 
-        (, , uint256 bobSettled, , bool bobActive) = vault.getRedemptionRequest(bobRequestId);
+        (, , uint256 bobSettled, , bool bobActive,) = vault.getRedemptionRequest(bobRequestId);
         // Bob should be partially settled if any idle remained after Alice
         if (bobSettled > 0 && bobActive) {
             uint256 remaining = bobBil - bobSettled;
@@ -246,7 +246,7 @@ contract RedeemTest is BaseTest {
 
         vault.pokeDecentral(0);
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 1, "YieldWithdrawalRequested");
     }
 
@@ -257,7 +257,7 @@ contract RedeemTest is BaseTest {
 
         vault.pokeDecentral(0);
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 0, "Still Active before maturity");
     }
 
@@ -270,7 +270,7 @@ contract RedeemTest is BaseTest {
         vault.pokeDecentral(0);
 
         // Approve yield
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
 
         uint256 idleBefore = vault.idleHollar();
@@ -280,7 +280,7 @@ contract RedeemTest is BaseTest {
 
         assertGt(vault.idleHollar(), idleBefore, "Yield received as idle HOLLAR");
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 3, "PrincipalWithdrawalRequested (skips through YieldClaimed)");
     }
 
@@ -294,7 +294,7 @@ contract RedeemTest is BaseTest {
 
         vault.pokeDecentral(0); // should no-op (try/catch)
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 1, "Still YieldWithdrawalRequested when not approved");
     }
 
@@ -305,7 +305,7 @@ contract RedeemTest is BaseTest {
 
         // Walk through to PrincipalWithdrawalRequested
         vault.pokeDecentral(0);
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
         vault.pokeDecentral(0);
 
@@ -319,7 +319,7 @@ contract RedeemTest is BaseTest {
 
         assertGt(vault.idleHollar(), idleBefore, "Principal received as idle HOLLAR");
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 4, "Redeemed");
     }
 
@@ -341,7 +341,7 @@ contract RedeemTest is BaseTest {
 
         _processPositionFull(0);
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 4, "Redeemed");
 
         uint256 idle = vault.idleHollar();
@@ -360,7 +360,7 @@ contract RedeemTest is BaseTest {
         _warpDays(61);
 
         vault.pokeDecentral(0);
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
 
         uint256 idleBefore = vault.idleHollar();
@@ -414,11 +414,11 @@ contract RedeemTest is BaseTest {
         _warpDays(51);
 
         vault.pokeDecentral(0);
-        (, , , , , uint8 s0) = vault.getPosition(0);
+        (, , , , , uint8 s0,,,) = vault.getPosition(0);
         assertEq(s0, 1, "Position 0 advances (mature)");
 
         vault.pokeDecentral(1);
-        (, , , , , uint8 s1) = vault.getPosition(1);
+        (, , , , , uint8 s1,,,) = vault.getPosition(1);
         assertEq(s1, 0, "Position 1 stays Active (not mature)");
     }
 
@@ -431,7 +431,7 @@ contract RedeemTest is BaseTest {
         vm.prank(keeper);
         vault.pokeDecentral(0);
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 1, "Keeper can advance position");
     }
 
@@ -619,7 +619,7 @@ contract RedeemTest is BaseTest {
 
         vault.pokeQueue();
 
-        (, uint256 principal, uint256 apyWad, , , uint8 state) = vault.getPosition(posIdx);
+        (, uint256 principal, uint256 apyWad, , , uint8 state,,,) = vault.getPosition(posIdx);
         assertApproxEqRel(principal, idle, 0.01e18, "Reinvested principal = idle");
         assertEq(apyWad, APY_18_PERCENT, "APY from pool");
         assertEq(state, 0, "Active");
@@ -703,7 +703,7 @@ contract RedeemTest is BaseTest {
 
         vault.pokeQueue();
 
-        (, uint256 principal, , , , ) = vault.getPosition(posIdx);
+        (, uint256 principal, , , ,,,,) = vault.getPosition(posIdx);
         assertEq(principal, TEN_THOUSAND_HOLLAR, "Reinvest capped at tvlCap");
 
         // Remainder stays as idle
@@ -880,14 +880,14 @@ contract RedeemTest is BaseTest {
         uint256 aliceBil = _deposit(alice, TEN_THOUSAND_HOLLAR);
 
         // Getters on empty queue
-        assertEq(vault.getTotalQueuedBil(), 0);
-        assertEq(vault.getIdleHollar(), 0);
+        assertEq(vault.totalQueuedBil(), 0);
+        assertEq(vault.idleHollar(), 0);
         assertEq(vault.getRedemptionQueuePending(), 0);
-        assertEq(vault.getQueueHead(), 0);
+        assertEq(vault.queueHead(), 0);
 
         // After queue entry
         _requestRedeem(alice, aliceBil / 4);
-        assertGt(vault.getTotalQueuedBil(), 0);
+        assertGt(vault.totalQueuedBil(), 0);
         assertEq(vault.getRedemptionQueuePending(), 1);
     }
 

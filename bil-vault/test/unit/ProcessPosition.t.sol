@@ -27,7 +27,7 @@ contract ProcessPositionTest is BaseTest {
         // Process: Active -> YieldWithdrawalRequested
         vault.pokeDecentral(0);
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 1, "State should be YieldWithdrawalRequested (1)");
     }
 
@@ -43,7 +43,7 @@ contract ProcessPositionTest is BaseTest {
         vault.pokeDecentral(0);
 
         // Approve yield on mock pool
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
 
         uint256 idleBefore = vault.idleHollar();
@@ -55,7 +55,7 @@ contract ProcessPositionTest is BaseTest {
         uint256 idleAfter = vault.idleHollar();
         assertGt(idleAfter, idleBefore, "idleHollar should increase after yield claim");
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         // After yield claim, it immediately transitions to PrincipalWithdrawalRequested
         assertEq(state, 3, "State should be PrincipalWithdrawalRequested (3) after yield claim");
     }
@@ -72,13 +72,13 @@ contract ProcessPositionTest is BaseTest {
         vault.pokeDecentral(0);
 
         // Approve yield
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
 
         // This single call should execute yield, then immediately request principal
         vault.pokeDecentral(0);
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(
             state,
             3,
@@ -98,7 +98,7 @@ contract ProcessPositionTest is BaseTest {
         vault.pokeDecentral(0);
 
         // Approve yield and process (-> PrincipalWithdrawalRequested)
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
         vault.pokeDecentral(0);
 
@@ -114,7 +114,7 @@ contract ProcessPositionTest is BaseTest {
         uint256 idleAfter = vault.idleHollar();
         assertGt(idleAfter, idleBefore, "idleHollar should increase after principal redemption");
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 4, "State should be Redeemed (4)");
     }
 
@@ -131,16 +131,16 @@ contract ProcessPositionTest is BaseTest {
 
         // Step 2: Active -> YieldWithdrawalRequested
         vault.pokeDecentral(0);
-        (, , , , , uint8 s1) = vault.getPosition(0);
+        (, , , , , uint8 s1,,,) = vault.getPosition(0);
         assertEq(s1, 1, "After step 2: YieldWithdrawalRequested");
 
         // Step 3: Approve yield on mock pool
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
 
         // Step 4: Execute yield + request principal (single call)
         vault.pokeDecentral(0);
-        (, , , , , uint8 s2) = vault.getPosition(0);
+        (, , , , , uint8 s2,,,) = vault.getPosition(0);
         assertEq(s2, 3, "After step 4: PrincipalWithdrawalRequested");
 
         // Step 5: Approve principal and warp past 48h
@@ -149,7 +149,7 @@ contract ProcessPositionTest is BaseTest {
 
         // Step 6: Execute principal -> Redeemed
         vault.pokeDecentral(0);
-        (, , , , , uint8 s3) = vault.getPosition(0);
+        (, , , , , uint8 s3,,,) = vault.getPosition(0);
         assertEq(s3, 4, "After step 6: Redeemed");
 
         // Step 7: Verify total HOLLAR returned = principal + yield
@@ -178,7 +178,7 @@ contract ProcessPositionTest is BaseTest {
         // Call processPosition -- should NOT advance state (no-op for active before maturity)
         vault.pokeDecentral(0);
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 0, "State should remain Active (0) before maturity");
     }
 
@@ -193,7 +193,7 @@ contract ProcessPositionTest is BaseTest {
         // Process fully through all states
         _processPositionFull(0);
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 4, "Position should be Redeemed");
 
         // Attempt to process again should revert
@@ -211,7 +211,7 @@ contract ProcessPositionTest is BaseTest {
 
         // Active -> YieldWithdrawalRequested
         vault.pokeDecentral(0);
-        (, , , , , uint8 s1) = vault.getPosition(0);
+        (, , , , , uint8 s1,,,) = vault.getPosition(0);
         assertEq(s1, 1, "Should be YieldWithdrawalRequested");
 
         // DO NOT approve yield on mock pool
@@ -220,7 +220,7 @@ contract ProcessPositionTest is BaseTest {
         // caught by try/catch, so it returns without advancing state
         vault.pokeDecentral(0);
 
-        (, , , , , uint8 s2) = vault.getPosition(0);
+        (, , , , , uint8 s2,,,) = vault.getPosition(0);
         assertEq(s2, 1, "State should remain YieldWithdrawalRequested when not approved");
     }
 
@@ -258,7 +258,7 @@ contract ProcessPositionTest is BaseTest {
 
         // Track vault HOLLAR balance to detect yield received
         vault.pokeDecentral(0);
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(0);
         pool.approveYieldWithdrawal(tokenId);
 
         uint256 idleBefore = vault.idleHollar();
@@ -351,19 +351,19 @@ contract ProcessPositionTest is BaseTest {
 
         // Process position 0 -- should work (past 60 days)
         vault.pokeDecentral(0);
-        (, , , , , uint8 state0) = vault.getPosition(0);
+        (, , , , , uint8 state0,,,) = vault.getPosition(0);
         assertEq(state0, 1, "Position 0 should advance to YieldWithdrawalRequested");
 
         // Process position 1 -- should no-op (only 51 days)
         vault.pokeDecentral(1);
-        (, , , , , uint8 state1) = vault.getPosition(1);
+        (, , , , , uint8 state1,,,) = vault.getPosition(1);
         assertEq(state1, 0, "Position 1 should remain Active (not yet mature)");
 
         // Warp 10 more days so position 1 matures
         _warpDays(10);
 
         vault.pokeDecentral(1);
-        (, , , , , uint8 state1b) = vault.getPosition(1);
+        (, , , , , uint8 state1b,,,) = vault.getPosition(1);
         assertEq(state1b, 1, "Position 1 should now advance to YieldWithdrawalRequested");
     }
 
@@ -384,13 +384,13 @@ contract ProcessPositionTest is BaseTest {
         pool.setRevertOnRequestYield(true);
         vault.pokeDecentral(0);
 
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 0, "Position stays Active when requestYield reverts");
 
         // Recovery: clear the flag and the next poke advances normally.
         pool.setRevertOnRequestYield(false);
         vault.pokeDecentral(0);
-        (, , , , , uint8 state2) = vault.getPosition(0);
+        (, , , , , uint8 state2,,,) = vault.getPosition(0);
         assertEq(state2, 1, "Position advances after pool recovers");
     }
 
@@ -409,7 +409,7 @@ contract ProcessPositionTest is BaseTest {
         pool.setRevertOnRequestPrincipal(true);
 
         vault.pokeDecentral(0);
-        (uint256 tokenId, , , , , uint8 sA) = vault.getPosition(0);
+        (uint256 tokenId, , , , , uint8 sA,,,) = vault.getPosition(0);
         assertEq(sA, 1, "Position is YieldWithdrawalRequested");
 
         // Approve yield, then poke again: executes yield -> YieldClaimed,
@@ -417,7 +417,7 @@ contract ProcessPositionTest is BaseTest {
         // The catch returns and leaves state at YieldClaimed.
         pool.approveYieldWithdrawal(tokenId);
         vault.pokeDecentral(0);
-        (, , , , , uint8 sB) = vault.getPosition(0);
+        (, , , , , uint8 sB,,,) = vault.getPosition(0);
         assertEq(sB, 2, "Position is YieldClaimed (request-principal caught)");
 
         // Idle HOLLAR should reflect the yield payout — yield exec ran fine.
@@ -426,7 +426,7 @@ contract ProcessPositionTest is BaseTest {
         // Recovery: clear the flag and the next poke advances to PWR.
         pool.setRevertOnRequestPrincipal(false);
         vault.pokeDecentral(0);
-        (, , , , , uint8 sC) = vault.getPosition(0);
+        (, , , , , uint8 sC,,,) = vault.getPosition(0);
         assertEq(sC, 3, "Position advances to PrincipalWithdrawalRequested");
     }
 
@@ -462,7 +462,7 @@ contract ProcessPositionTest is BaseTest {
         assertEq(vault.maxRedeem(alice), claimableShares, "maxRedeem == bilSettled sum");
 
         // maxWithdraw matches the reserved HOLLAR for those shares.
-        (, , , uint256 hollarOwed, ) = vault.getRedemptionRequest(reqId);
+        (, , , uint256 hollarOwed,,) = vault.getRedemptionRequest(reqId);
         assertEq(vault.maxWithdraw(alice), hollarOwed, "maxWithdraw == hollarOwed sum");
 
         // Unrelated address sees 0.

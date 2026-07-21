@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 import {IDecentralPool} from "../interfaces/IDecentralPool.sol";
 import {IAggregatorV3Interface} from "../interfaces/IAggregatorV3Interface.sol";
 
@@ -10,7 +13,18 @@ import {IAggregatorV3Interface} from "../interfaces/IAggregatorV3Interface.sol";
 ///         reference explicitly; accounting helpers return aggregate deltas
 ///         for the vault to apply at the call boundary.
 library QueueLib {
+    using SafeERC20 for IERC20;
+
     uint256 private constant MATURITY_SHIFT = 128;
+    uint256 private constant BPS = 10_000;
+    uint256 private constant WAD_ = 1e18;
+    /// @dev Same work/skip budgets as the vault's pokeQueue constants —
+    ///      owned here for the fill path so the vault doesn't spend
+    ///      bytecode marshaling them (EIP-170).
+    uint256 private constant MAX_FILL_ITERATIONS = 50;
+    uint256 private constant MAX_FILL_SKIPS = 500;
+    /// @notice Sentinel askBps for setAsk meaning "delist".
+    uint32 public constant CLEAR_ASK = type(uint32).max;
 
     enum NFTState {
         Active,
@@ -40,7 +54,22 @@ library QueueLib {
         uint256 hollarOwed;    // HOLLAR reserved for the settled portion
     }
 
+    /// @dev One payment leg of a fill walk: HOLLAR the filler owes a
+    ///      controller whose pending shares were bought. Internal to
+    ///      `executeFill` — collected during the walk, paid after all
+    ///      state writes (CEI inside the library call).
+    struct FillPay {
+        address controller;
+        uint256 amount;
+    }
+
     error InsufficientClaimable();
+    error NothingFilled();
+    error AskTooHigh();
+    error NothingPending();
+    error NotRequestOwner();
+    error RequestNotActive();
+    error InvalidRequestId();
     error PoolHasOpenPositions();
     error ZeroAddress();
     error PoolAlreadyRegistered();
@@ -69,6 +98,37 @@ library QueueLib {
         uint256 indexed positionIndex,
         uint256 maturityTime,
         uint256 pendingYield
+    );
+    /// @notice A controller listed (or re-priced) their request's pending
+    ///         portion for third-party filling.
+    event FillAskSet(uint256 indexed requestId, address indexed controller, uint32 askBps);
+    /// @notice A listing was removed — explicitly, on cancel, or on full drain.
+    event FillAskCleared(uint256 indexed requestId);
+    /// @notice A request's unsettled portion was cancelled and refunded.
+    event RedemptionCancelled(uint256 indexed requestId, uint256 bilReturned);
+    /// @notice A fill bought a request's entire pending portion.
+    event RequestFilled(
+        uint256 indexed requestId,
+        address indexed controller,
+        uint256 hollarPaid,
+        uint256 bilFilled
+    );
+    /// @notice A fill bought part of a request's pending portion (the
+    ///         filler's budget ran out); the remainder stays queued and
+    ///         listed at the same ask.
+    event RequestPartiallyFilled(
+        uint256 indexed requestId,
+        address indexed controller,
+        uint256 hollarPaid,
+        uint256 bilFilled
+    );
+    /// @notice Batch summary of one fillQueue call. Per-entry detail is in
+    ///         RequestFilled / RequestPartiallyFilled.
+    event QueueFilled(
+        address indexed filler,
+        uint256 hollarSpent,
+        uint256 bilReceived,
+        uint256 entriesTouched
     );
 
     /// @notice Add a packed `(maturity, positionIndex)` entry to the min-heap.
@@ -447,6 +507,230 @@ library QueueLib {
                 // Don't increment cursor — break out via available == 0 check.
             }
         }
+    }
+
+    /// @notice List, re-price, or delist a request's pending portion for
+    ///         third-party filling. `askBps == CLEAR_ASK` delists
+    ///         (idempotent). Auth: controller or approved ERC-7540 operator
+    ///         (delegatecall preserves msg.sender). Fill proceeds always go
+    ///         to the controller, so an operator can list but never
+    ///         redirect.
+    function setAsk(
+        mapping(uint256 => Request) storage queue,
+        mapping(uint256 => uint32) storage askPlusOne,
+        mapping(address => mapping(address => bool)) storage isOperator,
+        uint256 requestId,
+        uint256 queueTail_,
+        uint32 askBps,
+        uint32 maxAskBps
+    ) public {
+        if (requestId >= queueTail_) revert InvalidRequestId();
+        Request storage r = queue[requestId];
+        address controller = r.user;
+        if (controller == address(0)) revert RequestNotActive();
+        if (msg.sender != controller && !isOperator[controller][msg.sender])
+            revert NotRequestOwner();
+        if (askBps == CLEAR_ASK) {
+            if (askPlusOne[requestId] == 0) return;
+            delete askPlusOne[requestId];
+            emit FillAskCleared(requestId);
+            return;
+        }
+        if (askBps > maxAskBps) revert AskTooHigh();
+        if (r.bilAmount == r.bilSettled) revert NothingPending();
+        askPlusOne[requestId] = askBps + 1;
+        emit FillAskSet(requestId, controller, askBps);
+    }
+
+    /// @notice Cancel the still-unsettled portion of a redemption request.
+    ///         Auth: controller or approved ERC-7540 operator. Clears any
+    ///         fill listing, shrinks the entry to its settled portion (or
+    ///         deletes it entirely when nothing is settled) and sweeps the
+    ///         queue head. The vault applies `unsettled` to totalQueuedBil
+    ///         and refunds the escrowed hDCL to `controller`.
+    function cancel(
+        mapping(uint256 => Request) storage queue,
+        mapping(uint256 => uint32) storage askPlusOne,
+        mapping(address => mapping(address => bool)) storage isOperator,
+        uint256 requestId,
+        uint256 queueHead_,
+        uint256 queueTail_
+    ) public returns (uint256 newQueueHead, address controller, uint256 unsettled) {
+        if (requestId >= queueTail_) revert InvalidRequestId();
+        Request storage request = queue[requestId];
+        controller = request.user;
+        if (controller == address(0)) revert RequestNotActive();
+        if (msg.sender != controller && !isOperator[controller][msg.sender])
+            revert NotRequestOwner();
+
+        // A cancelled request must never remain fillable.
+        if (askPlusOne[requestId] != 0) {
+            delete askPlusOne[requestId];
+            emit FillAskCleared(requestId);
+        }
+
+        newQueueHead = queueHead_;
+        unsettled = request.bilAmount - request.bilSettled;
+        if (unsettled > 0) {
+            request.bilAmount = request.bilSettled; // shrink to settled portion
+            emit RedemptionCancelled(requestId, unsettled);
+        }
+
+        // If nothing was settled, the request has nothing left — delete it
+        // and try to compact the queue head. Sweep bounded so the
+        // canceller's gas stays bounded even with many head holes.
+        if (request.bilSettled == 0) {
+            delete queue[requestId];
+            if (requestId == queueHead_) {
+                newQueueHead = advanceQueueHead(
+                    queue,
+                    queueHead_,
+                    queueTail_,
+                    MAX_FILL_ITERATIONS
+                );
+            }
+        }
+    }
+
+    /// @notice Strict-FIFO fill: spend up to `budget` of msg.sender's
+    ///         HOLLAR buying the pending portions of listed requests,
+    ///         head-first, paying each controller directly. Mutates queue
+    ///         entries and asks, then executes all payment legs (CEI within
+    ///         the call); the vault applies `bilFilled` to `totalQueuedBil`,
+    ///         stores `newQueueHead`, and releases the escrowed hDCL. Never
+    ///         touches settled state (`bilSettled`/`hollarOwed`) — a fill
+    ///         is a cancel with a different share destination, not a
+    ///         settlement.
+    ///
+    ///         Skip semantics: holes and pending-zero entries advance the
+    ///         head while co-located (same rules as processQueue). Live
+    ///         entries that are unlisted — or ask a smaller discount than
+    ///         the filler's `minAskBps` — are skipped WITHOUT head advance:
+    ///         the head must never pass a live entry, and an aggressive ask
+    ///         only prices out its own entry, never the queue behind it.
+    function executeFill(
+        mapping(uint256 => Request) storage queue,
+        mapping(uint256 => uint32) storage askPlusOne,
+        IERC20 hollar,
+        uint256 queueHead_,
+        uint256 queueTail_,
+        uint256 budget,
+        uint256 minAskBps,
+        uint256 rate
+    )
+        public
+        returns (
+            uint256 newQueueHead,
+            uint256 hollarSpent,
+            uint256 bilFilled,
+            uint256 count
+        )
+    {
+        // Bound the budget so the share arithmetic (budget × WAD_ × BPS)
+        // cannot overflow on adversarial input.
+        if (budget > type(uint128).max) budget = type(uint128).max;
+
+        newQueueHead = queueHead_;
+        FillPay[] memory pays = new FillPay[](MAX_FILL_ITERATIONS);
+
+        uint256 cursor = queueHead_;
+        uint256 skips;
+
+        while (cursor < queueTail_ && count < MAX_FILL_ITERATIONS && skips < MAX_FILL_SKIPS) {
+            Request storage r = queue[cursor];
+
+            if (r.user == address(0) || r.bilSettled == r.bilAmount) {
+                // Hole, or nothing pending (fully settled / fully filled
+                // earlier) — passable; settled entries stay in the mapping
+                // for claim walkers. Advance head while co-located.
+                if (cursor == newQueueHead) {
+                    unchecked { newQueueHead++; }
+                }
+                unchecked { cursor++; skips++; }
+                continue;
+            }
+
+            uint256 plusOne = askPlusOne[cursor];
+            if (plusOne == 0 || plusOne - 1 < minAskBps) {
+                // Live but not for sale (to this filler) — skip, NO head
+                // advance. Co-location is broken from here on, so the head
+                // naturally freezes before the first live entry.
+                unchecked { cursor++; skips++; }
+                continue;
+            }
+
+            if (budget == 0) break;
+
+            uint256 ask = plusOne - 1;
+            uint256 pending = r.bilAmount - r.bilSettled;
+            address user = r.user; // hoisted: survives a delete below
+
+            // Affordability decided in SHARES, not HOLLAR: with
+            //   sharesAffordable = ⌊budget·wad·BPS / (rate·(BPS−ask))⌋
+            // sharesAffordable ≥ pending ⟹ budget ≥ the double-floored
+            // full price, so the full branch can never overdraw the budget
+            // (deciding on the floored price has a 1-wei corner where the
+            // clamped partial pay would exceed budget).
+            uint256 sharesAffordable = (budget * WAD_ * BPS) / (rate * (BPS - ask));
+            if (sharesAffordable == 0) break; // budget is dust — stop
+
+            if (sharesAffordable >= pending) {
+                // ── full fill ──
+                uint256 pay = _fillPrice(pending, rate, ask);
+                // Catastrophic-rate guard, mirrors processQueue: never
+                // take shares for a zero payout.
+                if (pay == 0) break;
+
+                budget -= pay;
+                r.bilAmount = r.bilSettled; // cancel-shrink of pending
+                delete askPlusOne[cursor];
+                emit FillAskCleared(cursor);
+                if (r.bilSettled == 0) {
+                    delete queue[cursor]; // becomes a hole
+                }
+                // Pending is now zero either way — passable.
+                if (cursor == newQueueHead) {
+                    unchecked { newQueueHead++; }
+                }
+
+                pays[count++] = FillPay(user, pay);
+                hollarSpent += pay;
+                bilFilled += pending;
+                emit RequestFilled(cursor, user, pay, pending);
+                unchecked { cursor++; }
+            } else {
+                // ── partial fill: budget exhausted on this entry ──
+                uint256 pay = _fillPrice(sharesAffordable, rate, ask);
+                if (pay == 0) break;
+
+                r.bilAmount -= sharesAffordable; // pending shrinks in place; ask persists
+
+                pays[count++] = FillPay(user, pay);
+                hollarSpent += pay;
+                bilFilled += sharesAffordable;
+                emit RequestPartiallyFilled(cursor, user, pay, sharesAffordable);
+                break;
+            }
+        }
+
+        // Interactions after all state writes (CEI). HOLLAR has no transfer
+        // hooks; the vault wraps this call in nonReentrant regardless.
+        for (uint256 i; i < count; ++i) {
+            hollar.safeTransferFrom(msg.sender, pays[i].controller, pays[i].amount);
+        }
+        if (count == 0) revert NothingFilled();
+        emit QueueFilled(msg.sender, hollarSpent, bilFilled, count);
+    }
+
+    /// @dev Price of `shares` at `rate` discounted by `ask` bps. Double
+    ///      floor, matching settlement's rounding direction (QueueLib
+    ///      processQueue): sub-wei residue favors the payer (the filler).
+    function _fillPrice(
+        uint256 shares,
+        uint256 rate,
+        uint256 ask
+    ) private pure returns (uint256) {
+        return (((shares * rate) / WAD_) * (BPS - ask)) / BPS;
     }
 
     /// @notice Walk the controller's own settled requests, drawing down

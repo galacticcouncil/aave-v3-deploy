@@ -69,7 +69,7 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
     ///      lets multi-pool tests target the right pool for each position.
     function _processPositionFullVia(uint256 positionIndex, MockDecentralPool poolImpl) internal {
         vault.pokeDecentral(positionIndex);
-        (uint256 tokenId, , , , , ) = vault.getPosition(positionIndex);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(positionIndex);
         poolImpl.approveYieldWithdrawal(tokenId);
         vault.pokeDecentral(positionIndex);
         poolImpl.approvePrincipalWithdrawal(tokenId);
@@ -85,7 +85,7 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         // T=0: alice deposits → position 0 in pool 1 (18%)
         _deposit(alice, 10_000e18);
         assertEq(address(vault.positionPool(0)), address(pool));
-        (, , uint256 apy0, , , ) = vault.getPosition(0);
+        (, , uint256 apy0, , ,,,,) = vault.getPosition(0);
         assertEq(apy0, APY_18_PERCENT, "pos 0 snapshots 18%");
 
         // T=30d: switch to pool 2 (22%); bob and carol deposit
@@ -98,8 +98,8 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         // Pool anchors + APY snapshots
         assertEq(address(vault.positionPool(1)), address(pool22), "pos 1 in pool 2");
         assertEq(address(vault.positionPool(2)), address(pool22), "pos 2 in pool 2");
-        (, , uint256 apy1, , , ) = vault.getPosition(1);
-        (, , uint256 apy2, , , ) = vault.getPosition(2);
+        (, , uint256 apy1, , ,,,,) = vault.getPosition(1);
+        (, , uint256 apy2, , ,,,,) = vault.getPosition(2);
         assertEq(apy1, APY_22, "pos 1 snapshots 22%");
         assertEq(apy2, APY_22, "pos 2 snapshots 22%");
     }
@@ -178,17 +178,17 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
 
         // Process pos 0 fully (via pool 1)
         _processPositionFull(0);
-        (, , , , , uint8 state0) = vault.getPosition(0);
+        (, , , , , uint8 state0,,,) = vault.getPosition(0);
         assertEq(state0, 4, "pos 0 redeemed via pool 1");
 
         // Pos 1 should still be Active
-        (, , , , , uint8 state1) = vault.getPosition(1);
+        (, , , , , uint8 state1,,,) = vault.getPosition(1);
         assertEq(state1, 0, "pos 1 still active, not yet matured");
 
         // Warp past pos 1's maturity (at t=30d + 60d = t=90d)
         _warpDays(30); // t = 95d
         _processPositionFullVia(1, pool22);
-        (, , , , , uint8 state1b) = vault.getPosition(1);
+        (, , , , , uint8 state1b,,,) = vault.getPosition(1);
         assertEq(state1b, 4, "pos 1 redeemed via pool 2");
     }
 
@@ -264,7 +264,7 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         vault.pokeQueue();
 
         // Bob's settled HOLLAR should match the rate-lock at settlement time
-        (, , uint256 settled, uint256 owed, ) = vault.getRedemptionRequest(bobReq);
+        (, , uint256 settled, uint256 owed,,) = vault.getRedemptionRequest(bobReq);
         uint256 expectedOwed = (settled * rateAtSettle) / 1e18;
         assertApproxEqRel(owed, expectedOwed, 0.001e18, "rate-lock matches exchangeRate at settle");
 
@@ -305,13 +305,13 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
 
         // FIFO: alice (req 0) settles first. If idle covers her in full, her
         // claimable should equal her requested amount. If not, partial.
-        (, , uint256 aliceSettled, , ) = vault.getRedemptionRequest(0);
+        (, , uint256 aliceSettled, ,,) = vault.getRedemptionRequest(0);
         if (aliceSettled == aliceBil / 2) {
             // alice fully settled — bob may be partial or fully settled too
             assertGt(idleSnapshot, 0, "had idle to settle alice fully");
         } else {
             // alice partially settled — bob should be 0
-            (, , uint256 bobSettled, , ) = vault.getRedemptionRequest(1);
+            (, , uint256 bobSettled, ,,) = vault.getRedemptionRequest(1);
             assertEq(bobSettled, 0, "bob untouched until alice fully settled");
         }
     }
@@ -403,9 +403,9 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
         assertEq(address(vault.positionPool(0)), address(pool));
         assertEq(address(vault.positionPool(1)), address(pool22));
         assertEq(address(vault.positionPool(2)), address(pool16));
-        (, , uint256 apy0, , , ) = vault.getPosition(0);
-        (, , uint256 apy1, , , ) = vault.getPosition(1);
-        (, , uint256 apy2, , , ) = vault.getPosition(2);
+        (, , uint256 apy0, , ,,,,) = vault.getPosition(0);
+        (, , uint256 apy1, , ,,,,) = vault.getPosition(1);
+        (, , uint256 apy2, , ,,,,) = vault.getPosition(2);
         assertEq(apy0, APY_18_PERCENT);
         assertEq(apy1, APY_22);
         assertEq(apy2, APY_16);
@@ -473,7 +473,7 @@ contract MultiPoolHeterogeneousAPYTest is BaseTest {
 
         // Now charlie deposits under the 16% regime
         _deposit(charlie, 10_000e18);
-        (, , uint256 apy2, , , ) = vault.getPosition(2);
+        (, , uint256 apy2, , ,,,,) = vault.getPosition(2);
         assertEq(apy2, APY_16, "new deposit gets the cut rate");
 
         // The blended rate continues to grow — slower than before — but

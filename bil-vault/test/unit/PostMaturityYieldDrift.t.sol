@@ -83,7 +83,7 @@ contract PostMaturityYieldDriftTest is BaseTest {
         assertEq(vault.totalPendingYield(), pendingBefore, "no pending yield locked pre-maturity");
 
         // The position is still Active and uncapped (pendingYield == 0).
-        (, , , , , uint8 state) = vault.getPosition(0);
+        (, , , , , uint8 state,,,) = vault.getPosition(0);
         assertEq(state, 0, "still Active");
     }
 
@@ -110,7 +110,7 @@ contract PostMaturityYieldDriftTest is BaseTest {
         // Active → YieldWithdrawalRequested. With the fix, pendingYield is the
         // 60-day capped projection regardless of how late the poke is.
         vault.pokeDecentral(0);
-        (, , , , , uint8 stateAfter) = vault.getPosition(0);
+        (, , , , , uint8 stateAfter,,,) = vault.getPosition(0);
         assertEq(stateAfter, 1, "state is YieldWithdrawalRequested"); // enum index 1
 
         uint256 totalPendingAfterRequest = vault.totalPendingYield();
@@ -185,7 +185,7 @@ contract PostMaturityYieldDriftTest is BaseTest {
         uint256 reqId = _requestRedeem(bob, bobShares);
         vault.pokeQueue();
 
-        (, uint256 bilAmount, uint256 bilSettled, uint256 hollarOwed, ) = vault
+        (, uint256 bilAmount, uint256 bilSettled, uint256 hollarOwed, ,) = vault
             .getRedemptionRequest(reqId);
         assertEq(bilAmount, bobShares, "request bilAmount = full shares");
         assertGt(bilSettled, 0, "at least partial settle from idleHollar");
@@ -196,7 +196,7 @@ contract PostMaturityYieldDriftTest is BaseTest {
     }
 
     function _tokenIdOf(uint256 positionIndex) internal view returns (uint256) {
-        (uint256 tokenId, , , , , ) = vault.getPosition(positionIndex);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(positionIndex);
         return tokenId;
     }
 }

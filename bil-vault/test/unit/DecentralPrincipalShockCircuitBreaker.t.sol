@@ -205,7 +205,7 @@ contract DecentralPrincipalShockCircuitBreakerTest is BaseTest {
     }
 
     function _tokenIdOf(uint256 positionIndex) internal view returns (uint256) {
-        (uint256 tokenId, , , , , ) = vault.getPosition(positionIndex);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(positionIndex);
         return tokenId;
     }
 }

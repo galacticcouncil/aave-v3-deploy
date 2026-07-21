@@ -64,6 +64,11 @@ contract InvariantVaultTest is Test {
         vault.deposit(10_000e18, actors[0]);
 
         // Deploy handlers and helpers
+        // Fills are part of the fuzzed action set — armed here the same
+        // way the mainnet upgrade will arm them post-deploy.
+        vm.prank(admin);
+        vault.setFillsEnabled(true);
+
         userHandler = new UserHandler(vault, hollar, actors);
         keeperHandler = new KeeperHandler(vault, pool);
         posReader = new PositionReader(vault);
@@ -121,7 +126,7 @@ contract InvariantVaultTest is Test {
     function invariant_nftOwnership() public view {
         uint256 count = vault.getPositionCount();
         for (uint256 i = 0; i < count; i++) {
-            (uint256 tokenId, , , , , uint8 state) = vault.getPosition(i);
+            (uint256 tokenId, , , , , uint8 state,,,) = vault.getPosition(i);
             if (state != 4) {
                 assertEq(
                     nft.ownerOf(tokenId),
@@ -156,7 +161,7 @@ contract InvariantVaultTest is Test {
     function invariant_validPositionStates() public view {
         uint256 count = vault.getPositionCount();
         for (uint256 i = 0; i < count; i++) {
-            (, , , , , uint8 state) = vault.getPosition(i);
+            (, , , , , uint8 state,,,) = vault.getPosition(i);
             assertLe(state, 4, "INV-6: invalid position state");
         }
     }
@@ -170,7 +175,7 @@ contract InvariantVaultTest is Test {
         uint256 count = vault.getPositionCount();
         uint256 sumPrincipal = 0;
         for (uint256 i = 0; i < count; i++) {
-            (, uint256 principal, , , , uint8 state) = vault.getPosition(i);
+            (, uint256 principal, , , , uint8 state,,,) = vault.getPosition(i);
             if (state != 4) {
                 sumPrincipal += principal;
             }
@@ -190,7 +195,7 @@ contract InvariantVaultTest is Test {
     function invariant_positionHeadValid() public view {
         uint256 head = vault.getPositionHead();
         for (uint256 i = 0; i < head; i++) {
-            (, , , , , uint8 state) = vault.getPosition(i);
+            (, , , , , uint8 state,,,) = vault.getPosition(i);
             assertEq(state, 4, "INV-8: non-redeemed position before head");
         }
     }
@@ -217,10 +222,10 @@ contract InvariantVaultTest is Test {
 
     /// @notice totalReservedHollar == sum of hollarOwed across all non-deleted requests.
     function invariant_totalReservedHollarAccurate() public view {
-        uint256 tail = vault.getRedemptionQueueLength();
+        uint256 tail = vault.queueTail();
         uint256 sum = 0;
         for (uint256 i = 0; i < tail; i++) {
-            (address u, , , uint256 owed, ) = vault.getRedemptionRequest(i);
+            (address u, , , uint256 owed,,) = vault.getRedemptionRequest(i);
             if (u != address(0)) sum += owed;
         }
         assertEq(
@@ -236,10 +241,10 @@ contract InvariantVaultTest is Test {
 
     /// @notice totalQueuedBil == sum of bilAmount across all non-deleted requests.
     function invariant_totalQueuedBilAccurate() public view {
-        uint256 tail = vault.getRedemptionQueueLength();
+        uint256 tail = vault.queueTail();
         uint256 sum = 0;
         for (uint256 i = 0; i < tail; i++) {
-            (address u, uint256 amt, , , ) = vault.getRedemptionRequest(i);
+            (address u, uint256 amt, , ,,) = vault.getRedemptionRequest(i);
             if (u != address(0)) sum += amt;
         }
         assertEq(
@@ -273,9 +278,9 @@ contract InvariantVaultTest is Test {
     ///         hollarOwed > 0 only if bilSettled > 0 (no HOLLAR locked for
     ///         zero shares).
     function invariant_perRequestConsistency() public view {
-        uint256 tail = vault.getRedemptionQueueLength();
+        uint256 tail = vault.queueTail();
         for (uint256 i = 0; i < tail; i++) {
-            (address u, uint256 amt, uint256 settled, uint256 owed, ) =
+            (address u, uint256 amt, uint256 settled, uint256 owed,,) =
                 vault.getRedemptionRequest(i);
             if (u == address(0)) continue;
             assertLe(settled, amt, "INV-13a: bilSettled > bilAmount");
@@ -295,7 +300,7 @@ contract InvariantVaultTest is Test {
     function invariant_positionPoolIntegrity() public view {
         uint256 count = vault.getPositionCount();
         for (uint256 i = 0; i < count; i++) {
-            (, , , , , uint8 state) = vault.getPosition(i);
+            (, , , , , uint8 state,,,) = vault.getPosition(i);
             if (state == 4) continue;
             assertTrue(
                 vault.isPoolRegistered(vault.positionPool(i)),

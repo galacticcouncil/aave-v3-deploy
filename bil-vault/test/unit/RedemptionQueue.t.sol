@@ -39,13 +39,13 @@ contract RedemptionQueueTest is BaseTest {
     function test_requestRedeem_createsQueueEntry() public {
         uint256 bil = _deposit(alice, TEN_THOUSAND_HOLLAR);
 
-        assertEq(vault.getRedemptionQueueLength(), 0, "Queue should start empty");
+        assertEq(vault.queueTail(), 0, "Queue should start empty");
 
         _requestRedeem(alice, bil / 2);
 
-        assertEq(vault.getRedemptionQueueLength(), 1, "Queue should have 1 entry");
+        assertEq(vault.queueTail(), 1, "Queue should have 1 entry");
 
-        (address user, uint256 bilAmount, uint256 bilSettled, , bool active) =
+        (address user, uint256 bilAmount, uint256 bilSettled, , bool active,) =
             vault.getRedemptionRequest(0);
         assertEq(user, alice, "Request user should be Alice");
         assertEq(bilAmount, bil / 2, "Request amount should match");
@@ -89,7 +89,7 @@ contract RedemptionQueueTest is BaseTest {
         assertEq(vault.totalQueuedBil(), 0, "totalQueuedBil should be 0 after cancel");
 
         // Request should be inactive
-        (, , , , bool active) = vault.getRedemptionRequest(requestId);
+        (, , , , bool active,) = vault.getRedemptionRequest(requestId);
         assertFalse(active, "Request should be inactive after cancel");
     }
 
@@ -283,8 +283,8 @@ contract RedemptionQueueTest is BaseTest {
         _claimAll(alice);
 
         // Request 0 is inactive (cancelled), request 1 should be settled+claimed (deleted)
-        (, , , , bool active0) = vault.getRedemptionRequest(request0);
-        (, , , , bool active1) = vault.getRedemptionRequest(request1);
+        (, , , , bool active0,) = vault.getRedemptionRequest(request0);
+        (, , , , bool active1,) = vault.getRedemptionRequest(request1);
         assertFalse(active0, "Request 0 should remain inactive");
         assertFalse(active1, "Request 1 should be settled+claimed (deleted)");
 

@@ -35,7 +35,7 @@ contract ReinvestTest is BaseTest {
         assertLt(idleAfter, idleBefore, "idleHollar should decrease after reinvest");
 
         // New position should have the reinvested amount as principal
-        (, uint256 principal, , , , uint8 state) = vault.getPosition(positionCountBefore);
+        (, uint256 principal, , , , uint8 state,,,) = vault.getPosition(positionCountBefore);
         assertApproxEqRel(
             principal,
             idleBefore,
@@ -150,7 +150,7 @@ contract ReinvestTest is BaseTest {
         vault.pokeQueue();
 
         // New position principal should be capped at tvlCap
-        (, uint256 principal, , , , ) = vault.getPosition(posCountBefore);
+        (, uint256 principal, , , ,,,,) = vault.getPosition(posCountBefore);
         assertEq(principal, TEN_THOUSAND_HOLLAR, "Reinvested principal should be capped at TVL cap");
 
         // idle should still have remainder (the yield portion beyond the cap)

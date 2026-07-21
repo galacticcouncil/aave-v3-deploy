@@ -65,6 +65,10 @@ contract BILVault is
     ///      drained every overdue root.
     uint256 internal constant MAX_MATURITY_SYNC = 50;
 
+    /// @dev Ceiling on a queue-fill ask: 20%. A fat-finger guard, not an
+    ///      economic bound — the market clears far below it.
+    uint32 internal constant MAX_FILL_ASK_BPS = 2_000;
+
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     /// @notice Fast-path role for the Hydration technical committee.
@@ -164,7 +168,9 @@ contract BILVault is
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice All NFT positions, ordered by deposit time
-    QueueLib.NFTPosition[] public positions;
+    /// @dev Internal — read via `getPosition` (the 9-field auto-getter
+    ///      didn't fit the EIP-170 budget once queue fills landed).
+    QueueLib.NFTPosition[] internal positions;
     /// @notice Index of the first non-redeemed position
     uint256 public positionHead;
 
@@ -173,7 +179,9 @@ contract BILVault is
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @notice FIFO queue of pending redemptions
-    mapping(uint256 => QueueLib.Request) public redemptionQueue;
+    /// @dev Internal — read via `getRedemptionRequest` (the auto-getter
+    ///      didn't fit the EIP-170 budget once queue fills landed).
+    mapping(uint256 => QueueLib.Request) internal redemptionQueue;
     /// @notice Index of the first active (unfulfilled) request
     uint256 public queueHead;
     /// @notice Index of the next request to be created
@@ -246,7 +254,6 @@ contract BILVault is
         address indexed user,
         uint256 bilAmount
     );
-    event RedemptionCancelled(uint256 indexed requestId, uint256 bilReturned);
     // RedemptionFulfilled / RedemptionPartiallyFulfilled moved to QueueLib.
     // They're emitted under DELEGATECALL so logs still appear at the vault's
     // address and tests' expectEmit matches by topic+data regardless.
@@ -293,6 +300,12 @@ contract BILVault is
         uint256 maturityTime,
         uint256 pendingYield
     );
+    // FillAskSet / FillAskCleared / RequestFilled / RequestPartiallyFilled /
+    // QueueFilled are declared and emitted in QueueLib (bytecode budget —
+    // see EIP-170 note on the library). They surface from the vault address
+    // as usual.
+    /// @notice Fills kill switch toggled.
+    event FillsEnabledSet(bool enabled);
 
     // ═══════════════════════════════════════════════════════════════════════
     //                            ERRORS
@@ -351,6 +364,9 @@ contract BILVault is
     );
     error BpsAboveMax();
     error MaturityBacklog();
+    // AskTooHigh / NothingPending and the listing auth errors live in
+    // QueueLib next to setAsk/clearAsk.
+    error FillsDisabled();
 
     // ═══════════════════════════════════════════════════════════════════════
     //                         INITIALIZER
@@ -594,39 +610,102 @@ contract BILVault is
     ///         request was fully unsettled at cancel time, it's deleted from
     ///         the queue entirely.
     function cancelRedeem(uint256 requestId) external nonReentrant {
-        if (requestId >= queueTail) revert InvalidRequestId();
-        QueueLib.Request storage request = redemptionQueue[requestId];
-        address controller = request.user;
-        if (controller == address(0)) revert RequestNotActive();
-        if (msg.sender != controller && !isOperator[controller][msg.sender])
-            revert NotRequestOwner();
-
-        uint256 unsettled = request.bilAmount - request.bilSettled;
+        // Auth, ask-clear, entry shrink/delete, head sweep and events live
+        // in QueueLib (bytecode budget); the vault applies the accounting
+        // delta and refunds the escrowed hDCL. Refund goes to the
+        // CONTROLLER — when an operator cancels, funds do not follow the
+        // operator.
+        (uint256 newHead, address controller, uint256 unsettled) = QueueLib.cancel(
+            redemptionQueue,
+            fillAskPlusOne,
+            isOperator,
+            requestId,
+            queueHead,
+            queueTail
+        );
+        queueHead = newHead;
         if (unsettled > 0) {
             totalQueuedBil -= unsettled;
-            request.bilAmount = request.bilSettled; // shrink to settled portion
-            // Refund the unsettled hDCL to the controller. When an operator
-            // cancels, the funds still go to the controller, not the operator.
             _transfer(address(this), controller, unsettled);
-            emit RedemptionCancelled(requestId, unsettled);
         }
+    }
 
-        // If nothing was settled, the request has nothing left — delete it
-        // and try to compact the queue head.
-        if (request.bilSettled == 0) {
-            delete redemptionQueue[requestId];
+    // ═══════════════════════════════════════════════════════════════════════
+    //                     QUEUE FILLS (early settlement)
+    // ═══════════════════════════════════════════════════════════════════════
 
-            // Head sweep — same logic as before, bounded by MAX_QUEUE_ITERATIONS
-            // so the canceller's gas stays bounded even with many head holes.
-            if (requestId == queueHead) {
-                queueHead = QueueLib.advanceQueueHead(
-                    redemptionQueue,
-                    queueHead,
-                    queueTail,
-                    MAX_QUEUE_ITERATIONS
-                );
-            }
-        }
+    /// @notice List (or re-price) the pending portion of a redemption
+    ///         request for third-party filling at `askBps` below NAV.
+    /// @dev    Controller or approved ERC-7540 operator (same auth shape as
+    ///         `cancelRedeem`; fill proceeds always go to the controller, so
+    ///         an operator can list but never redirect). Listing is allowed
+    ///         while fills are disabled — the flag gates only `fillQueue`,
+    ///         so arming fills later doesn't require everyone to re-list.
+    ///         `askBps == QueueLib.CLEAR_ASK` (type(uint32).max) delists,
+    ///         idempotently. Validation + events live in QueueLib
+    ///         (bytecode budget).
+    function setFillAsk(uint256 requestId, uint32 askBps) external {
+        QueueLib.setAsk(
+            redemptionQueue,
+            fillAskPlusOne,
+            isOperator,
+            requestId,
+            queueTail,
+            askBps,
+            MAX_FILL_ASK_BPS
+        );
+    }
+
+    /// @notice Buy queued BIL strictly head-first from listed exiters.
+    ///         Pays each listed entry's controller `pending × rate × (1 −
+    ///         ask)` from msg.sender and releases the escrowed hDCL to
+    ///         msg.sender. The last entry is filled partially when the
+    ///         budget runs short. Never touches vault accounting: rate,
+    ///         totalAssets, idleHollar and totalReservedHollar are all
+    ///         invariant across a fill.
+    /// @param maxHollarIn  Budget; pulled from msg.sender per filled entry.
+    /// @param minAskBps    Price filter: fill only entries asking a discount
+    ///                     ≥ this. Cheaper-discount entries are skipped,
+    ///                     never stopped at. 0 = fill every listed entry.
+    ///                     Also the slippage bound: worst per-share price is
+    ///                     rate × (1 − minAskBps), total spend is capped by
+    ///                     maxHollarIn, so no separate minOut is needed
+    ///                     (NAV drifts ~0.05%/day — quote-to-tx movement is
+    ///                     noise).
+    function fillQueue(
+        uint256 maxHollarIn,
+        uint32 minAskBps
+    ) external nonReentrant whenNotPaused returns (uint256 hollarSpent, uint256 bilReceived) {
+        if (!fillsEnabled) revert FillsDisabled();
+        _syncBeforeRateSensitiveAction();
+
+        // The library mutates queue state, then pays each controller from
+        // msg.sender (CEI within the call — HOLLAR has no transfer hooks,
+        // and this function is nonReentrant regardless).
+        (uint256 newHead, uint256 spent, uint256 filled, ) = QueueLib.executeFill(
+            redemptionQueue,
+            fillAskPlusOne,
+            hollar,
+            queueHead,
+            queueTail,
+            maxHollarIn,
+            minAskBps,
+            exchangeRate()
+        );
+
+        queueHead = newHead;
+        totalQueuedBil -= filled;
+        _transfer(address(this), msg.sender, filled); // escrow → filler
+        return (spent, filled);
+    }
+
+    /// @notice Arm or kill queue fills. Guardian may kill; only the admin
+    ///         may arm (mirrors the pause conventions: emergency response
+    ///         is fast-path, re-enabling risk surface is not).
+    function setFillsEnabled(bool enabled) external onlyAdminOrGuardian {
+        if (enabled) _checkRole(ADMIN_ROLE); // guardian may kill, only admin arms
+        fillsEnabled = enabled;
+        emit FillsEnabledSet(enabled);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -1190,11 +1269,22 @@ contract BILVault is
             uint256 bilAmount,
             uint256 bilSettled,
             uint256 hollarOwed,
-            bool active
+            bool active,
+            uint32 askPlusOne
         )
     {
+        // askPlusOne appended for the fills feature (0 = not listed, else
+        // askBps + 1). Old 5-output ABI consumers keep decoding fine —
+        // static fields, extra tail word ignored.
         QueueLib.Request storage r = redemptionQueue[requestId];
-        return (r.user, r.bilAmount, r.bilSettled, r.hollarOwed, r.user != address(0));
+        return (
+            r.user,
+            r.bilAmount,
+            r.bilSettled,
+            r.hollarOwed,
+            r.user != address(0),
+            fillAskPlusOne[requestId]
+        );
     }
 
     /// @notice Get NFT position details
@@ -1209,9 +1299,16 @@ contract BILVault is
             uint256 apyWad,
             uint256 depositTime,
             uint256 maturityTime,
-            uint8 state
+            uint8 state,
+            bool yieldCapped,
+            uint256 pendingYield,
+            uint256 yieldStartTime
         )
     {
+        // Three fields appended (replacing the removed `positions` raw
+        // auto-getter). Callers built against the old 6-field ABI keep
+        // decoding fine — every field is static, extra tail words are
+        // ignored.
         QueueLib.NFTPosition storage pos = positions[positionIndex];
         return (
             pos.tokenId,
@@ -1219,7 +1316,10 @@ contract BILVault is
             pos.apyWad,
             pos.depositTime,
             pos.maturityTime,
-            uint8(pos.state)
+            uint8(pos.state),
+            pos.yieldCapped,
+            pos.pendingYield,
+            pos.yieldStartTime
         );
     }
 
@@ -1233,34 +1333,14 @@ contract BILVault is
         return positionHead;
     }
 
-    /// @notice Total BIL currently queued for redemption
-    function getTotalQueuedBil() external view returns (uint256) {
-        return totalQueuedBil;
-    }
-
-    /// @notice HOLLAR available for queue fulfillment or reinvestment
-    function getIdleHollar() external view returns (uint256) {
-        return idleHollar;
-    }
-
     /// @notice Current fixed APY from the Decentral pool
     function getAPYWad() public view returns (uint256) {
         return activeDepositPool.fixedAPYWad();
     }
 
-    /// @notice Total number of redemption requests ever created
-    function getRedemptionQueueLength() external view returns (uint256) {
-        return queueTail;
-    }
-
     /// @notice Number of pending (unprocessed) queue entries
     function getRedemptionQueuePending() external view returns (uint256) {
         return queueTail - queueHead;
-    }
-
-    /// @notice Queue head index
-    function getQueueHead() external view returns (uint256) {
-        return queueHead;
     }
 
     /// @notice Get BIL/HOLLAR price from the oracle, returned in 18 decimals.
@@ -1636,9 +1716,22 @@ contract BILVault is
     uint256[] private _maturityHeap;
 
     // ═══════════════════════════════════════════════════════════════════════
+    //                       QUEUE FILLS (upgrade slot block)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice requestId → ask discount in bps, stored offset by +1
+    ///         (0 = not listed; UIs unpack v-1). Cleared on delist, cancel,
+    ///         and full drain of the pending portion. Internal — read via
+    ///         getRedemptionRequest (EIP-170 budget).
+    mapping(uint256 => uint32) internal fillAskPlusOne;
+    /// @notice Global fills switch. Ships false; armed by admin once
+    ///         keeper/indexer/UI support is live. Guardian can kill.
+    bool public fillsEnabled;
+
+    // ═══════════════════════════════════════════════════════════════════════
     //                         STORAGE GAP
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @dev Reserved storage slots for future upgrades.
-    uint256[47] private __gap;
+    uint256[45] private __gap;
 }
