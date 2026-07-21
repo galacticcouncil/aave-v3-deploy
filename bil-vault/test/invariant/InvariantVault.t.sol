@@ -319,6 +319,126 @@ contract InvariantVaultTest is Test {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
+    //   INVARIANT 15: settled-index ↔ globals (protects the DoS-safe claim index)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice The per-controller settled index (`_settledByController`, the
+    ///         audit's cancel-spam-DoS fix) is storage maintained by hand,
+    ///         separate from the queue. Tie it back to the globals it feeds:
+    ///         summed over every controller, maxRedeem must equal
+    ///         totalSettledBil and maxWithdraw must equal totalReservedHollar.
+    ///         A missing push, a bad swap-pop eviction, or a stale entry
+    ///         breaks this — and would silently corrupt claims. All queue
+    ///         controllers in the harness come from `actors`.
+    function invariant_settledIndexMatchesGlobals() public view {
+        uint256 sumRedeem;
+        uint256 sumWithdraw;
+        for (uint256 i = 0; i < actors.length; i++) {
+            sumRedeem += vault.maxRedeem(actors[i]);
+            sumWithdraw += vault.maxWithdraw(actors[i]);
+        }
+        assertEq(sumRedeem, vault.totalSettledBil(), "INV-15: Sum(maxRedeem) != totalSettledBil");
+        assertEq(sumWithdraw, vault.totalReservedHollar(), "INV-15b: Sum(maxWithdraw) != totalReservedHollar");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //   INVARIANT 16: share conservation
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Every hDCL is held by an actor, escrowed in the vault, or is a
+    ///         dead share. No share is created or destroyed off-book.
+    function invariant_shareConservation() public view {
+        uint256 sum = vault.balanceOf(address(vault)) +
+            vault.balanceOf(address(0x000000000000000000000000000000000000dEaD));
+        for (uint256 i = 0; i < actors.length; i++) {
+            sum += vault.balanceOf(actors[i]);
+        }
+        assertEq(sum, vault.totalSupply(), "INV-16: share supply not conserved");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //   INVARIANT 17: escrow exactness
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice The vault's own hDCL balance equals exactly the queued total —
+    ///         the only reason it holds its own shares is redemption escrow.
+    ///         Tighter than INV-3's `<=` (valid because the harness performs
+    ///         no external donation of BIL to the vault).
+    function invariant_escrowExact() public view {
+        assertEq(
+            vault.balanceOf(address(vault)),
+            vault.totalQueuedBil(),
+            "INV-17: vault BIL balance != totalQueuedBil"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //   INVARIANT 18: structural bounds
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Queue/position cursors stay within their containers, and the
+    ///         settled subset never exceeds the queued total.
+    function invariant_structuralBounds() public view {
+        assertLe(vault.getQueueHead(), vault.getRedemptionQueueLength(), "INV-18a: queueHead > queueTail");
+        assertLe(vault.getPositionHead(), vault.getPositionCount(), "INV-18b: positionHead > positions.length");
+        assertLe(vault.totalSettledBil(), vault.totalQueuedBil(), "INV-18c: settled > queued");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //   INVARIANT 19: exchange rate == active-pool NAV (regression guard)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Independently recompute the active-share rate and require the
+    ///         vault to report it. Guards against any future refactor
+    ///         reintroducing the settled-share blend (Pashov High). The
+    ///         active denominator is always >= DEAD_SHARES so this never
+    ///         divides by zero once bootstrapped.
+    function invariant_rateIsActiveNav() public view {
+        uint256 activeSupply = vault.totalSupply() - vault.totalSettledBil();
+        if (activeSupply == 0) return;
+        uint256 activeAssets = vault.totalAssets() - vault.totalReservedHollar();
+        assertEq(
+            vault.exchangeRate(),
+            (activeAssets * 1e18) / activeSupply,
+            "INV-19: reported rate != active NAV"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //   INVARIANT 20: active-pool denominator + reserve sanity
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Reserved HOLLAR never exceeds totalAssets (it is a component of
+    ///         it), and the active supply never drops below the dead shares —
+    ///         so the exchange-rate denominator can never underflow or zero.
+    function invariant_activePoolWellFormed() public view {
+        assertGe(vault.totalAssets(), vault.totalReservedHollar(), "INV-20a: reserved > totalAssets");
+        if (vault.totalSupply() > 0) {
+            assertGe(
+                vault.totalSupply() - vault.totalSettledBil(),
+                1000, // DEAD_SHARES
+                "INV-20b: active supply below dead shares"
+            );
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //   INVARIANT 21: no value minted at deposit (stateless round-trip)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Converting a hypothetical HOLLAR amount to shares and back
+    ///         never returns more than went in — a mint can't fabricate
+    ///         value at the current rate. (Does NOT catch cross-event
+    ///         dilution — that is a differential property, see the
+    ///         deposits-non-dilutive property test.)
+    function invariant_noMintValueCreation() public view {
+        if (vault.totalSupply() == 0) return;
+        uint256 probe = 1_000e18;
+        uint256 shares = vault.convertToShares(probe);
+        assertLe(vault.convertToAssets(shares), probe, "INV-21: mint round-trip created value");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     //                    CALL SUMMARY (for debugging)
     // ═══════════════════════════════════════════════════════════════════════
 
