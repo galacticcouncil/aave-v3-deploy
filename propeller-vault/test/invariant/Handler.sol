@@ -86,16 +86,21 @@ contract Handler is Test {
         uint256 id = reqIds[bound(seed, 0, len - 1)];
         (
             , // owner
-            uint256 shares,
+            , // shares
             , // collateralOwed
             , // debtShare
             , // synthShare
             , // repaid
             uint256 settled,
+            , // sharesBurned
             bool active
         ) = vault.redemptions(id);
         if (!active || settled == 0) return;
+        // claim may be partial: shares are burned only in proportion to the
+        // collateral paid, so track the ACTUAL burn (escrow balance delta)
+        // rather than assuming the whole request closes.
+        uint256 escrowBefore = vault.balanceOf(address(vault));
         vault.claim(id, address(this));
-        ghostEscrowed -= shares;
+        ghostEscrowed -= (escrowBefore - vault.balanceOf(address(vault)));
     }
 }

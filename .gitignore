@@ -4,6 +4,10 @@
 cache
 artifacts
 
+# Foundry build output + deploy records (any foundry project, any depth)
+out/
+broadcast/
+
 node_modules
 dist/
 build/

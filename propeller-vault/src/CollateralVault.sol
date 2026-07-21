@@ -104,6 +104,7 @@ contract CollateralVault is
         uint256 synthShare; // synthetic to release+burn
         uint256 repaid; // Main debt repaid so far (proportional settle)
         uint256 collateralSettled; // collateral freed + ready to claim
+        uint256 sharesBurned; // escrowed shares burned across partial claims
         bool active;
     }
 
@@ -320,6 +321,7 @@ contract CollateralVault is
             synthShare: synthShare,
             repaid: 0,
             collateralSettled: 0,
+            sharesBurned: 0,
             active: true
         });
         totalQueuedShares += shares;
@@ -387,7 +389,13 @@ contract CollateralVault is
         queueHead = head;
     }
 
-    /// @notice Claim settled collateral for a request.
+    /// @notice Claim collateral settled so far for a request. Partial-claim
+    ///         safe: a request settles proportionally over blocks, so `claim`
+    ///         pays whatever is currently ready, burns ONLY the escrowed shares
+    ///         matching that payout, and keeps the request active so the
+    ///         unsettled remainder stays claimable. The request closes (and any
+    ///         rounding-dust shares are burned) only once settlement is complete
+    ///         and the last ready slice has been claimed.
     function claim(uint256 requestId, address receiver) external nonReentrant returns (uint256 amountOut) {
         if (receiver == address(0)) revert ZeroAddress();
         Redemption storage r = redemptions[requestId];
@@ -397,9 +405,32 @@ contract CollateralVault is
         if (amountOut == 0) revert NothingToClaim();
 
         r.collateralSettled = 0;
-        r.active = false;
-        totalQueuedShares -= r.shares;
-        _burn(address(this), r.shares); // burn the escrowed pVault shares
+
+        // Settlement is complete once the Main debt slice is fully repaid — no
+        // further collateral will ever accrue to this request, so this claim is
+        // the last one.
+        bool complete = r.repaid >= r.debtShare;
+
+        // Burn escrowed shares in proportion to the collateral paid, against the
+        // fixed (shares, collateralOwed) basis: Σ over all claims of
+        // shares·amountOut/collateralOwed == shares, so partial claims never
+        // over- or under-burn. On the final claim, burn whatever residual
+        // remains so floor-rounding dust never strands shares.
+        uint256 burnNow;
+        uint256 remaining = r.shares - r.sharesBurned;
+        if (complete) {
+            burnNow = remaining;
+            r.active = false;
+        } else {
+            burnNow = (r.shares * amountOut) / r.collateralOwed;
+            if (burnNow > remaining) burnNow = remaining;
+        }
+        r.sharesBurned += burnNow;
+
+        if (burnNow > 0) {
+            totalQueuedShares -= burnNow;
+            _burn(address(this), burnNow); // burn the escrowed pVault shares
+        }
         collateral.safeTransfer(receiver, amountOut);
         emit Claimed(requestId, receiver, amountOut);
     }
