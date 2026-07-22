@@ -194,7 +194,15 @@ contract CollateralVault is
         // borrowed HOLLAR became the loop seed), and the synthetic is a non-cash
         // HF prop. Harvested yield is supplied as more collateral → aToken grows
         // → share price rises ("deposit X, earn X").
-        return collateralAToken.balanceOf(address(this));
+        //
+        // Also count collateral settled out of Aave but not yet claimed: pokeSettle
+        // withdraws a redeemer's collateral into this vault while their escrowed
+        // shares stay in totalSupply until claim. Omitting it would drop totalAssets
+        // at settle with supply unchanged, understating the share price for the whole
+        // settle→claim window (mis-minting deposits made in it). At rest the raw
+        // balance is exactly that settled-but-unclaimed collateral — deposit/compound
+        // pull-and-resupply within one nonReentrant call, so nothing else lingers.
+        return collateralAToken.balanceOf(address(this)) + collateral.balanceOf(address(this));
     }
 
     function exchangeRate() public view returns (uint256) {
