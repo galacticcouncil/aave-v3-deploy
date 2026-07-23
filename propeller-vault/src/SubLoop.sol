@@ -145,6 +145,10 @@ contract SubLoop is
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(ADMIN_ROLE, _admin);
         _grantRole(UPGRADER_ROLE, _admin);
+        // Grant GUARDIAN_ROLE (the emergency pause) to the admin so the pause is
+        // never wired to a role nobody holds; governance can delegate it to a
+        // faster-path holder (the technical committee) afterwards.
+        _grantRole(GUARDIAN_ROLE, _admin);
     }
 
     // ══════════════════════════════════════════════════════════════════════

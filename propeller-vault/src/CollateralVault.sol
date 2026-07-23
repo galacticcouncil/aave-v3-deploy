@@ -175,6 +175,11 @@ contract CollateralVault is
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(ADMIN_ROLE, _admin);
         _grantRole(UPGRADER_ROLE, _admin);
+        // Grant GUARDIAN_ROLE (the emergency pause) to the admin so the pause is
+        // never wired to a role nobody holds. Governance can then delegate it to
+        // a faster-path holder (the technical committee) and, if desired, revoke
+        // its own — but a fresh deploy is always pausable from block 0.
+        _grantRole(GUARDIAN_ROLE, _admin);
     }
 
     // ══════════════════════════════════════════════════════════════════════

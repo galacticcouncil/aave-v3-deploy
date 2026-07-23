@@ -145,6 +145,9 @@ contract UnwindSellPricingTest is Test {
         vault.requestRedeem(shares, address(this));
         assertGt(loop.unwindTargetEquity(), 0, "unwind is open");
 
+        uint256 aPrimeBefore = aPrime.balanceOf(address(loop));
+        uint256 targetBefore = loop.unwindTargetEquity();
+
         // One unwind step. The withdraw inside the router-sell must keep the
         // loop's HF above Aave's limit. Sizing the sell at $1 while PRIME is
         // $1.30 oversells by ~30%, so the withdraw pulls out too much collateral
@@ -157,6 +160,13 @@ contract UnwindSellPricingTest is Test {
             reverted = true;
         }
         assertFalse(reverted, "pokeRepay reverted: unwind sell oversized at PRIME>$1 breached Aave HF");
+
+        // The step must have done REAL work at a correct (oracle) size — not
+        // trivially "not reverted" by selling nothing. A degenerate fix that
+        // skipped selling when PRIME>$1 would clear the assertFalse above; these
+        // pin that an actual sell + unwind-progress happened.
+        assertLt(aPrime.balanceOf(address(loop)), aPrimeBefore, "an actual aPRIME sell occurred");
+        assertLt(loop.unwindTargetEquity(), targetBefore, "unwind made progress (equity freed)");
 
         // and the loop must be left healthy, at/above target (the repay leg lifts
         // HF back up after the safe-sized sell)
