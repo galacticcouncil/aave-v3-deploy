@@ -351,15 +351,22 @@ contract SubLoop is
                 //   minColl8 = floor * debt8 * 1e4 / (lt_bps * WAD)
                 uint256 minColl8 = (STEP_HF_FLOOR * debt8 * 10000) / (lt * WAD);
                 if (coll8 > minColl8) {
-                    // base8 USD → aPRIME native (6dp), assume ~$1, 90% safety margin.
-                    uint256 sellAmt = ((coll8 - minColl8) * 90) / 100 / 100;
+                    // Size the sell at the ORACLE price, not $1 (mirrors
+                    // _fundDeploy/harvest): the safe USD budget (coll8 - minColl8)
+                    // buys FEWER aPRIME when PRIME > $1, so the in-route withdraw
+                    // never removes more collateral value than the HF floor
+                    // allows. Assuming $1 oversells by the PRIME premium and dips
+                    // HF below the floor (reverting the withdraw once PRIME has
+                    // appreciated enough — a redemption/de-lever outage).
+                    // aPRIME(6dp) = budgetUSD8 · 0.9 · 1e6 / pPrime(8dp).
+                    (uint256 pHollar, uint256 pPrime) = _oracleRate();
+                    uint256 sellAmt = ((coll8 - minColl8) * 90 / 100) * 1e6 / pPrime;
                     if (unwindTranche > 0 && sellAmt > unwindTranche) sellAmt = unwindTranche;
                     uint256 apBal = primeAToken.balanceOf(address(this));
                     if (sellAmt > apBal) sellAmt = apBal;
                     if (sellAmt > 0) {
                         // min-out off the AaveOracle fair rate (aPRIME 1:1 PRIME).
                         // fair HOLLAR (18dp) = sellAmt aPRIME (6dp) · pPrime/pHollar · 1e12.
-                        (uint256 pHollar, uint256 pPrime) = _oracleRate();
                         uint256 fairOut = (sellAmt * pPrime * 1e12) / pHollar;
                         uint128 minOut = uint128((fairOut * (1_000_000 - dcaSlippagePpm)) / 1_000_000);
                         DcaDispatch.routerSell(aPrimeAssetId, hollarAssetId, uint128(sellAmt), minOut, _unwindRoute());
