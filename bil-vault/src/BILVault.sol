@@ -251,6 +251,10 @@ contract BILVault is
     // They're emitted under DELEGATECALL so logs still appear at the vault's
     // address and tests' expectEmit matches by topic+data regardless.
     event Reinvested(uint256 hollarAmount, uint256 tokenId);
+    /// @notice The active pool refused a reinvest — HOLLAR stays idle, retried
+    ///         on the next poke. Emitted instead of reverting so a closed pool
+    ///         can't brick `pokeQueue`.
+    event ReinvestFailed(uint256 hollarAmount);
     event PositionProcessed(
         uint256 indexed positionIndex,
         uint256 tokenId,
@@ -351,6 +355,7 @@ contract BILVault is
     );
     error BpsAboveMax();
     error MaturityBacklog();
+    error DecentralDepositFailed();
 
     // ═══════════════════════════════════════════════════════════════════════
     //                         INITIALIZER
@@ -518,7 +523,12 @@ contract BILVault is
         if (totalSupply() == 0) _mint(DEAD_ADDRESS, DEAD_SHARES);
         _mint(receiver, shares);
         hollar.safeTransferFrom(sender, address(this), assets);
-        uint256 tokenId = _depositIntoDecentral(assets);
+        // Fail loud: if the venue is closed we'd rather bounce the deposit than
+        // mint shares against HOLLAR parked at 0% — governance has
+        // `pauseDeposits()` for a planned outage. The revert unwinds the mint
+        // and the transfer above, so the depositor keeps their HOLLAR.
+        (bool ok, uint256 tokenId) = _depositIntoDecentral(assets);
+        if (!ok) revert DecentralDepositFailed();
         emit Deposited(receiver, assets, shares, tokenId);
         emit Deposit(sender, receiver, assets, shares);
     }
@@ -526,12 +536,37 @@ contract BILVault is
     /// @dev Forward HOLLAR to Decentral and record the new NFT position.
     ///      Extracted from `deposit` and `_reinvest` to keep their stack depths
     ///      shallow enough for via_ir compilation.
-    function _depositIntoDecentral(uint256 amount) internal returns (uint256 tokenId) {
+    ///
+    ///      Returns `ok = false` — recording nothing and moving no HOLLAR — when
+    ///      the pool refuses the deposit. `DecentralPool._deposit` is gated on
+    ///      `whenNotPaused`, `whenNotShutdown` and an
+    ///      [minimumInvestmentAmount, maximumInvestmentAmount] band, so a
+    ///      perfectly healthy vault can be turned away by a counterparty it does
+    ///      not control. Callers decide what that means: the user-facing deposit
+    ///      path fails loud, the permissionless keeper path shrugs and retries.
+    ///      Either way the failure must never propagate as an opaque third-party
+    ///      revert string.
+    function _depositIntoDecentral(uint256 amount)
+        internal
+        returns (bool ok, uint256 tokenId)
+    {
         IDecentralPool pool = activeDepositPool;
         uint256 apyWad = pool.fixedAPYWad();
         hollar.safeApprove(address(pool), 0);
         hollar.safeApprove(address(pool), amount);
-        tokenId = pool.deposit(amount);
+
+        // A refused deposit leaves the approval above live. That's deliberate,
+        // not an oversight: the leading `safeApprove(pool, 0)` is the designated
+        // cleanup point and clears it on the next attempt. Zeroing it here too
+        // costs more bytecode than the contract has left (EIP-170), and the
+        // residual exposure is bounded by `amount` against a counterparty that
+        // already custodies the vault's entire principal.
+        try pool.deposit(amount) returns (uint256 id) {
+            tokenId = id;
+        } catch {
+            return (false, 0);
+        }
+        ok = true;
 
         uint256 idx = positions.length;
         positions.push(
@@ -1026,7 +1061,16 @@ contract BILVault is
         }
         if (amount < minReinvestAmount) return;
 
-        uint256 tokenId = _depositIntoDecentral(amount);
+        // `pokeQueue` is permissionless and is the only way a wedged queue ever
+        // drains, so it must survive a pool that refuses us. On failure the
+        // HOLLAR simply stays in `idleHollar` — still fully counted by
+        // `totalAssets()`, still spendable by the queue processor — and the
+        // next poke retries.
+        (bool ok, uint256 tokenId) = _depositIntoDecentral(amount);
+        if (!ok) {
+            emit ReinvestFailed(amount);
+            return;
+        }
         idleHollar -= amount;
 
         emit Reinvested(amount, tokenId);

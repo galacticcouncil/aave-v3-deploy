@@ -246,4 +246,89 @@ contract ReinvestTest is BaseTest {
             "no new position - reinvest correctly suppressed during progress"
         );
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //   a refused pool must not brick pokeQueue
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// @dev `DecentralPool._deposit` is gated on `whenNotPaused`,
+    ///      `whenNotShutdown` and a [min, max] investment band — none of which
+    ///      the vault controls. `pokeQueue` is permissionless and is the only
+    ///      way a wedged queue ever drains, so a refusal has to degrade to a
+    ///      no-op rather than take the whole entry point down with it.
+    function _idleAfterMaturedPosition() internal returns (uint256 idle) {
+        _deposit(alice, TEN_THOUSAND_HOLLAR);
+        _warpDays(61);
+        _processPositionFull(0);
+        idle = vault.idleHollar();
+        assertGt(idle, 0, "setup: should have idle HOLLAR to reinvest");
+    }
+
+    /// @notice Every way the pool can refuse us leaves `pokeQueue` callable and
+    ///         the idle HOLLAR untouched.
+    function test_pokeQueue_survivesRefusedReinvest_paused() public {
+        _assertReinvestRefusalIsSafe(_Refusal.Paused);
+    }
+
+    function test_pokeQueue_survivesRefusedReinvest_shutdown() public {
+        _assertReinvestRefusalIsSafe(_Refusal.Shutdown);
+    }
+
+    function test_pokeQueue_survivesRefusedReinvest_belowMinimum() public {
+        _assertReinvestRefusalIsSafe(_Refusal.BelowMin);
+    }
+
+    function test_pokeQueue_survivesRefusedReinvest_aboveMaximum() public {
+        _assertReinvestRefusalIsSafe(_Refusal.AboveMax);
+    }
+
+    enum _Refusal {
+        Paused,
+        Shutdown,
+        BelowMin,
+        AboveMax
+    }
+
+    function _assertReinvestRefusalIsSafe(_Refusal how) internal {
+        uint256 idleBefore = _idleAfterMaturedPosition();
+        uint256 posCountBefore = vault.getPositionCount();
+        uint256 rateBefore = vault.exchangeRate();
+        uint256 assetsBefore = vault.totalAssets();
+
+        if (how == _Refusal.Paused) pool.setPaused(true);
+        else if (how == _Refusal.Shutdown) pool.setShutdown(true);
+        else if (how == _Refusal.BelowMin) pool.setMinimumInvestmentAmount(idleBefore + 1);
+        else pool.setMaximumInvestmentAmount(idleBefore - 1);
+
+        // The whole point: this must not revert.
+        vm.expectEmit(false, false, false, true);
+        emit BILVault.ReinvestFailed(idleBefore);
+        vault.pokeQueue();
+
+        assertEq(vault.idleHollar(), idleBefore, "idle HOLLAR must be left intact");
+        assertEq(vault.getPositionCount(), posCountBefore, "no phantom position recorded");
+        assertEq(vault.totalAssets(), assetsBefore, "totalAssets unchanged by a refusal");
+        assertEq(vault.exchangeRate(), rateBefore, "holders must not be repriced by a refusal");
+    }
+
+    /// @notice The skip is a retry, not a give-up: once the pool reopens the
+    ///         very next poke places the funds it refused earlier.
+    function test_pokeQueue_reinvestsAfterPoolReopens() public {
+        uint256 idleBefore = _idleAfterMaturedPosition();
+        uint256 posCountBefore = vault.getPositionCount();
+
+        pool.setPaused(true);
+        vault.pokeQueue();
+        assertEq(vault.idleHollar(), idleBefore, "still idle while the pool is shut");
+
+        pool.setPaused(false);
+        vault.pokeQueue();
+
+        assertEq(
+            vault.getPositionCount(),
+            posCountBefore + 1,
+            "reopened pool should absorb the previously-refused HOLLAR"
+        );
+        assertLt(vault.idleHollar(), idleBefore, "idle HOLLAR placed on retry");
+    }
 }
