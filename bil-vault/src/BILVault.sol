@@ -258,6 +258,10 @@ contract BILVault is
     // They're emitted under DELEGATECALL so logs still appear at the vault's
     // address and tests' expectEmit matches by topic+data regardless.
     event Reinvested(uint256 hollarAmount, uint256 tokenId);
+    /// @notice The active pool refused a reinvest — HOLLAR stays idle, retried
+    ///         on the next poke. Emitted instead of reverting so a closed pool
+    ///         can't brick `pokeQueue`.
+    event ReinvestFailed(uint256 hollarAmount);
     event PositionProcessed(
         uint256 indexed positionIndex,
         uint256 tokenId,
@@ -364,6 +368,7 @@ contract BILVault is
     );
     error BpsAboveMax();
     error MaturityBacklog();
+    error DecentralDepositFailed();
     // AskTooHigh / NothingPending and the listing auth errors live in
     // QueueLib next to setAsk/clearAsk.
     error FillsDisabled();
@@ -451,12 +456,39 @@ contract BILVault is
             totalReservedHollar;
     }
 
-    /// @notice Current BIL/HOLLAR exchange rate (18 decimals)
+    /// @notice HOLLAR value of the ACTIVE share pool — total assets minus the
+    ///         reserved HOLLAR backing settled (exited) claims.
+    /// @dev    Reserved HOLLAR is a fixed liability owed to settled redeemers,
+    ///         not value available to active shareholders.
+    function _activeAssets() internal view returns (uint256) {
+        uint256 total = totalAssets();
+        // reserved is always ≤ total (it's a summed component of totalAssets),
+        // but clamp defensively.
+        return total > totalReservedHollar ? total - totalReservedHollar : 0;
+    }
+
+    /// @notice Active (non-settled) share supply. Settled shares are exited —
+    ///         they carry a fixed claim and must not share in active yield.
+    ///         Dead shares are active, so this stays ≥ DEAD_SHARES once
+    ///         bootstrapped (the rate denominator can't hit zero).
+    function _activeSupply() internal view returns (uint256) {
+        uint256 supply = totalSupply();
+        return supply > totalSettledBil ? supply - totalSettledBil : 0;
+    }
+
+    /// @notice Current BIL/HOLLAR exchange rate (18 decimals) — the value of
+    ///         one ACTIVE share.
+    /// @dev    Prices active shares against active assets only; settled shares
+    ///         and their reserved HOLLAR are excluded (Pashov High —
+    ///         settled-share dilution). Because a share is settled at exactly
+    ///         this rate (hollarOwed = shares × rate), settlement is
+    ///         rate-neutral: removing (shares, shares×rate) from the active
+    ///         pool leaves the ratio unchanged.
     /// @return Rate in WAD (1e18 = 1:1)
     function exchangeRate() public view returns (uint256) {
-        uint256 supply = totalSupply();
-        if (supply == 0) return WAD;
-        return (totalAssets() * WAD) / supply;
+        uint256 activeSupply = _activeSupply();
+        if (activeSupply == 0) return WAD;
+        return (_activeAssets() * WAD) / activeSupply;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -507,7 +539,12 @@ contract BILVault is
         if (totalSupply() == 0) _mint(DEAD_ADDRESS, DEAD_SHARES);
         _mint(receiver, shares);
         hollar.safeTransferFrom(sender, address(this), assets);
-        uint256 tokenId = _depositIntoDecentral(assets);
+        // Fail loud: if the venue is closed we'd rather bounce the deposit than
+        // mint shares against HOLLAR parked at 0% — governance has
+        // `pauseDeposits()` for a planned outage. The revert unwinds the mint
+        // and the transfer above, so the depositor keeps their HOLLAR.
+        (bool ok, uint256 tokenId) = _depositIntoDecentral(assets);
+        if (!ok) revert DecentralDepositFailed();
         emit Deposited(receiver, assets, shares, tokenId);
         emit Deposit(sender, receiver, assets, shares);
     }
@@ -515,12 +552,37 @@ contract BILVault is
     /// @dev Forward HOLLAR to Decentral and record the new NFT position.
     ///      Extracted from `deposit` and `_reinvest` to keep their stack depths
     ///      shallow enough for via_ir compilation.
-    function _depositIntoDecentral(uint256 amount) internal returns (uint256 tokenId) {
+    ///
+    ///      Returns `ok = false` — recording nothing and moving no HOLLAR — when
+    ///      the pool refuses the deposit. `DecentralPool._deposit` is gated on
+    ///      `whenNotPaused`, `whenNotShutdown` and an
+    ///      [minimumInvestmentAmount, maximumInvestmentAmount] band, so a
+    ///      perfectly healthy vault can be turned away by a counterparty it does
+    ///      not control. Callers decide what that means: the user-facing deposit
+    ///      path fails loud, the permissionless keeper path shrugs and retries.
+    ///      Either way the failure must never propagate as an opaque third-party
+    ///      revert string.
+    function _depositIntoDecentral(uint256 amount)
+        internal
+        returns (bool ok, uint256 tokenId)
+    {
         IDecentralPool pool = activeDepositPool;
         uint256 apyWad = pool.fixedAPYWad();
         hollar.safeApprove(address(pool), 0);
         hollar.safeApprove(address(pool), amount);
-        tokenId = pool.deposit(amount);
+
+        // A refused deposit leaves the approval above live. That's deliberate,
+        // not an oversight: the leading `safeApprove(pool, 0)` is the designated
+        // cleanup point and clears it on the next attempt. Zeroing it here too
+        // costs more bytecode than the contract has left (EIP-170), and the
+        // residual exposure is bounded by `amount` against a counterparty that
+        // already custodies the vault's entire principal.
+        try pool.deposit(amount) returns (uint256 id) {
+            tokenId = id;
+        } catch {
+            return (false, 0);
+        }
+        ok = true;
 
         uint256 idx = positions.length;
         positions.push(
@@ -742,6 +804,7 @@ contract BILVault is
 
         _burn(address(this), shares);
         totalQueuedBil -= shares;
+        totalSettledBil -= shares; // settled shares leaving supply on claim
         totalReservedHollar -= assets;
         hollar.safeTransfer(receiver, assets);
 
@@ -763,6 +826,7 @@ contract BILVault is
 
         _burn(address(this), shares);
         totalQueuedBil -= shares;
+        totalSettledBil -= shares; // settled shares leaving supply on claim
         totalReservedHollar -= assets;
         hollar.safeTransfer(receiver, assets);
 
@@ -1043,13 +1107,16 @@ contract BILVault is
             if (assets <= DEAD_SHARES) revert DepositTooSmall();
             shares = assets - DEAD_SHARES;
         } else {
-            uint256 totalA = totalAssets();
-            // Catastrophic state: shares exist but no backing. Refuse to
-            // deposit at a zero rate — the depositor would receive no BIL
-            // and lose their HOLLAR. Solidity 0.8+ would panic on the
-            // division below; this gives a clear revert reason instead.
-            if (totalA == 0) revert VaultEmpty();
-            shares = (assets * supply) / totalA;
+            // Mint against the ACTIVE pool — settled shares and their
+            // reserved HOLLAR are excluded so a new depositor pays the true
+            // active rate, not a rate diluted by lingering settled claims.
+            uint256 activeSupply = _activeSupply();
+            uint256 activeA = _activeAssets();
+            // Catastrophic state: active shares exist but no active backing.
+            // Refuse to deposit at a zero rate — the depositor would receive
+            // no BIL and lose their HOLLAR.
+            if (activeA == 0 || activeSupply == 0) revert VaultEmpty();
+            shares = (assets * activeSupply) / activeA;
             if (shares == 0) revert DepositTooSmall();
         }
     }
@@ -1073,7 +1140,16 @@ contract BILVault is
         }
         if (amount < minReinvestAmount) return;
 
-        uint256 tokenId = _depositIntoDecentral(amount);
+        // `pokeQueue` is permissionless and is the only way a wedged queue ever
+        // drains, so it must survive a pool that refuses us. On failure the
+        // HOLLAR simply stays in `idleHollar` — still fully counted by
+        // `totalAssets()`, still spendable by the queue processor — and the
+        // next poke retries.
+        (bool ok, uint256 tokenId) = _depositIntoDecentral(amount);
+        if (!ok) {
+            emit ReinvestFailed(amount);
+            return;
+        }
         idleHollar -= amount;
 
         emit Reinvested(amount, tokenId);
@@ -1091,18 +1167,18 @@ contract BILVault is
     /// @notice Convert HOLLAR → hDCL at the current rate (no fees, no
     ///         first-deposit dust). For empty supply, returns 1:1.
     function convertToShares(uint256 assets) public view returns (uint256) {
-        uint256 supply = totalSupply();
-        if (supply == 0) return assets;
-        uint256 totalA = totalAssets();
-        if (totalA == 0) return 0;
-        return (assets * supply) / totalA;
+        uint256 activeSupply = _activeSupply();
+        if (activeSupply == 0) return assets; // fresh/empty active pool → 1:1
+        uint256 activeA = _activeAssets();
+        if (activeA == 0) return 0;
+        return (assets * activeSupply) / activeA;
     }
 
-    /// @notice Convert hDCL → HOLLAR at the current rate.
+    /// @notice Convert hDCL → HOLLAR at the current (active) rate.
     function convertToAssets(uint256 shares) public view returns (uint256) {
-        uint256 supply = totalSupply();
-        if (supply == 0) return shares;
-        return (shares * totalAssets()) / supply;
+        uint256 activeSupply = _activeSupply();
+        if (activeSupply == 0) return shares;
+        return (shares * _activeAssets()) / activeSupply;
     }
 
     /// @notice Max HOLLAR `receiver` can deposit right now.
@@ -1151,15 +1227,15 @@ contract BILVault is
     /// @notice Preview how much HOLLAR is needed to mint exactly `shares` hDCL.
     /// @dev    Rounds up to favor the vault — mint will pull at least this much.
     function previewMint(uint256 shares) public view returns (uint256 assets) {
-        uint256 supply = totalSupply();
-        if (supply == 0) {
+        uint256 activeSupply = _activeSupply();
+        if (activeSupply == 0) {
             // First-deposit dust: caller must overpay DEAD_SHARES wei to
             // mint `shares` to themselves while DEAD_SHARES go to 0xdead.
             return shares + DEAD_SHARES;
         }
-        uint256 totalA = totalAssets();
-        // ceil(shares * totalA / supply)
-        return (shares * totalA + supply - 1) / supply;
+        uint256 activeA = _activeAssets();
+        // ceil(shares * activeA / activeSupply)
+        return (shares * activeA + activeSupply - 1) / activeSupply;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -1188,21 +1264,23 @@ contract BILVault is
             if (hollarAmount <= DEAD_SHARES) revert DepositTooSmall();
             return hollarAmount - DEAD_SHARES;
         }
-        uint256 assets = totalAssets();
-        // Catastrophic state: shares exist but no backing. `deposit` would
-        // revert with VaultEmpty before the divide; mirror that here.
-        if (assets == 0) revert VaultEmpty();
-        bilAmount = (hollarAmount * supply) / assets;
+        uint256 activeSupply = _activeSupply();
+        uint256 activeA = _activeAssets();
+        // Catastrophic state: active shares exist but no active backing.
+        // `deposit` would revert with VaultEmpty before the divide; mirror it.
+        if (activeA == 0 || activeSupply == 0) revert VaultEmpty();
+        bilAmount = (hollarAmount * activeSupply) / activeA;
         if (bilAmount == 0) revert DepositTooSmall();
     }
 
-    /// @notice Preview the HOLLAR value of a BIL redemption at current rate
+    /// @notice Preview the HOLLAR value of a BIL redemption at the current
+    ///         (active) rate.
     function previewRedeem(
         uint256 bilAmount
     ) external view returns (uint256 hollarAmount) {
-        uint256 supply = totalSupply();
-        if (supply == 0) return 0;
-        return (bilAmount * totalAssets()) / supply;
+        uint256 activeSupply = _activeSupply();
+        if (activeSupply == 0) return 0;
+        return (bilAmount * _activeAssets()) / activeSupply;
     }
 
     /// @notice ERC-4626 sync withdraw preview — async-only vault returns 0.
@@ -1596,6 +1674,9 @@ contract BILVault is
         // storage-write surface stays explicit at the call boundary.
         idleHollar -= hollarUsed;
         totalReservedHollar += hollarUsed;
+        // Shares just rate-locked join the settled (exited) pool — excluded
+        // from the active exchange rate from here until claim burns them.
+        totalSettledBil += bilLocked;
     }
 
     /// @dev Advance positionHead past redeemed positions
@@ -1715,6 +1796,18 @@ contract BILVault is
     /// @dev Min-heap of packed (maturityTime, positionIndex) entries.
     uint256[] private _maturityHeap;
 
+    /// @notice Aggregate hDCL across all requests' `bilSettled` (rate-locked,
+    ///         awaiting claim). Settled shares are economically exited — they
+    ///         carry a fixed HOLLAR claim (`hollarOwed`, held in
+    ///         `totalReservedHollar`) and no longer earn yield — but they
+    ///         remain in `totalSupply()` until claim burns them. Excluding
+    ///         them (and their reserved HOLLAR) from the exchange-rate math
+    ///         is what keeps the rate a pure ACTIVE-share rate: without this,
+    ///         lingering settled shares blend a fixed claim against still-
+    ///         accruing active shares and depress the rate for active holders
+    ///         (Pashov High — settled-share dilution).
+    uint256 public totalSettledBil;
+
     // ═══════════════════════════════════════════════════════════════════════
     //                       QUEUE FILLS (upgrade slot block)
     // ═══════════════════════════════════════════════════════════════════════
@@ -1733,5 +1826,7 @@ contract BILVault is
     // ═══════════════════════════════════════════════════════════════════════
 
     /// @dev Reserved storage slots for future upgrades.
-    uint256[45] private __gap;
+    // 47 base − 3 appended (totalSettledBil #51, fillAskPlusOne + fillsEnabled
+    // #50) — keeps the total reserved footprint constant across upgrades.
+    uint256[44] private __gap;
 }

@@ -95,10 +95,14 @@ contract DepositTest is BaseTest {
     }
 
     /// @notice Spec §4.2 edge case: Decentral pool revert → entire tx reverts
+    /// @notice A refused pool still bounces the deposit — the depositor keeps
+    ///         their HOLLAR rather than minting shares against idle funds. The
+    ///         pool's raw revert string is normalised to a typed error so the
+    ///         failure can't be confused with a HOLLAR transfer failure.
     function test_deposit_reverts_whenDecentralPoolReverts() public {
         pool.setPaused(true);
 
-        vm.expectRevert("Pool paused");
+        vm.expectRevert(BILVault.DecentralDepositFailed.selector);
         _deposit(alice, TEN_THOUSAND_HOLLAR);
     }
 

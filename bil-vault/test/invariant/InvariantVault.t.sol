@@ -254,6 +254,20 @@ contract InvariantVaultTest is Test {
         );
     }
 
+    /// @notice totalSettledBil == sum of bilSettled across all requests, and
+    ///         never exceeds totalSupply (settled shares are a subset of
+    ///         escrowed shares). Underpins the active-share exchange rate.
+    function invariant_totalSettledBilAccurate() public view {
+        uint256 tail = vault.queueTail();
+        uint256 sum = 0;
+        for (uint256 i = 0; i < tail; i++) {
+            (address u, , uint256 settled, ,,) = vault.getRedemptionRequest(i);
+            if (u != address(0)) sum += settled;
+        }
+        assertEq(vault.totalSettledBil(), sum, "INV-13: totalSettledBil mismatch");
+        assertLe(vault.totalSettledBil(), vault.totalSupply(), "settled exceeds supply");
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     //          ACCOUNTING INVARIANT 12: HOLLAR backing
     // ═══════════════════════════════════════════════════════════════════════
