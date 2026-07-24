@@ -23,8 +23,13 @@ contract DeployHarvester is Script {
 
     function run() external {
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
+        // Overridable per-chain (else lark-2 defaults). PRIME is the token
+        // SubLoop.harvest emits (DCL on lark-2). On lark-4 pass SUBLOOP + PRIME.
+        address subLoop = vm.envOr("SUBLOOP", SUBLOOP);
+        address prime = vm.envOr("PRIME", DCL);
+        address gov = vm.envOr("GOV", GOV);
         vm.startBroadcast(deployerKey);
-        Harvester h = new Harvester(SUBLOOP, DCL, GOV);
+        Harvester h = new Harvester(subLoop, prime, gov);
         vm.stopBroadcast();
         console2.log("Harvester:", address(h));
     }

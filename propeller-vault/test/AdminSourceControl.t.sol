@@ -132,7 +132,8 @@ contract AdminSourceControlTest is Test {
         assertGt(vault.syntheticSupplied(), 0, "has synth before");
 
         vault.adminUnwind();
-        _drain();
+        assertTrue(vault.paused(), "adminUnwind enters wind-down (paused): no re-lever, users locked");
+        _drain(); // pokeRepay + pokeSettle still run while paused
 
         // Main debt repaid and synth burned to dust (the unwind spiral leaves the
         // same benign sub-HOLLAR remainder the integration test allows for) — but
@@ -157,14 +158,91 @@ contract AdminSourceControlTest is Test {
         _drain();
 
         MockYieldSource next = new MockYieldSource(address(hollar));
-        vault.setYieldSource(address(next));
+        vault.setYieldSource(address(next)); // callable while paused (admin-only)
         assertEq(address(vault.yieldSource()), address(next), "source repointed");
 
-        // new deposits now route into the new source
+        // governance lifts the wind-down, then new deposits route into the new source
+        vault.unpause();
         eth.mint(address(this), 1e18);
         eth.approve(address(vault), 1e18);
         vault.deposit(1e18, address(this));
         assertGt(next.sharesOf(address(vault)), 0, "new deposits fund the new source");
+    }
+
+    /// adminUnwind must FREEZE the vault (Option B: users locked until governance
+    /// plugs a new source) — otherwise a permissionless rebalance() would re-lever
+    /// the bare collateral straight back into the loop, undoing the de-risk.
+    function test_adminUnwindFreezesRebalance() public {
+        _depositAndRamp();
+        vault.adminUnwind();
+        _drain();
+        assertTrue(vault.paused(), "vault is paused after adminUnwind");
+        assertEq(loop.equityOf(address(vault)), 0, "bare collateral");
+
+        // a keeper cannot re-lever it back
+        vm.expectRevert();
+        vault.rebalance();
+        assertEq(loop.equityOf(address(vault)), 0, "still bare - rebalance did not re-lever");
+    }
+
+    /// adminUnwind with a queued redemption must NOT double-count it: the queued
+    /// redeemer settles through the queue (their debt is excluded from
+    /// deleverTarget) and the non-queued remainder de-risks. Both complete.
+    function test_adminUnwindWithQueuedRedemptionSettlesBoth() public {
+        _depositAndRamp();
+        uint256 shares = vault.balanceOf(address(this));
+        uint256 reqId = vault.requestRedeem(shares / 2, address(this)); // queue half
+        assertGt(vault.queueTail(), vault.queueHead(), "a redemption is queued");
+
+        vault.adminUnwind(); // targets only the non-queued debt
+        _drain();
+
+        // the queued redeemer can claim real collateral (not orphaned) ...
+        uint256 got = vault.claim(reqId, address(this));
+        assertGt(got, 0, "queued redeemer settled, not orphaned");
+        // ... and the whole position is de-risked to bare collateral
+        assertLt(hollarDebt.balanceOf(address(vault)), 1e18, "all Main debt repaid");
+    }
+
+    /// The DoS the empty-queue guard would have caused: a redemption whose loop
+    /// slice frees LESS than its snapshotted debt (negative carry) never fully
+    /// settles, so queueHead never advances. adminUnwind must still run — it must
+    /// not be gated on an empty queue.
+    function test_adminUnwindNotBlockedByUnderSettledQueue() public {
+        _depositAndRamp();
+        // PRIME collapses AFTER deposit: the loop equity backing a redemption now
+        // frees less HOLLAR than the snapshotted Main debt → the request can never
+        // fully settle → queueHead sticks.
+        pool.setPrice(address(prime), 0.5e18);
+        uint256 shares = vault.balanceOf(address(this));
+        vault.requestRedeem(shares / 2, address(this));
+        for (uint256 i = 0; i < 400; i++) {
+            if (loop.unwindTargetEquity() == 0) break;
+            loop.pokeRepay();
+        }
+        vault.pokeSettle();
+        assertGt(vault.queueTail(), vault.queueHead(), "redemption stuck (under-settled)");
+
+        // must NOT revert despite the stuck queue
+        vault.adminUnwind();
+        assertTrue(vault.paused(), "adminUnwind ran despite the stuck queue");
+    }
+
+    /// The full Option B lifecycle: wind PRIME down → swap to a new source →
+    /// governance re-levers the bare collateral into it via rebalance.
+    function test_windDownThenRestoreIntoNewSource() public {
+        _depositAndRamp();
+        vault.adminUnwind();
+        _drain();
+
+        MockYieldSource next = new MockYieldSource(address(hollar));
+        vault.setYieldSource(address(next));
+        vault.unpause();
+
+        // re-lever the bare ETH into the NEW source
+        vault.rebalance();
+        assertGt(next.sharesOf(address(vault)), 0, "bare collateral re-levered into the new source");
+        assertGt(hollarDebt.balanceOf(address(vault)), 0, "position re-established");
     }
 
     /// After adminUnwind requests the unwind but BEFORE the spiral has freed and

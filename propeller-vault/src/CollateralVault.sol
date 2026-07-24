@@ -94,10 +94,6 @@ contract CollateralVault is
     /// @notice Main HOLLAR debt still to repay from a down-rebalance de-lever
     ///         (settled ahead of the redemption queue as the loop frees HOLLAR).
     uint256 public deleverTarget;
-    /// @notice Snapshot of the HOLLAR the source owed this vault at the last
-    ///         `adminUnwind` — the reference `setYieldSource` uses to tell a
-    ///         completed drain (only dust left) from an in-flight one (still owed).
-    uint256 public migrationDrainRef;
 
     // ── async redemption queue (HDCL pattern; minimal inline form) ───────────
     /// @dev Production: swap for the audited HDCL QueueLib. Inline here to keep
@@ -119,6 +115,18 @@ contract CollateralVault is
     uint256 public queueHead; // first unsettled request
     uint256 public queueTail; // next request id
     uint256 public totalQueuedShares;
+
+    /// @notice Snapshot of the HOLLAR the source owed this vault at the last
+    ///         `adminUnwind` — the reference `setYieldSource` uses to tell a
+    ///         completed drain (only dust left) from an in-flight one (still owed).
+    ///         Appended after all prior storage (layout-stable) — see `__gap`.
+    uint256 public migrationDrainRef;
+    /// @notice Σ of active queued redemptions' still-owed Main debt (debtShare −
+    ///         repaid). Lets `adminUnwind` target only the NON-queued debt, so it
+    ///         never double-counts a queued redeemer (BUG-2) — and so it needs no
+    ///         empty-queue precondition (which a never-fully-settling request could
+    ///         otherwise block forever).
+    uint256 public totalQueuedDebt;
 
     event Deposited(address indexed user, uint256 assets, uint256 shares);
     event RedeemRequested(uint256 indexed requestId, address indexed owner, uint256 shares);
@@ -346,6 +354,7 @@ contract CollateralVault is
             active: true
         });
         totalQueuedShares += shares;
+        totalQueuedDebt += debtShare;
         emit RedeemRequested(requestId, owner, shares);
     }
 
@@ -402,6 +411,7 @@ contract CollateralVault is
             pool.withdraw(address(collateral), collRel, address(this));
             r.collateralSettled += collRel;
             r.repaid += repayNow;
+            totalQueuedDebt -= repayNow; // still-owed queued debt shrinks as it settles
 
             emit RedeemSettled(head, collRel);
             if (r.repaid >= r.debtShare) head++;
@@ -621,16 +631,52 @@ contract CollateralVault is
     ///         it. Deliberately MANUAL: whether to unwind now or hold through a
     ///         dip is a market judgment left to the admin, never automated off the
     ///         `negativeCarryBps` signal.
+    ///
+    /// @dev    ⚠️ DISCLAIMER / KNOWN LIMITATIONS — read before relying on this in
+    ///         production:
+    ///         - **Wind-down locks users (Option B).** `_pause()` freezes deposits,
+    ///           new redemptions, and `rebalance()`. Holders CANNOT exit until
+    ///           governance plugs a new source and re-levers, then `unpause`s. Only
+    ///           `pokeSettle`/`claim` stay live (drain completes, already-settled
+    ///           requests remain claimable). There is intentionally NO bare-
+    ///           collateral withdrawal path in this version.
+    ///         - **Restore is a manual sequence:** drain → `setYieldSource(new)` →
+    ///           `unpause` → `rebalance()` re-levers the bare collateral into the
+    ///           new source. Existing positions sit idle (no yield) until then;
+    ///           auto re-levering into a new venue is a FOLLOW-UP, not built here.
+    ///         - **Accrual drift:** deleverTarget = liveDebt − `totalQueuedDebt`
+    ///           (snapshot). HOLLAR interest that accrued on queued debt makes this
+    ///           slightly over the true non-queued debt, so a queued redeemer may
+    ///           settle marginally slower — bounded, and they stay active (partial
+    ///           settle), never orphaned.
+    ///         - **TODO:** this path (and the `setYieldSource` drain guard's
+    ///           sub-1-HOLLAR dust floor) has NOT yet had a final independent audit
+    ///           pass. Treat as governance-only, low-frequency, and validate on a
+    ///           fork before mainnet. Remove this TODO once reviewed.
     function adminUnwind() external onlyRole(ADMIN_ROLE) {
         uint256 slice = loopShares;
         if (slice == 0) revert ZeroAmount();
         loopShares = 0;
         yieldSource.requestUnwind(slice);
-        // freed HOLLAR repays Main debt (ahead of the redeem queue) as it arrives.
-        deleverTarget = hollarDebtToken.balanceOf(address(this));
+        // Repay only the NON-queued Main debt via deleverTarget. Queued
+        // redemptions keep their own settlement path (their debt is `totalQueuedDebt`
+        // and settles through the queue), so this never double-counts / orphans a
+        // queued redeemer — and, unlike an empty-queue precondition, it can't be
+        // blocked forever by a redemption that never fully settles under negative
+        // carry. `loopShares` is already net of queued slices, so its unwind frees
+        // exactly the non-queued equity that backs this target.
+        uint256 debt = hollarDebtToken.balanceOf(address(this));
+        deleverTarget = debt > totalQueuedDebt ? debt - totalQueuedDebt : 0;
         // reference for setYieldSource's drain-completeness check: how much the
         // source now owes us. A completed drain reduces this to dust.
         migrationDrainRef = yieldSource.pendingUnwindOf(address(this));
+        // Enter wind-down (Option B): freeze deposits, new redemptions, and — the
+        // point — the permissionless `rebalance()`, so no keeper re-levers the bare
+        // collateral back into the loop being abandoned. `pokeSettle`/`claim` stay
+        // callable (not whenNotPaused) so the drain completes and settled requests
+        // remain claimable. Governance lifts it via `unpause` after plugging a new
+        // source and re-levering.
+        _pause();
     }
 
     /// @notice Repoint the vault to a new yield source (e.g. after winding the old
@@ -684,5 +730,5 @@ contract CollateralVault is
 
     function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
 
-    uint256[39] private __gap;
+    uint256[38] private __gap;
 }
