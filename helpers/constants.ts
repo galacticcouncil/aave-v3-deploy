@@ -181,6 +181,10 @@ export const POOL_ADMIN: Record<string, string> = {
   [eHydrationNetwork.lark]: "0xaa7e0000000000000000000000000000000aa7e0",
   [eHydrationNetwork.lark2]: "0xaa7e0000000000000000000000000000000aa7e0",
   [eHydrationNetwork.chopsticks]: "0xaa7e0000000000000000000000000000000aa7e0",
+  // `bil` is the live mainnet BIL money-market namespace (deployments/bil).
+  // Its pool admin is the same aave-manager precompile as mainnet — required so
+  // dispatchAsAaveManager-wrapped evm.calls carry source=0xaa7e (else BadOrigin).
+  [eHydrationNetwork.bil]: "0xaa7e0000000000000000000000000000000aa7e0",
 };
 
 export const EMERGENCY_ADMIN: Record<string, string> = {

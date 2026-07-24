@@ -4,6 +4,7 @@ import {
   generateProposalV2,
   getApi,
   dispatchAs,
+  dispatchAsTreasury,
   evmAddress,
 } from "../../helpers/hydration-proposal.js";
 import { task } from "hardhat/config";
@@ -88,12 +89,14 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
   // Main money-market HOLLAR GhoAToken. HOLLAR borrow interest does NOT sit in
   // the Aave Collector (0xE525 holds <1K) — it accrues inside this aToken (~44K)
   // and is only realised by distributeFeesToTreasury(), which pays out to the
-  // aToken's configured ghoTreasury. Step 3b taps it to top up the Treasury.
-  // ORIG_GHO_TREASURY is its normal fee sink (the Collector), restored right
-  // after the sweep — all atomic within this batch.
+  // aToken's configured ghoTreasury (the Collector). Step 3b realises it there
+  // then moves it to the Treasury via a currencies.transfer (no repoint).
   const MAIN_GHO_ATOKEN = "0x8C0f3b9602374198974d2B2679d14a386f5b108e";
-  const ORIG_GHO_TREASURY = "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9";
+  // The Aave Collector — the GhoAToken's steady-state ghoTreasury (fee sink).
+  const COLLECTOR = "0xE52567fF06aCd6CBe7BA94dc777a3126e180B6d9";
   const AAVE_MANAGER = "0xaa7e0000000000000000000000000000000aa7e0";
+  // HOLLAR's substrate asset id (ERC20-type, contract at `hollarAddr`).
+  const HOLLAR_ASSET_ID = 222;
 
   // Stableswap pool params — see BIL-MAINNET-HANDOVER.md "Mainnet
   // single-batch launch composition" for the rationale on each.
@@ -392,36 +395,31 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
   // Runs immediately with the proposal (main `txs`, not the scheduled batch) so
   // the funds land in the Treasury before the +1-block bootstrap needs them.
   //
-  // HOLLAR borrow interest is NOT held by the Collector (0xE525, <1K) — it
-  // accrues inside the main GhoAToken (~44K) and is only realised by
-  // distributeFeesToTreasury(), which pays the aToken's configured ghoTreasury.
-  // So, atomically within this batch:
-  //   (i)   repoint the aToken's ghoTreasury to the bootstrap Treasury,
-  //   (ii)  distributeFeesToTreasury() -> sweeps accrued HOLLAR to the Treasury,
-  //   (iii) restore the original ghoTreasury (the Collector).
-  // updateGhoTreasury is onlyPoolAdmin on the main pool (the aave-manager holds
-  // that role and is NOT the aToken's proxy admin, so no transparent-proxy wall);
-  // distributeFeesToTreasury is permissionless. Recipient is the Treasury's bound
-  // EVM address; the HOLLAR ERC20 credits the same 7L53 balance the bootstrap's
-  // addAssetsLiquidity reads.
+  // HOLLAR borrow interest is NOT held by the Collector directly — it accrues
+  // inside the main GhoAToken (~44K) and is only realised by
+  // distributeFeesToTreasury(), which pays the aToken's configured ghoTreasury
+  // (the Collector, its steady-state sink). So, within this batch:
+  //   (i)  distributeFeesToTreasury() -> realises accrued HOLLAR into the Collector,
+  //   (ii) currencies.transfer moves it Collector -> Treasury, dispatched as the
+  //        Collector's own account.
+  // We do NOT touch the aToken's ghoTreasury config — the fee sink stays the
+  // Collector throughout (no repoint/restore dance). `Currencies` is Hydration's
+  // unified MultiCurrency wrapper over native Balances / orml-Tokens / registered
+  // ERC20s, so `currencies.transfer(222, ...)` moves HOLLAR straight from the
+  // Collector's ERC20 balance — no Collector.transfer / fundsAdmin needed. The
+  // Collector's substrate account is its H160 right-padded to 32 bytes.
+  // distributeFeesToTreasury is permissionless. Amount = the build-time accrued
+  // estimate, which the Collector is guaranteed to hold after (i) (it also keeps
+  // its prior balance as buffer). Recipient is the substrate Treasury (7L53),
+  // whose HOLLAR balance the bootstrap's addAssetsLiquidity reads.
   console.log(
-    `---------> sweep main-MM aToken ${MAIN_GHO_ATOKEN} HOLLAR fees -> Treasury (${treasuryEvm})`
+    `---------> sweep main-MM aToken ${MAIN_GHO_ATOKEN} fees -> Collector -> Treasury (${aTokenAccrued} HOLLAR)`
   );
   {
     const atokenIface = new utils.Interface([
-      "function updateGhoTreasury(address newGhoTreasury)",
       "function distributeFeesToTreasury()",
     ]);
-    // (i) redirect the aToken's fee sink to the Treasury
-    txs.push(
-      await aaveManagerCall({
-        from: AAVE_MANAGER,
-        to: MAIN_GHO_ATOKEN,
-        data: atokenIface.encodeFunctionData("updateGhoTreasury", [treasuryEvm]),
-        gasLimit: "300000",
-      })
-    );
-    // (ii) sweep accrued HOLLAR fees to the Treasury
+    // (i) realise accrued HOLLAR fees into the Collector (its normal sink)
     txs.push(
       await aaveManagerCall({
         from: AAVE_MANAGER,
@@ -430,14 +428,19 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
         gasLimit: "400000",
       })
     );
-    // (iii) restore the original fee sink (the Collector)
+    // (ii) move the realised HOLLAR from the Collector to the Treasury via the
+    // Currencies wrapper, dispatched as the Collector's substrate account.
+    const COLLECTOR_ACCOUNT =
+      "0x" + COLLECTOR.slice(2).toLowerCase() + "0".repeat(24);
     txs.push(
-      await aaveManagerCall({
-        from: AAVE_MANAGER,
-        to: MAIN_GHO_ATOKEN,
-        data: atokenIface.encodeFunctionData("updateGhoTreasury", [ORIG_GHO_TREASURY]),
-        gasLimit: "300000",
-      })
+      await dispatchAs(
+        COLLECTOR_ACCOUNT,
+        hydrationTx.currencies.transfer(
+          treasury,
+          HOLLAR_ASSET_ID,
+          aTokenAccrued.toString()
+        )
+      )
     );
   }
 
@@ -467,8 +470,7 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
     HOLLAR_DEPOSIT_AMOUNT,
   ]);
   last.push(
-    await dispatchAs(
-      treasury,
+    await dispatchAsTreasury(
       hydrationTx.evm.call(
         treasuryEvm,
         hollarAddr,
@@ -493,8 +495,7 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
     HOLLAR_DEPOSIT_AMOUNT,
   ]);
   last.push(
-    await dispatchAs(
-      treasury,
+    await dispatchAsTreasury(
       hydrationTx.evm.call(
         treasuryEvm,
         zapAddr,
@@ -514,8 +515,7 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
   // Asset order: ascending (BIL=55 first, HOLLAR=222 second).
   // Inverting silently produces wrong pool composition — see handover doc.
   last.push(
-    await dispatchAs(
-      treasury,
+    await dispatchAsTreasury(
       hydrationTx.stableswap.addAssetsLiquidity(
         ...Object.values({
           poolId: POOL_LP,
