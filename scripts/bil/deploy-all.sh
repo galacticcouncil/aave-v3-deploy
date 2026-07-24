@@ -254,17 +254,44 @@ fi
 # ===========================================================================
 
 phase "0a — deploy the BIL Vault (UUPS proxy + impl + QueueLib + BILOracle)"
-info "Ports bil-vault/script/Deploy.s.sol to viem (see deploy-bil-vault.mjs)."
-info "Records vault proxy + oracle addresses for later phases."
-retry 3 env \
-  PRIVATE_KEY="$PRIV_KEY" \
-  RPC="$RPC" \
-  node scripts/deploy-bil-vault.mjs | tee /tmp/bil-vault-deploy.log
-# Parse the addresses block at the end of the dry-run output
-VAULT_ADDRESS="$(sed -n 's/.*Proxy (Vault):[[:space:]]*\(0x[0-9a-fA-F]*\).*/\1/p' /tmp/bil-vault-deploy.log | tail -1)"
-BIL_ORACLE_ADDRESS="$(sed -n 's/.*BILOracle:[[:space:]]*\(0x[0-9a-fA-F]*\).*/\1/p' /tmp/bil-vault-deploy.log | tail -1)"
-[ -n "$VAULT_ADDRESS" ] || die "could not parse VAULT_ADDRESS from /tmp/bil-vault-deploy.log"
-[ -n "$BIL_ORACLE_ADDRESS" ] || die "could not parse BIL_ORACLE_ADDRESS from /tmp/bil-vault-deploy.log"
+# Idempotent re-run: unlike phases 1-4 (hardhat-deploy checks eth_getCode and
+# skips already-deployed contracts) the vault is a viem deploy with no
+# hardhat-deploy artifact, so a naive re-run redeployed a FRESH vault every
+# time — burning ~11M gas, shifting VAULT_ADDRESS, and churning phases 2/3/5b
+# so a crash before the proposal never converged. Persist the addresses and,
+# on re-run, reuse them if the vault still has code on this RPC. Set
+# REDEPLOY_VAULT=1 to force a fresh vault.
+VAULT_ADDR_FILE="deployments/${NETWORK}/bil-vault-addresses.env"
+VAULT_ADDRESS=""
+BIL_ORACLE_ADDRESS=""
+if [ "${REDEPLOY_VAULT:-0}" != "1" ] && [ -f "$VAULT_ADDR_FILE" ]; then
+  # shellcheck disable=SC1090
+  . "$VAULT_ADDR_FILE"
+  code="$(rpc_call "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_getCode\",\"params\":[\"${VAULT_ADDRESS:-0x0}\",\"latest\"]}" | sed -n 's/.*"result":"\(0x[0-9a-fA-F]*\)".*/\1/p')"
+  if [ -n "$VAULT_ADDRESS" ] && [ -n "$code" ] && [ "$code" != "0x" ]; then
+    info "vault already deployed at $VAULT_ADDRESS (code present on $RPC) — skipping 0a"
+  else
+    warn "recorded vault ${VAULT_ADDRESS:-<none>} has no code on $RPC — redeploying"
+    VAULT_ADDRESS=""
+    BIL_ORACLE_ADDRESS=""
+  fi
+fi
+if [ -z "$VAULT_ADDRESS" ]; then
+  info "Ports bil-vault/script/Deploy.s.sol to viem (see deploy-bil-vault.mjs)."
+  info "Records vault proxy + oracle addresses for later phases."
+  retry 3 env \
+    PRIVATE_KEY="$PRIV_KEY" \
+    RPC="$RPC" \
+    node scripts/deploy-bil-vault.mjs | tee /tmp/bil-vault-deploy.log
+  # Parse the addresses block at the end of the deploy output
+  VAULT_ADDRESS="$(sed -n 's/.*Proxy (Vault):[[:space:]]*\(0x[0-9a-fA-F]*\).*/\1/p' /tmp/bil-vault-deploy.log | tail -1)"
+  BIL_ORACLE_ADDRESS="$(sed -n 's/.*BILOracle:[[:space:]]*\(0x[0-9a-fA-F]*\).*/\1/p' /tmp/bil-vault-deploy.log | tail -1)"
+  [ -n "$VAULT_ADDRESS" ] || die "could not parse VAULT_ADDRESS from /tmp/bil-vault-deploy.log"
+  [ -n "$BIL_ORACLE_ADDRESS" ] || die "could not parse BIL_ORACLE_ADDRESS from /tmp/bil-vault-deploy.log"
+  # Persist so the next run reuses instead of redeploying.
+  mkdir -p "deployments/${NETWORK}"
+  printf 'VAULT_ADDRESS=%s\nBIL_ORACLE_ADDRESS=%s\n' "$VAULT_ADDRESS" "$BIL_ORACLE_ADDRESS" > "$VAULT_ADDR_FILE"
+fi
 info "VAULT_ADDRESS    = $VAULT_ADDRESS"
 info "BIL_ORACLE       = $BIL_ORACLE_ADDRESS"
 export VAULT_ADDRESS BIL_ORACLE_ADDRESS
