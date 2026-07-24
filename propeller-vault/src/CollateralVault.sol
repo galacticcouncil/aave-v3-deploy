@@ -12,7 +12,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IAavePool, IPoolAddressesProvider, IAaveOracle} from "./interfaces/IAavePool.sol";
 import {ISwapper} from "./interfaces/ISwapper.sol";
-import {ISubLoop} from "./interfaces/ISubLoop.sol";
+import {IYieldSource} from "./interfaces/IYieldSource.sol";
 import {ISyntheticToken} from "./interfaces/ISyntheticToken.sol";
 
 /// @title CollateralVault
@@ -46,6 +46,9 @@ contract CollateralVault is
     uint256 internal constant BPS = 1e4;
     uint256 internal constant VARIABLE_RATE = 2;
     uint256 private constant DEAD_SHARES = 1000;
+    /// @dev Absolute HOLLAR dust the unwind spiral can leave un-freeable (a
+    ///      valuation-vs-realized remainder); below this, a source counts drained.
+    uint256 private constant MIGRATION_DUST = 1e18;
     address private constant DEAD_ADDRESS = address(0xdead);
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
@@ -57,7 +60,7 @@ contract CollateralVault is
     // ── config ────────────────────────────────────────────────────────────
     IERC20 public collateral; // the deposited asset (ETH/tBTC/…)
     IAavePool public pool;
-    ISubLoop public subLoop;
+    IYieldSource public yieldSource;
     ISwapper public swapper;
     IERC20 public hollar;
     ISyntheticToken public synthetic;
@@ -91,6 +94,10 @@ contract CollateralVault is
     /// @notice Main HOLLAR debt still to repay from a down-rebalance de-lever
     ///         (settled ahead of the redemption queue as the loop frees HOLLAR).
     uint256 public deleverTarget;
+    /// @notice Snapshot of the HOLLAR the source owed this vault at the last
+    ///         `adminUnwind` — the reference `setYieldSource` uses to tell a
+    ///         completed drain (only dust left) from an in-flight one (still owed).
+    uint256 public migrationDrainRef;
 
     // ── async redemption queue (HDCL pattern; minimal inline form) ───────────
     /// @dev Production: swap for the audited HDCL QueueLib. Inline here to keep
@@ -131,6 +138,7 @@ contract CollateralVault is
     error RequestNotActive();
     error NothingToClaim();
     error PrincipalNotFloored(); // INV-1: synth*LT must cover Main debt
+    error SourceNotEmpty(); // setYieldSource before the old source is drained
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -142,7 +150,7 @@ contract CollateralVault is
         string memory symbol_,
         address _collateral,
         address _pool,
-        address _subLoop,
+        address _yieldSource,
         address _swapper,
         address _hollar,
         address _synthetic,
@@ -162,7 +170,7 @@ contract CollateralVault is
 
         collateral = IERC20(_collateral);
         pool = IAavePool(_pool);
-        subLoop = ISubLoop(_subLoop);
+        yieldSource = IYieldSource(_yieldSource);
         swapper = ISwapper(_swapper);
         hollar = IERC20(_hollar);
         synthetic = ISyntheticToken(_synthetic);
@@ -191,7 +199,7 @@ contract CollateralVault is
     ///         synthetic exactly offsets the HOLLAR debt) plus its share of the
     ///         loop equity, valued back into the collateral asset.
     /// @dev    TODO(impl): read the Main aToken balance for `collateral`, and
-    ///         convert `subLoop.equityOf(this)` (HOLLAR) into collateral units
+    ///         convert `yieldSource.equityOf(this)` (HOLLAR) into collateral units
     ///         via the oracle. The synthetic↔debt offset nets to ~0 by design.
     function totalAssets() public view returns (uint256) {
         // Net principal in collateral units ≈ the collateral supplied to the
@@ -283,9 +291,9 @@ contract CollateralVault is
         _supplySynth(synthAmt);
 
         // 4. Route the borrowed HOLLAR into the shared loop.
-        hollar.forceApprove(address(subLoop), 0);
-        hollar.forceApprove(address(subLoop), borrowHollar);
-        loopShares += subLoop.deposit(borrowHollar);
+        hollar.forceApprove(address(yieldSource), 0);
+        hollar.forceApprove(address(yieldSource), borrowHollar);
+        loopShares += yieldSource.deposit(borrowHollar);
 
         // INV-1 (on-chain guard): the synthetic alone must cover the Main debt,
         // so the principal is un-liquidatable at any collateral price.
@@ -323,7 +331,7 @@ contract CollateralVault is
 
         // Ask the shared loop to unwind this vault's proportional equity slice.
         loopShares -= loopSlice;
-        subLoop.requestUnwind(loopSlice);
+        yieldSource.requestUnwind(loopSlice);
 
         requestId = queueTail++;
         redemptions[requestId] = Redemption({
@@ -346,7 +354,7 @@ contract CollateralVault is
     ///         request, repay its Main debt slice, release+burn its synthetic,
     ///         withdraw its collateral, and mark it claimable.
     function pokeSettle() external nonReentrant {
-        availableHollar += subLoop.pullFreed();
+        availableHollar += yieldSource.pullFreed();
 
         // De-lever repayments (down-rebalance) settle first: repay Main debt and
         // burn synthetic proportionally (ratio — hence the buffer — preserved).
@@ -523,9 +531,9 @@ contract CollateralVault is
             addSynth += addSynth / 200;
             _supplySynth(addSynth);
 
-            hollar.forceApprove(address(subLoop), 0);
-            hollar.forceApprove(address(subLoop), addHollar);
-            loopShares += subLoop.deposit(addHollar);
+            hollar.forceApprove(address(yieldSource), 0);
+            hollar.forceApprove(address(yieldSource), addHollar);
+            loopShares += yieldSource.deposit(addHollar);
         } else if (ltvBefore > maxLtv + LTV_BAND_HIGH_GAP_BPS) {
             // Collateral fell → over-levered on the real ETH. De-lever: unwind the
             // loop slice that frees the excess debt's worth of equity; `pokeSettle`
@@ -534,12 +542,12 @@ contract CollateralVault is
             // restores the real-collateral backing ratio (and trims yield-side risk).
             uint256 targetDebt8 = (ethValue8 * maxLtv) / BPS;
             uint256 repay8 = debtBase8 - targetDebt8;
-            uint256 loopEq8 = subLoop.equityOf(address(this));
+            uint256 loopEq8 = yieldSource.equityOf(address(this));
             uint256 sliceShares = loopEq8 == 0 ? 0 : (loopShares * repay8) / loopEq8;
             if (sliceShares > loopShares) sliceShares = loopShares;
             if (sliceShares > 0) {
                 loopShares -= sliceShares;
-                subLoop.requestUnwind(sliceShares);
+                yieldSource.requestUnwind(sliceShares);
                 deleverTarget += repay8 * 1e10;
             }
         }
@@ -605,6 +613,52 @@ contract CollateralVault is
         tvlCap = newCap;
     }
 
+    /// @notice Admin emergency wind-down: unwind the vault's ENTIRE remaining loop
+    ///         position out of the current yield source and route the freed HOLLAR
+    ///         to repay Main debt — de-risking every position to bare collateral
+    ///         (no leverage, no venue exposure). Reuses the deleverTarget →
+    ///         pokeSettle path; keepers run `pokeRepay` + `pokeSettle` to complete
+    ///         it. Deliberately MANUAL: whether to unwind now or hold through a
+    ///         dip is a market judgment left to the admin, never automated off the
+    ///         `negativeCarryBps` signal.
+    function adminUnwind() external onlyRole(ADMIN_ROLE) {
+        uint256 slice = loopShares;
+        if (slice == 0) revert ZeroAmount();
+        loopShares = 0;
+        yieldSource.requestUnwind(slice);
+        // freed HOLLAR repays Main debt (ahead of the redeem queue) as it arrives.
+        deleverTarget = hollarDebtToken.balanceOf(address(this));
+        // reference for setYieldSource's drain-completeness check: how much the
+        // source now owes us. A completed drain reduces this to dust.
+        migrationDrainRef = yieldSource.pendingUnwindOf(address(this));
+    }
+
+    /// @notice Repoint the vault to a new yield source (e.g. after winding the old
+    ///         one down on prolonged negative carry). Allowed only when the
+    ///         current source is fully drained for this vault — no live shares and
+    ///         nothing freed-but-unpulled — so no funds are stranded. New deposits
+    ///         then fund the new source.
+    function setYieldSource(address newSource) external onlyRole(ADMIN_ROLE) {
+        if (newSource == address(0)) revert ZeroAddress();
+        // Sweep any last freed HOLLAR out of the old source before abandoning it.
+        availableHollar += yieldSource.pullFreed();
+        // The old source must owe this vault essentially NOTHING: no live shares,
+        // and the in-flight unwind drained down to un-freeable dust. `pending` is
+        // the full owed amount right after adminUnwind and only dust once the
+        // spiral has run — so requiring it below an absolute floor OR ≤0.1% of the
+        // adminUnwind reference blocks a premature swap (which would strand the
+        // still-owed HOLLAR) while tolerating the spiral's valuation dust. Fresh
+        // vaults (no unwind) pass trivially: pending == 0.
+        uint256 pending = yieldSource.pendingUnwindOf(address(this));
+        bool drained =
+            pending <= MIGRATION_DUST || (migrationDrainRef != 0 && pending * 1000 <= migrationDrainRef);
+        if (loopShares != 0 || yieldSource.sharesOf(address(this)) != 0 || !drained) {
+            revert SourceNotEmpty();
+        }
+        yieldSource = IYieldSource(newSource);
+        migrationDrainRef = 0; // reset for the new source
+    }
+
     /// @notice Max slippage (bps) tolerated by permissionless `compound` vs the
     ///         oracle-fair output. Default 0 ⇒ fails closed until set.
     function setCompoundSlippageBps(uint16 bps) external onlyRole(ADMIN_ROLE) {
@@ -630,5 +684,5 @@ contract CollateralVault is
 
     function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
 
-    uint256[40] private __gap;
+    uint256[39] private __gap;
 }

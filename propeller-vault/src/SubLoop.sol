@@ -10,6 +10,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IAavePool, IPoolAddressesProvider, IAaveOracle} from "./interfaces/IAavePool.sol";
 import {ISubLoop} from "./interfaces/ISubLoop.sol";
+import {IYieldSource, ILeveragedLoop} from "./interfaces/IYieldSource.sol";
 import {DcaDispatch} from "./lib/DcaDispatch.sol";
 
 /// @title SubLoop
@@ -155,7 +156,7 @@ contract SubLoop is
     //                         VAULT-FACING
     // ══════════════════════════════════════════════════════════════════════
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function deposit(uint256 hollarAmount)
         external
         override
@@ -186,7 +187,7 @@ contract SubLoop is
         emit LoopDeposited(msg.sender, hollarAmount, shares);
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function requestUnwind(uint256 shares)
         external
         override
@@ -224,7 +225,7 @@ contract SubLoop is
         emit UnwindRequested(msg.sender, shares, equityHollar, unwindId);
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function pullFreed() external override onlyRole(VAULT_ROLE) nonReentrant returns (uint256 hollarSent) {
         hollarSent = freedHollar[msg.sender];
         if (hollarSent == 0) return 0;
@@ -261,7 +262,7 @@ contract SubLoop is
     //                         KEEPER (debt legs only)
     // ══════════════════════════════════════════════════════════════════════
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc ILeveragedLoop
     /// @dev permissionless: the call is fully bounded — borrows only down to
     ///      deployHfFloor, caps the amount at deployTranche, and swaps with an
     ///      oracle-fair minOut. A caller can only advance the ramp (or waste gas
@@ -340,7 +341,7 @@ contract SubLoop is
         r[1] = DcaDispatch.Hop(DcaDispatch.POOL_STABLESWAP, true, primePoolId, primeAssetId, hollarAssetId);
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc ILeveragedLoop
     function pokeRepay() external override nonReentrant {
         // UNWIND SPIRAL STEP: while an unwind is open, synchronously sell an
         // HF-safe sliver of aPRIME → HOLLAR via the router (no DCA — the router
@@ -457,7 +458,7 @@ contract SubLoop is
         // the next pokeRepay's `avail`.
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     /// @dev Returns PRIME (not HOLLAR): the surplus collateral skimmed above the
     ///      cost basis. The Harvester swaps it into each vault's collateral. This
     ///      keeps SubLoop swap-free — withdrawing the surplus leaves HF at target
@@ -496,7 +497,7 @@ contract SubLoop is
         emit Harvested(surplusPrime);
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc ILeveragedLoop
     /// @dev Sizes the safety de-lever: sell collateral and repay loop debt with
     ///      the FULL proceeds (no payout) until HF is back at targetHf. With
     ///      hf = coll·lt/debt and proceeds x repaying debt 1:1,
@@ -524,37 +525,59 @@ contract SubLoop is
     //                         VIEWS
     // ══════════════════════════════════════════════════════════════════════
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc ILeveragedLoop
     function healthFactor() public view override returns (uint256) {
         (, , , , , uint256 hf) = pool.getUserAccountData(address(this));
         return hf;
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function totalEquity() public view override returns (uint256) {
         (uint256 collBase, uint256 debtBase, , , , ) = pool.getUserAccountData(address(this));
         return collBase > debtBase ? collBase - debtBase : 0;
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
+    /// @dev The exact mirror of `harvest`: there, `reserved18 = principalEquity +
+    ///      unwindTargetEquity` is the non-carry basis and surplus is
+    ///      `equity18 - reserved18` when positive. Here we report the shortfall
+    ///      `reserved18 - equity18` (when equity is below basis) as a fraction of
+    ///      basis, in bps. Pure view — monitoring only, no state change.
+    function negativeCarryBps() external view override returns (uint256) {
+        uint256 reserved18 = principalEquity + unwindTargetEquity;
+        if (reserved18 == 0) return 0;
+        uint256 equity18 = totalEquity() * 1e10;
+        if (equity18 >= reserved18) return 0;
+        return ((reserved18 - equity18) * 1e4) / reserved18;
+    }
+
+    /// @inheritdoc IYieldSource
     function equityOf(address vault) external view override returns (uint256) {
         if (_totalShares == 0) return 0;
         return (totalEquity() * _sharesOf[vault]) / _totalShares;
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function sharesOf(address vault) external view override returns (uint256) {
         return _sharesOf[vault];
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function totalShares() external view override returns (uint256) {
         return _totalShares;
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function freedOf(address vault) external view override returns (uint256) {
         return freedHollar[vault];
+    }
+
+    /// @inheritdoc IYieldSource
+    /// @dev `unwindRequested` is decremented on each `pullFreed`, so it is exactly
+    ///      the still-owed in-flight amount (requested minus pulled) and is 0 once
+    ///      the vault has pulled everything it asked to unwind.
+    function pendingUnwindOf(address vault) external view override returns (uint256) {
+        return unwindRequested[vault];
     }
 
     // ══════════════════════════════════════════════════════════════════════

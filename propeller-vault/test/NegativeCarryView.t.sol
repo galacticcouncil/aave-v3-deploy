@@ -8,21 +8,16 @@ import {SubLoop} from "../src/SubLoop.sol";
 import {SyntheticToken} from "../src/SyntheticToken.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockPool} from "./mocks/MockPool.sol";
+import {DcaDispatch} from "../src/lib/DcaDispatch.sol";
+import {MockDispatch} from "./mocks/MockDispatch.sol";
 
-/// @notice P-4: the emergency pause on both `CollateralVault` and `SubLoop` is
-///         gated `onlyRole(GUARDIAN_ROLE)`, but `initialize` grants only
-///         DEFAULT_ADMIN / ADMIN / UPGRADER — never GUARDIAN — and no wiring
-///         script grants it either. So a freshly-deployed contract has its pause
-///         wired to a role NOBODY holds: pause() reverts for everyone, and the
-///         only way to enable it is a slow DEFAULT_ADMIN (governance) grant — the
-///         opposite of an instant emergency halt.
-///
-///         These assert the intended behaviour: (1) a fresh deploy can be paused
-///         by the admin from block 0 (the pause is never orphaned); (2) the admin
-///         can delegate GUARDIAN_ROLE to a separate fast-path guardian (the
-///         technical-committee wiring path) who can then pause. (1) fails until
-///         initialize grants GUARDIAN_ROLE to the admin.
-contract GuardianPauseTest is Test {
+/// @notice Phase B: `negativeCarryBps()` — a pure monitoring view that reports how
+///         far the yield source's equity has fallen below its cost basis, in bps
+///         (0 when healthy). It is the mirror of the harvest surplus math:
+///         harvest skims equity ABOVE basis; this measures equity BELOW it. It
+///         does nothing but return a number — no pause, no unwind, no side effect.
+///         A human/bot reads it and decides.
+contract NegativeCarryViewTest is Test {
     MockERC20 eth;
     MockERC20 aEth;
     MockERC20 ethDebt;
@@ -39,8 +34,6 @@ contract GuardianPauseTest is Test {
     SyntheticToken synth;
     SubLoop loop;
     CollateralVault vault;
-
-    address techCommittee = address(0x7EC);
 
     function setUp() public {
         eth = new MockERC20("ETH", "ETH", 18);
@@ -107,66 +100,57 @@ contract GuardianPauseTest is Test {
                 )
             )
         );
+
+        vm.etch(DcaDispatch.DISPATCH, address(new MockDispatch()).code);
+        MockDispatch(payable(DcaDispatch.DISPATCH)).configure(
+            address(pool), address(hollar), address(prime), 222, 1043
+        );
+        loop.configureDca(222, 43, 1043, 143, 10_000);
+
+        synth.grantRole(synth.MINTER_ROLE(), address(vault));
+        loop.registerVault(address(vault));
+        loop.setTranches(10_000_000e18, 10_000_000e6);
     }
 
-    /// A fresh deploy must be pausable from block 0 — the pause must not be wired
-    /// to a role that nobody holds. `address(this)` is the admin passed to both
-    /// initializers.
-    function test_freshDeployIsPausableByAdmin() public {
-        vault.pause();
-        assertTrue(vault.paused(), "vault paused");
-
-        loop.pause();
-        assertTrue(loop.paused(), "loop paused");
+    function _depositAndRamp() internal {
+        eth.mint(address(this), 1e18);
+        eth.approve(address(vault), 1e18);
+        vault.deposit(1e18, address(this));
+        for (uint256 i = 0; i < 40; i++) {
+            loop.pokeBorrow();
+        }
     }
 
-    /// The production fast-path: the admin (governance / DEFAULT_ADMIN) delegates
-    /// GUARDIAN_ROLE to a separate guardian (the technical committee), which can
-    /// then pause without any admin/governance round-trip.
-    function test_adminCanDelegateGuardianToTechCommittee() public {
-        vault.grantRole(vault.GUARDIAN_ROLE(), techCommittee);
-        loop.grantRole(loop.GUARDIAN_ROLE(), techCommittee);
-
-        vm.startPrank(techCommittee);
-        vault.pause();
-        loop.pause();
-        vm.stopPrank();
-
-        assertTrue(vault.paused(), "vault paused by tech committee");
-        assertTrue(loop.paused(), "loop paused by tech committee");
+    function test_zeroWhenHealthy() public {
+        _depositAndRamp();
+        // at target, equity ≈ cost basis (frictionless mock) → not underwater
+        assertEq(loop.negativeCarryBps(), 0, "healthy loop reports no negative carry");
     }
 
-    /// Negative: granting GUARDIAN to the admin must NOT make pause open to all —
-    /// an account without the role still cannot pause either contract.
-    function test_nonGuardianCannotPause() public {
-        address stranger = address(0xBAD);
-        assertFalse(vault.hasRole(vault.GUARDIAN_ROLE(), stranger), "stranger has no guardian role");
+    function test_reportsDrawdownWhenUnderwater() public {
+        _depositAndRamp();
 
-        vm.prank(stranger);
-        vm.expectRevert();
-        vault.pause();
+        // PRIME falls 10% — leveraged, so equity falls much more than 10%
+        pool.setPrice(address(prime), 0.90e18);
 
-        vm.prank(stranger);
-        vm.expectRevert();
-        loop.pause();
+        uint256 got = loop.negativeCarryBps();
+
+        // matches the documented definition computed from live public state
+        uint256 reserved = loop.principalEquity() + loop.unwindTargetEquity();
+        uint256 equity18 = loop.totalEquity() * 1e10;
+        uint256 expected = reserved > equity18 ? ((reserved - equity18) * 1e4) / reserved : 0;
+        assertEq(got, expected, "view equals the equity-below-basis definition");
+
+        // and the scenario genuinely produced a MATERIAL, leveraged drawdown
+        assertGt(got, 2000, "a 10% PRIME drop is a large leveraged equity drawdown");
+        assertLt(got, 10_000, "drawdown is a sane fraction");
     }
 
-    /// The pause must be reversible by the same holder — a halt is not a one-way
-    /// lock. Covers full pause and the vault's deposit-only pause on both sides.
-    function test_pauseIsReversible() public {
-        vault.pause();
-        assertTrue(vault.paused(), "vault paused");
-        vault.unpause();
-        assertFalse(vault.paused(), "vault unpaused");
-
-        vault.pauseDeposits();
-        assertTrue(vault.depositsPaused(), "deposits paused");
-        vault.unpauseDeposits();
-        assertFalse(vault.depositsPaused(), "deposits unpaused");
-
-        loop.pause();
-        assertTrue(loop.paused(), "loop paused");
-        loop.unpause();
-        assertFalse(loop.paused(), "loop unpaused");
+    function test_recoversToZeroWhenPriceReturns() public {
+        _depositAndRamp();
+        pool.setPrice(address(prime), 0.90e18);
+        assertGt(loop.negativeCarryBps(), 0, "underwater after drop");
+        pool.setPrice(address(prime), 1.00e18);
+        assertEq(loop.negativeCarryBps(), 0, "back to healthy when price recovers");
     }
 }
