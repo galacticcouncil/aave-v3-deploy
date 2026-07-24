@@ -214,6 +214,17 @@ async function dispatchAs(from, tx) {
   );
 }
 
+// Dispatch a call as the Treasury via the dedicated dispatcher extrinsic
+// rather than a generic `utility.dispatchAs({ system: { signed: <treasury> } })`.
+// The pallet signs the inner call as `TreasuryAccount` itself (so no hardcoded
+// address), gates on `TreasuryManagerOrigin = Root | Treasurer`, and emits a
+// `TreasuryManagerCallDispatched` event. Origin is satisfied by the Root-track
+// proposal. For EVM calls the bound source is still the Treasury's EVM address,
+// so pallet_evm source-validation is unchanged.
+async function dispatchAsTreasury(tx) {
+  return (await getApi()).tx.dispatcher.dispatchAsTreasury(tx);
+}
+
 async function rootEvmCall({
   from,
   to,
@@ -270,6 +281,7 @@ module.exports = {
   location,
   evmAddress,
   dispatchAs,
+  dispatchAsTreasury,
   rootEvmCall,
   padAddress,
   account,

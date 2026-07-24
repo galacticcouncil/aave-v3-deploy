@@ -502,8 +502,6 @@ export const addMarketToRegistry = async (
     );
   }
 
-  const signer = await hre.ethers.getSigner(providerRegistryOwner);
-
   // 1. Set the provider at the Registry (idempotent — skip if already registered)
   const existingId = await providerRegistryInstance.getAddressesProviderIdByAddress(
     addressesProvider
@@ -512,14 +510,34 @@ export const addMarketToRegistry = async (
     console.log(
       `LendingPoolAddressesProvider ${addressesProvider} already registered (id=${existingId.toString()}) in registry ${providerRegistry.address}`
     );
-  } else {
-    await waitForTx(
-      await providerRegistryInstance
-        .connect(signer)
-        .registerAddressesProvider(addressesProvider, providerId)
-    );
-    console.log(
-      `Added LendingPoolAddressesProvider with address "${addressesProvider}" to registry located at ${providerRegistry.address}`
-    );
+    return;
   }
+
+  // When reusing a shared, governance-owned registry (e.g. the main Hydration
+  // money-market registry, owned by the aave-manager precompile), the deployer
+  // can't sign as the owner. Detect that — if the registry owner isn't one of
+  // our controllable signers — and defer the registration to the governance
+  // proposal (which executes registerAddressesProvider as the aave-manager).
+  const signers = await hre.ethers.getSigners();
+  const controllable = signers.some(
+    (s) => s.address.toLowerCase() === providerRegistryOwner.toLowerCase()
+  );
+  if (!controllable) {
+    console.log(
+      `[add-market-to-registry] Registry ${providerRegistry.address} is owned by ${providerRegistryOwner}, ` +
+        `which is not a local signer. Skipping registration of provider ${addressesProvider} ` +
+        `(providerId ${providerId}) — defer to governance proposal.`
+    );
+    return;
+  }
+
+  const signer = await hre.ethers.getSigner(providerRegistryOwner);
+  await waitForTx(
+    await providerRegistryInstance
+      .connect(signer)
+      .registerAddressesProvider(addressesProvider, providerId)
+  );
+  console.log(
+    `Added LendingPoolAddressesProvider with address "${addressesProvider}" to registry located at ${providerRegistry.address}`
+  );
 };

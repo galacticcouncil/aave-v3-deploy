@@ -21,13 +21,18 @@ task(`update-manual-oracle-prices`).setAction(async function (_, hre) {
   const admin = POOL_ADMIN[networkId];
 
   await hre.run("set-oracle-price", {
-    oracle: "0x11c1E47AaEcdc47dba8b9B9419b05903e53F3b4f", // wstETH/USD
-    price: "122788508",
+    oracle: "0xDEe587cC569bf1FcBdcD6d1472031d225f34C307", // PRIME/USD
+    price: "103220000",
   });
 
   await hre.run("set-oracle-price", {
-    oracle: "0xDEe587cC569bf1FcBdcD6d1472031d225f34C307", // prime/USD
-    price: "102124771",
+    oracle: "0x5B29bceaCBD1c37FD4A2c32a052b63813ed0D4b8", // jitoSOL/SOL
+    price: "127468640",
+  });
+
+  await hre.run("set-oracle-price", {
+    oracle: "0x11c1E47AaEcdc47dba8b9B9419b05903e53F3b4f", // wstETH/ETH
+    price: "123246839",
   });
 
   const txs = await Promise.all(

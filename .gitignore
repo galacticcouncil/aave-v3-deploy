@@ -21,4 +21,10 @@ types
 deployments/*
 !deployments/hydration
 !deployments/nice
+!deployments/lark
+!deployments/lark2
 !deployments/gigahdx
+!deployments/bil
+# deployments/chopsticks is intentionally ignored — it's a disposable local fork.
+out/
+broadcast/

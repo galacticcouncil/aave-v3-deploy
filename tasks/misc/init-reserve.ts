@@ -71,17 +71,20 @@ async function initReserve(
   {
     const chainlinkAggregators = await getChainlinkOracles(poolConfig, network);
 
-    // Prefer a freshly-deployed ${SYMBOL}-USDOracleAdapter over the hardcoded
-    // ChainlinkAggregator address, so a deployed adapter self-wires as the
-    // reserve's oracle source (e.g. GIGAHDX stHDX = USDOracleAdapter(gigahdxs,
-    // Omnipool EMA)) without a per-environment edit to the market config.
-    const usdAdapter = await deployments.getOrNull(
-      `${symbol.toUpperCase()}-${USD_ORACLE_ADAPTER_ID}`
-    );
+    // Prefer a freshly-deployed adapter over the hardcoded ChainlinkAggregator
+    // address, so a deployed adapter self-wires as the reserve's oracle source
+    // without a per-environment edit to the market config. Two naming schemes
+    // are recognised:
+    //   - ${SYMBOL}-USDOracleAdapter  (GIGAHDX stHDX, etc.)
+    //   - ${SYMBOL}OracleAdapter      (BIL — BILOracleAdapter reads vault.exchangeRate)
+    const usdAdapter =
+      (await deployments.getOrNull(
+        `${symbol.toUpperCase()}-${USD_ORACLE_ADAPTER_ID}`
+      )) ?? (await deployments.getOrNull(`${symbol.toUpperCase()}OracleAdapter`));
     if (usdAdapter) {
       chainlinkAggregators[symbol.toUpperCase()] = usdAdapter.address;
       console.log(
-        `using deployed ${symbol.toUpperCase()}-${USD_ORACLE_ADAPTER_ID} at ${usdAdapter.address} as oracle source`
+        `using deployed adapter at ${usdAdapter.address} as ${symbol.toUpperCase()} oracle source`
       );
     }
 

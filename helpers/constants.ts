@@ -36,6 +36,22 @@ export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 export const ONE_ADDRESS = "0x0000000000000000000000000000000000000001";
 export const AAVE_REFERRAL = "0";
 
+// Reuse an existing PoolAddressesProviderRegistry instead of deploying a fresh
+// one per market. Aave expects a single global registry that lists every
+// market's provider (the UI / subgraph enumerate markets through it). The
+// main Hydration money market already owns the canonical registry, and on the
+// mainnet-state forks (lark / lark2 / chopsticks) it exists at the same
+// address. A second market (BIL) registers its own provider into THIS
+// registry — done via governance, since the registry is owned by the
+// aave-manager precompile. When set, deploy/00_core/00_markets_registry.ts
+// adopts this address instead of deploying a new registry.
+export const EXISTING_PROVIDER_REGISTRY: { [network: string]: string } = {
+  [eHydrationNetwork.hydration]: "0xEdEcE54767182abc1b04FE699A96CF7e97a3CcF2",
+  [eHydrationNetwork.lark]: "0xEdEcE54767182abc1b04FE699A96CF7e97a3CcF2",
+  [eHydrationNetwork.lark2]: "0xEdEcE54767182abc1b04FE699A96CF7e97a3CcF2",
+  [eHydrationNetwork.chopsticks]: "0xEdEcE54767182abc1b04FE699A96CF7e97a3CcF2",
+};
+
 export const WRAPPED_NATIVE_TOKEN_PER_NETWORK: { [network: string]: string } = {
   [eEthereumNetwork.kovan]: ZERO_ADDRESS,
   [eEthereumNetwork.main]: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
@@ -159,7 +175,16 @@ export const POOL_ADMIN: Record<string, string> = {
   [eHydrationNetwork.gigahdx]: "0xaa7e0000000000000000000000000000000aa7e0",
   [eHydrationNetwork.nice]: HYDRATION_TEST_ADMIN,
   [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
+  // lark / lark2 / chopsticks are all mainnet-state forks — the aave-manager
+  // precompile exists at the same address, so the real pool admin is inherited
+  // from mainnet state. Same value for every fork (and mainnet itself).
+  [eHydrationNetwork.lark]: "0xaa7e0000000000000000000000000000000aa7e0",
   [eHydrationNetwork.lark2]: "0xaa7e0000000000000000000000000000000aa7e0",
+  [eHydrationNetwork.chopsticks]: "0xaa7e0000000000000000000000000000000aa7e0",
+  // `bil` is the live mainnet BIL money-market namespace (deployments/bil).
+  // Its pool admin is the same aave-manager precompile as mainnet — required so
+  // dispatchAsAaveManager-wrapped evm.calls carry source=0xaa7e (else BadOrigin).
+  [eHydrationNetwork.bil]: "0xaa7e0000000000000000000000000000000aa7e0",
 };
 
 export const EMERGENCY_ADMIN: Record<string, string> = {
@@ -177,7 +202,9 @@ export const EMERGENCY_ADMIN: Record<string, string> = {
   [eHydrationNetwork.gigahdx]: "0xaa7e0000000000000000000000000000000aa7e1",
   [eHydrationNetwork.nice]: "0xb847e0fd2a5e62d621a0382419bddb0a351a6d9c",
   [eHydrationNetwork.zombie]: HYDRATION_TEST_ADMIN,
+  [eHydrationNetwork.lark]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b",
   [eHydrationNetwork.lark2]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b",
+  [eHydrationNetwork.chopsticks]: "0x146a5e57fa0b8b1e13c53bcf1d05183b1c02b51b",
 };
 
 export const DEFAULT_NAMED_ACCOUNTS = {

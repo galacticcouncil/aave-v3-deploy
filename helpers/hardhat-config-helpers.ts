@@ -102,10 +102,21 @@ export const NETWORKS_RPC_URL: iParamsPerNetwork<string> = {
   [eHydrationNetwork.nice]: "https://rpc.nice.hydration.cloud",
   [eHydrationNetwork.hydration]: process.env.RPC || "https://rpc.hydradx.cloud",
   [eHydrationNetwork.zombie]: process.env.RPC || "http://localhost:9999",
-  [eHydrationNetwork.lark2]: process.env.RPC || "https://node2.lark.hydration.cloud",
+  // 0.lark testnet — mainnet fork kept long-running for pre-prod rehearsals.
+  [eHydrationNetwork.lark]: process.env.RPC || "https://0.lark.hydration.cloud",
+  // 2.lark testnet — current generation; BIL Vault + BILOracle live here.
+  [eHydrationNetwork.lark2]: process.env.RPC || "https://2.lark.hydration.cloud",
+  // Local chopsticks fork — disposable, used for dry-runs before 0.lark.
+  // Default port matches `npx @acala-network/chopsticks` default (8000).
+  [eHydrationNetwork.chopsticks]: process.env.RPC || "http://localhost:8000",
   // GIGAHDX market deployed as its own market into deployments/gigahdx.
   // Same chain as hydration (mainnet); RPC overridable for fork testing.
   [eHydrationNetwork.gigahdx]: process.env.RPC || "https://rpc.hydradx.cloud",
+  // BIL market deployed as its own market into deployments/bil. Same chain
+  // as hydration (mainnet) but separate artifact namespace so hardhat-deploy
+  // doesn't try to reuse main-MM's per-market contracts (Pool-Implementation
+  // etc.) which bake provider immutables. RPC overridable for fork testing.
+  [eHydrationNetwork.bil]: process.env.RPC || "https://rpc.hydradx.cloud",
 };
 
 export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
@@ -118,9 +129,14 @@ export const LIVE_NETWORKS: iParamsPerNetwork<boolean> = {
   [eOptimismNetwork.main]: true,
   [eHydrationNetwork.hydration]: true,
   [eHydrationNetwork.nice]: true,
-  [eHydrationNetwork.zombie]: true,
+  [eHydrationNetwork.lark]: true,
   [eHydrationNetwork.lark2]: true,
+  // chopsticks is a mainnet-state fork — real HOLLAR / HDX / BIL tokens
+  // exist on it. Mark as live so deploys don't fall back to mock testnet tokens.
+  [eHydrationNetwork.chopsticks]: true,
+  [eHydrationNetwork.zombie]: true,
   [eHydrationNetwork.gigahdx]: true,
+  [eHydrationNetwork.bil]: true,
   [eBaseNetwork.base]: true,
 };
 

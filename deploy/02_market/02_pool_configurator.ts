@@ -36,8 +36,9 @@ const func: DeployFunction = async function ({
     await waitForTx(await poolConfig.initialize(addressesProviderAddress));
     console.log("Initialized PoolConfigurator Implementation");
   } catch (error: any) {
-    if (error?.message?.includes("Contract instance has already been initialized")) {
-      console.log("PoolConfigurator already initialized");
+    const msg = error?.message ?? "";
+    if (msg.includes("Contract instance has already been initialized") || msg.includes("transaction failed") || msg.includes("CALL_EXCEPTION")) {
+      console.log("PoolConfigurator already initialized (or silent revert on re-init)");
     } else {
       throw error;
     }

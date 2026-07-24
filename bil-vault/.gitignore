@@ -1,0 +1,23 @@
+# Compiler output
+out/
+cache/
+broadcast/
+
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.*
+
+# Keeper
+keeper/node_modules/
+keeper/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+lcov.info

@@ -81,32 +81,37 @@ const func: DeployFunction = async function ({
     return;
   }
 
-  // Skip-guard: on Hydration lark networks, the underlying asset's ERC20
-  // precompile isn't responsive until the asset is registered in the
-  // substrate AssetRegistry — which happens inside the governance proposal
-  // (Phase 5/7). If we call initReserves now, the tx reverts when AAVE's
-  // ReserveConfig reads decimals() from the asset. Defer to the proposal.
-  try {
-    const firstReserve = reservesAddresses[Object.keys(reservesAddresses)[0]];
-    const probe = new hre.ethers.Contract(
-      firstReserve,
-      ["function decimals() view returns (uint8)"],
-      hre.ethers.provider
-    );
-    const d = await probe.decimals();
-    console.log(`[init-reserves] probe OK: ${firstReserve}.decimals() = ${d}`);
-  } catch (e) {
+  // Skip reserves whose underlying asset doesn't respond to decimals() yet.
+  // On Hydration, substrate-asset precompiles (e.g. BIL tokenAddress(55))
+  // only respond after the asset is added to the substrate asset registry —
+  // which is done by the governance proposal, not by this deploy script. For
+  // those assets, defer reserve init to the proposal (which atomically
+  // registers the asset and calls init-reserve).
+  const reachable: Record<string, string> = {};
+  for (const [symbol, address] of Object.entries(reservesAddresses)) {
+    try {
+      const erc20 = await hre.ethers.getContractAt(
+        ["function decimals() view returns (uint8)"],
+        address
+      );
+      await erc20.decimals();
+      reachable[symbol] = address;
+    } catch {
+      console.warn(
+        `[WARNING] Skipping reserve init for ${symbol} (${address}) — underlying not responsive to decimals(). Defer to governance proposal.`
+      );
+    }
+  }
+  if (Object.keys(reachable).length === 0) {
     console.warn(
-      `[init-reserves] SKIP — asset precompile not responsive yet ` +
-        `(${(e as Error).message.slice(0, 80)}). ` +
-        `Reserve initialisation will happen via the governance proposal.`
+      "[WARNING] No reachable reserve assets — skipping init-reserves entirely. Reserves will be initialized via the governance proposal."
     );
-    return;
+    return true;
   }
 
   await initReservesByHelper(
     ReservesConfig,
-    reservesAddresses,
+    reachable,
     ATokenNamePrefix,
     StableDebtTokenNamePrefix,
     VariableDebtTokenNamePrefix,
@@ -117,11 +122,11 @@ const func: DeployFunction = async function ({
   );
   deployments.log(`[Deployment] Initialized all reserves`);
 
-  await configureReservesByHelper(ReservesConfig, reservesAddresses);
+  await configureReservesByHelper(ReservesConfig, reachable);
 
   // Save AToken and Debt tokens artifacts
   const dataProvider = await deployments.get(POOL_DATA_PROVIDER);
-  await savePoolTokens(reservesAddresses, dataProvider.address);
+  await savePoolTokens(reachable, dataProvider.address);
 
   deployments.log(`[Deployment] Configured all reserves`);
   return true;

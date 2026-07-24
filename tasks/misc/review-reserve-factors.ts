@@ -32,12 +32,16 @@ task(`review-reserve-factors`, ``)
       const network = FORK ? FORK : (hre.network.name as eNetwork);
       const { poolAdmin } = await hre.getNamedAccounts();
       const checkOnlyReserves: string[] = checkOnly ? checkOnly.split(",") : [];
+      // Use hre.deployments to resolve artifacts against the actual hardhat
+      // network (`hre.network.name`), not the FORK pseudonym — secondary
+      // markets like BIL deploy contracts to e.g. deployments/chopsticks/
+      // even though their config is loaded with FORK=hydration.
       const dataProvider = await getAaveProtocolDataProvider(
-        await getAddressFromJson(network, POOL_DATA_PROVIDER)
+        (await hre.deployments.get(POOL_DATA_PROVIDER)).address
       );
       const poolConfigurator = (
         await getPoolConfiguratorProxy(
-          await getAddressFromJson(network, POOL_CONFIGURATOR_PROXY_ID)
+          (await hre.deployments.get(POOL_CONFIGURATOR_PROXY_ID)).address
         )
       ).connect(await hre.ethers.getSigner(poolAdmin));
 
