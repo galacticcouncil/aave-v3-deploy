@@ -371,11 +371,18 @@ export async function buildStablepoolTxs(hre: any, opts: { inline?: boolean } = 
     { pool: "Omnipool", assetIn: 420, assetOut: HOLLAR },
   ];
   const hopHollarToBil = { pool: { Stableswap: POOL_LP }, assetIn: HOLLAR, assetOut: BIL };
+  // HOLLAR → 2-Pool-BIL share, i.e. add-liquidity-one-asset. Makes the LP
+  // (10055) a *routable* fee currency: the runtime stores HDX/WETH→10055 and
+  // invokes it reversed (10055→HDX/WETH = remove-liquidity → HOLLAR → gas) to
+  // convert collected LP fees. Mirrors mainnet asset-10044's HDX→LP route.
+  const hopHollarToLp = { pool: { Stableswap: POOL_LP }, assetIn: HOLLAR, assetOut: POOL_LP };
 
-  console.log("---------> insert router routes for BIL ↔ HDX/WETH fee conversion");
+  console.log("---------> insert router routes for BIL + 2-Pool-BIL ↔ HDX/WETH fee conversion");
   for (const [pair, route, label] of [
     [{ assetIn: HDX, assetOut: BIL }, [hopHdxToHollar, hopHollarToBil], "HDX→BIL"],
     [{ assetIn: WETH, assetOut: BIL }, [...hopWethToHollar, hopHollarToBil], "WETH→BIL"],
+    [{ assetIn: HDX, assetOut: POOL_LP }, [hopHdxToHollar, hopHollarToLp], "HDX→2-Pool-BIL"],
+    [{ assetIn: WETH, assetOut: POOL_LP }, [...hopWethToHollar, hopHollarToLp], "WETH→2-Pool-BIL"],
   ]) {
     console.log(`         + ${label} (${route.length} hops)`);
     txs.push(hydrationTx.router.forceInsertRoute(pair, route));

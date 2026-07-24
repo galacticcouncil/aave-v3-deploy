@@ -426,15 +426,15 @@ task(
   const HOLLAR_FEE_PRICE = "10960000000000000000000";
   const dclFee: any = await api.query.multiTransactionPayment.acceptedCurrencies(DCL_ASSET_ID);
   const bilFee: any = await api.query.multiTransactionPayment.acceptedCurrencies(BIL_ATOKEN_ASSET_ID);
-  if (!dclFee.isSome) {
-    txs.push(
-      hydrationTx.multiTransactionPayment.addCurrency(
-        ...Object.values({ asset: DCL_ASSET_ID, price: HOLLAR_FEE_PRICE })
-      )
-    );
-  } else {
-    console.log(`---------> BIL (${DCL_ASSET_ID}) already accepted as fee currency — skipping`);
-  }
+  // NOTE: uBIL (asset 550, the raw vault share) is intentionally NOT registered
+  // as a fee currency. Invariant: every gas-fee currency must be swappable to
+  // HDX/WETH, but 550 has no router venue — it isn't in the Omnipool, isn't a
+  // member of stableswap 10055 ([55,222]), and its only link (550↔55) is the
+  // BIL Aave pool, which the router's Aave hop can't reach (it binds to the
+  // main MM only). It's also never user-held (transient during deposit). Its
+  // assetRegistry.register(550) stays (initReserves reads that metadata); only
+  // the fee-currency registration is dropped.
+  void dclFee;
   if (!bilFee.isSome) {
     txs.push(
       hydrationTx.multiTransactionPayment.addCurrency(
