@@ -135,4 +135,48 @@ contract KeeperOpsTest is Test {
         // peg restored: synth*LT >= debt again
         assertGe(aSynth.balanceOf(address(vault)) * SYNTH_LT / 1e4, hollarDebt.balanceOf(address(vault)), "peg restored");
     }
+
+    /// @notice Regression for the audit High: rebalance()'s permissionless de-lever
+    ///         branch was non-idempotent — it sized off the live Main debt (unchanged
+    ///         until pokeSettle applies the queued repay), so repeated calls re-fired,
+    ///         inflating deleverTarget past real debt and draining the whole loop, then
+    ///         bricking pokeSettle (synthBurn underflow / NO_DEBT). The fix sizes off
+    ///         effective debt (live − already-queued) so extra calls are no-ops, and
+    ///         pokeSettle caps the repay at live debt. Hammering rebalance must not
+    ///         inflate the target, over-unwind, or freeze settlement.
+    function test_rebalanceDeLeverIdempotent_noRedemptionDoS() public {
+        _ramp();
+        uint256 debtBefore = hollarDebt.balanceOf(address(vault)); // ~2250 (75% of $3000)
+        uint256 loopBefore = vault.loopShares();
+
+        // ETH −50% → over-levered → de-lever branch fires.
+        pool.setPrice(address(eth), 1_500e18);
+
+        // First rebalance queues exactly the needed de-lever.
+        vault.rebalance();
+        uint256 targetAfterOne = vault.deleverTarget();
+        uint256 loopAfterOne = vault.loopShares();
+        assertGt(targetAfterOne, 0, "de-lever scheduled");
+        assertLt(loopAfterOne, loopBefore, "only the needed slice queued");
+
+        // ATTACK: hammer the permissionless rebalance() before pokeSettle runs.
+        for (uint256 i = 0; i < 25; i++) vault.rebalance();
+
+        // Idempotent: repeated calls add nothing and never over-unwind.
+        assertEq(vault.deleverTarget(), targetAfterOne, "deleverTarget not inflated by repeated calls");
+        assertEq(vault.loopShares(), loopAfterOne, "loop not over-unwound by repeated calls");
+        assertLe(vault.deleverTarget(), debtBefore, "target never exceeds real Main debt");
+
+        // Settlement completes without reverting (the DoS) and de-levers to ~max LTV.
+        for (uint256 i = 0; i < 400; i++) {
+            if (loop.unwindTargetEquity() == 0) break;
+            loop.pokeRepay();
+        }
+        vault.pokeSettle(); // must NOT revert
+
+        uint256 debtAfter = hollarDebt.balanceOf(address(vault));
+        assertLt(debtAfter, debtBefore, "debt reduced");
+        assertApproxEqRel(debtAfter, 1_125e18, 0.05e18, "debt ~ max LTV (not driven to zero)");
+        assertGe(aSynth.balanceOf(address(vault)) * SYNTH_LT / 1e4, debtAfter, "INV-1 still holds");
+    }
 }

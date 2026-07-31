@@ -368,18 +368,28 @@ contract CollateralVault is
         // De-lever repayments (down-rebalance) settle first: repay Main debt and
         // burn synthetic proportionally (ratio — hence the buffer — preserved).
         if (deleverTarget > 0 && availableHollar > 0) {
-            uint256 r = availableHollar < deleverTarget ? availableHollar : deleverTarget;
             uint256 debtNow = hollarDebtToken.balanceOf(address(this));
-            uint256 synthBurn = debtNow == 0 ? 0 : (syntheticSupplied * r) / debtNow;
-            availableHollar -= r;
-            deleverTarget -= r;
-            hollar.forceApprove(address(pool), 0);
-            hollar.forceApprove(address(pool), r);
-            pool.repay(address(hollar), r, VARIABLE_RATE, address(this));
-            if (synthBurn > 0) {
-                pool.withdraw(address(synthetic), synthBurn, address(this));
-                synthetic.burn(address(this), synthBurn);
-                syntheticSupplied -= synthBurn;
+            // Cap repayment at the LIVE debt. deleverTarget is an accumulated target;
+            // even a single legitimate de-lever racing queued redemptions (which repay
+            // Main debt first, in the loop below) can leave deleverTarget > debtNow.
+            // Uncapped, r > debtNow makes synthBurn = syntheticSupplied*r/debtNow exceed
+            // syntheticSupplied (underflow), or drives debt to 0 so pool.repay reverts
+            // NO_DEBT — either bricks every future pokeSettle. min-with-debtNow is always
+            // safe; any residual deleverTarget is harmlessly skipped once debtNow hits 0.
+            uint256 r = availableHollar < deleverTarget ? availableHollar : deleverTarget;
+            if (r > debtNow) r = debtNow;
+            if (r > 0) {
+                uint256 synthBurn = (syntheticSupplied * r) / debtNow; // debtNow >= r > 0
+                availableHollar -= r;
+                deleverTarget -= r;
+                hollar.forceApprove(address(pool), 0);
+                hollar.forceApprove(address(pool), r);
+                pool.repay(address(hollar), r, VARIABLE_RATE, address(this));
+                if (synthBurn > 0) {
+                    pool.withdraw(address(synthetic), synthBurn, address(this));
+                    synthetic.burn(address(this), synthBurn);
+                    syntheticSupplied -= synthBurn;
+                }
             }
         }
 
@@ -523,14 +533,26 @@ contract CollateralVault is
             emit Rebalanced(0, 0);
             return;
         }
-        uint256 ltvBefore = (debtBase8 * BPS) / ethValue8;
+        // Account for any de-lever already queued but not yet settled: that HOLLAR
+        // repayment is in-flight (pokeSettle applies it), so the EFFECTIVE Main debt
+        // this rebalance should size against is the live debt minus what is already
+        // queued to repay. Sizing off the raw live debt makes the permissionless
+        // de-lever branch NON-IDEMPOTENT — the live debt is unchanged until pokeSettle
+        // runs, so the branch re-fires every call, over-unwinding the whole loop and
+        // inflating deleverTarget past real debt (redemption-DoS via pokeSettle).
+        // effDebt8 makes it converge: once enough de-lever is queued to reach target,
+        // the branch stops. When nothing is queued (deleverTarget == 0) this is a
+        // no-op (effDebt8 == debtBase8).
+        uint256 pendingRepay8 = deleverTarget / 1e10;
+        uint256 effDebt8 = debtBase8 > pendingRepay8 ? debtBase8 - pendingRepay8 : 0;
+        uint256 ltvBefore = (effDebt8 * BPS) / ethValue8;
         uint256 maxLtv = _maxLtvBps();
 
         if (ltvBefore + LTV_BAND_LOW_GAP_BPS < maxLtv) {
             // Collateral appreciated → borrow up to the max and deploy the slack,
             // so the yield notional tracks the collateral value.
             uint256 targetDebt8 = (ethValue8 * maxLtv) / BPS;
-            uint256 addHollar = (targetDebt8 - debtBase8) * 1e10;
+            uint256 addHollar = (targetDebt8 - effDebt8) * 1e10;
             if (addHollar == 0) {
                 emit Rebalanced(ltvBefore, ltvBefore);
                 return;
@@ -551,7 +573,7 @@ contract CollateralVault is
             // NOT safety-critical — the synthetic still floors Main HF ≥ 1; this
             // restores the real-collateral backing ratio (and trims yield-side risk).
             uint256 targetDebt8 = (ethValue8 * maxLtv) / BPS;
-            uint256 repay8 = debtBase8 - targetDebt8;
+            uint256 repay8 = effDebt8 - targetDebt8;
             uint256 loopEq8 = yieldSource.equityOf(address(this));
             uint256 sliceShares = loopEq8 == 0 ? 0 : (loopShares * repay8) / loopEq8;
             if (sliceShares > loopShares) sliceShares = loopShares;
