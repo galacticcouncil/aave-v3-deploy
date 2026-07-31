@@ -20,9 +20,9 @@ const WS = process.env.PROPOSAL_WS || "wss://2.lark.hydration.cloud";
 const LIVE = process.argv.includes("--live");
 const ALICE_EVM = "0xd43593c715fdd31c61141abd04a99fd6822c8558";
 const ETH20 = "0x0000000000000000000000000000000100000022";
-const VAULT = "0x305EE427b94187c5abC68fCCc194E77D82F39921";
+const VAULT = process.env.VAULT || "0x305EE427b94187c5abC68fCCc194E77D82F39921";
 const POOL = "0x1b02E051683b5cfaC5929C25E84adb26ECf87B38";
-const AMT = (process.env.AMT ? BigInt(process.env.AMT) : 35n) * 10n ** 18n;
+const AMT = process.env.AMT ? BigInt(Math.round(parseFloat(process.env.AMT) * 1e6)) * 10n ** 12n : 35n * 10n ** 18n;
 
 const erc = new ethers.utils.Interface(["function approve(address,uint256)", "function balanceOf(address) view returns (uint256)"]);
 const vI = new ethers.utils.Interface([

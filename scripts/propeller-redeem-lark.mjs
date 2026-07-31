@@ -23,8 +23,8 @@ const REDEEM = BigInt(Math.round(parseFloat(_ra) * 1e6)) * 10n ** 12n;
 const ALICE_EVM = "0xd43593c715fdd31c61141abd04a99fd6822c8558";
 const ALICE_SS58 = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
 const GOV = "0xAa7e0000000000000000000000000000000Aa7e0";
-const VAULT = "0x305EE427b94187c5abC68fCCc194E77D82F39921";
-const SUBLOOP = "0xF23F4baFB4560DFb3234ad7f441Da6260b4218E8";
+const VAULT = process.env.VAULT || "0x305EE427b94187c5abC68fCCc194E77D82F39921";
+const SUBLOOP = process.env.SUBLOOP || "0xF23F4baFB4560DFb3234ad7f441Da6260b4218E8";
 const ETH_ASSET = 34;
 const HDX = 10n ** 12n;
 const KEEPER = ethers.utils.id("KEEPER_ROLE");
@@ -67,7 +67,7 @@ async function main() {
   if (!LIVE) { console.log("DRY-RUN"); await api.disconnect(); return; }
 
   // 1. grant KEEPER on the vault to Alice (Root referendum) if missing
-  if (!(await hasVaultKeeper())) {
+  if (!(process.env.SKIP_KEEPER === "1") && !(await hasVaultKeeper())) {
     console.log("\ngranting KEEPER on VAULT to Alice via Root referendum...");
     const aaveMgr = api.tx.dispatcher.dispatchAsAaveManager(api.tx.evm.call(GOV, VAULT, vI.encodeFunctionData("grantRole", [KEEPER, ALICE_EVM]), "0", "600000", "100000000", null, null, [], []));
     const batch = api.tx.utility.batchAll([aaveMgr]);

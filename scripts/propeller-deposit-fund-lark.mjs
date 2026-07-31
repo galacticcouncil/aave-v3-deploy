@@ -17,7 +17,7 @@ import { cryptoWaitReady } from "@polkadot/util-crypto";
 const WS = process.env.PROPOSAL_WS || "wss://2.lark.hydration.cloud";
 const LIVE = process.argv.includes("--live");
 
-const SUBLOOP = "f23f4bafb4560dfb3234ad7f441da6260b4218e8";
+const SUBLOOP = (process.env.SUBLOOP || "f23f4bafb4560dfb3234ad7f441da6260b4218e8").replace(/^0x/, "").toLowerCase();
 const trunc = (a) => "0x45544800" + a + "0000000000000000";
 // depositor = //Alice's NORMAL substrate account (5Grwva...); her EVM address
 // 0xd435.. maps here (first 20 bytes of pubkey), so minted ETH lands free and
