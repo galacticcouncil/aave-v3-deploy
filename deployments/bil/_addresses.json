@@ -21,6 +21,9 @@
     "EmissionManager": "0xd57Fbd045dBE44236482F36ee206e54c626611C6"
   },
   "vault": {
+    "BILVault": "0x6a21891Db0940491603f3ccA0a9f4DBA4c6E810C",
+    "BILVaultImpl": "0x804d2Fd6951d60510BBF6Fe2fE9F90829aB06BDa",
+    "BILOracle": "0x08D80c63A87746487d673b488FF40386c68cE192",
     "BILOracleAdapter": "0xB9947CaCebD0F23de3b59c369cD710137739Cd83",
     "DepositZap": "0x646FD203bbCf19B35D79F58413bB07450FDBb1db"
   },
@@ -29,20 +32,20 @@
     "BIL": {
       "underlying": "0x0000000000000000000000000000000100000226",
       "substrateAssetId": 550,
-      "aToken": "0x0000000000000000000000000000000000000000",
+      "aToken": "0x8184E2F7c477d165772c21f7A2DBBb61A76E7Fc4",
       "substrateATokenAssetId": 55,
       "variableDebtToken": "0x0000000000000000000000000000000000000000",
       "stableDebtToken": "0x0000000000000000000000000000000000000000",
-      "interestRateStrategy": "0x0000000000000000000000000000000000000000",
+      "interestRateStrategy": "0xfDB15f9Fe2252044b08230449D4278CFd4DF52E1",
       "oracleSource": "0xB9947CaCebD0F23de3b59c369cD710137739Cd83",
       "risk": "LTV 80%, LT 85%, LB 7%, RF 20%, supply-only, 3M supply cap"
     },
     "HOLLAR": {
       "underlying": "0x531a654d1696ED52e7275A8cede955E82620f99a",
-      "aToken_GhoAToken": "0x0000000000000000000000000000000000000000",
-      "variableDebtToken": "0x0000000000000000000000000000000000000000",
+      "aToken_GhoAToken": "0xEf313C2baf19cE58eEB6Df9c82aE41C7387AFE3E",
+      "variableDebtToken": "0xFa8793b777F86Df01A71f898D9C65A339aee54bF",
       "stableDebtToken": "0x0000000000000000000000000000000000000000",
-      "interestRateStrategy": "0x0000000000000000000000000000000000000000",
+      "interestRateStrategy": "0x023308954EB3895a69493693d035FF85e0c4bC85",
       "oracleSource_GhoOracle": "0x6096C9D71F7c06024578a62F4B608a1Bb06834F8",
       "risk": "no collateral value, borrow-only. 1M HOLLAR facilitator bucket on HOLLAR token."
     }
@@ -70,5 +73,6 @@
     "GhoOracle": "0x6096C9D71F7c06024578a62F4B608a1Bb06834F8",
     "AaveManager": "0xaa7e0000000000000000000000000000000aa7e0",
     "ZeroDiscountRateStrategy": "0x33A7C640140FEBafEcC9801AF723A0C14420eEd7"
-  }
+  },
+  "reservesNote": "Reserve aTokens/debt tokens are created when the launch proposal enacts; the addresses shown are deterministic predictions (verified on a mainnet fork) and do not exist on-chain until then. BIL variableDebtToken/stableDebtToken and HOLLAR stableDebtToken are unused (0x0)."
 }

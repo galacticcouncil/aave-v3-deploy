@@ -36,10 +36,10 @@ positions and exposes ERC-4626 (deposit) + ERC-7540 (async redeem) on top.
 
 | Contract | Address |
 |---|---|
-| BILVault (proxy) | `undefined` |
-| BILVault impl | `undefined` |
-| QueueLib (delegate-called library) | `undefined` |
-| BILOracle (Chainlink-V3 reader of `vault.exchangeRate()`) | `undefined` |
+| **BILVault (proxy)** | **`0x6a21891Db0940491603f3ccA0a9f4DBA4c6E810C`** |
+| BILVault impl | `0x804d2Fd6951d60510BBF6Fe2fE9F90829aB06BDa` |
+| QueueLib (delegate-called library) | linked into the vault impl — not needed for integration |
+| BILOracle (Chainlink-V3 reader of `vault.exchangeRate()`) | `0x08D80c63A87746487d673b488FF40386c68cE192` |
 | BILOracleAdapter (IEACAggregatorProxy on top of BILOracle, used by Aave) | `0xB9947CaCebD0F23de3b59c369cD710137739Cd83` |
 | BILDepositZap (atomic HOLLAR→BIL→aBIL helper) | `0x646FD203bbCf19B35D79F58413bB07450FDBb1db` |
 
@@ -50,10 +50,10 @@ positions and exposes ERC-4626 (deposit) + ERC-7540 (async redeem) on top.
 | | Address |
 |---|---|
 | Underlying | `0x0000000000000000000000000000000100000226` (substrate asset **550**, 18 decimals, vault token) |
-| **aToken (aBIL)** | **`0x0000000000000000000000000000000000000000`** (standard AToken, substrate asset **55**) |
-| variableDebtToken | `0x0000000000000000000000000000000000000000` |
-| stableDebtToken | `0x0000000000000000000000000000000000000000` (unused) |
-| rateStrategy | `0x0000000000000000000000000000000000000000` (Stables curve) |
+| **aToken (aBIL)** ‡ | **`0x8184E2F7c477d165772c21f7A2DBBb61A76E7Fc4`** (standard AToken, substrate asset **55**) |
+| variableDebtToken ‡ | created on enactment (unused — BIL borrow disabled) |
+| stableDebtToken | unused |
+| rateStrategy | `0xfDB15f9Fe2252044b08230449D4278CFd4DF52E1` (Stables curve) |
 | oracle source | `0xB9947CaCebD0F23de3b59c369cD710137739Cd83` (BILOracleAdapter — reads vault.exchangeRate()) |
 
 **Risk:** LTV 80%, LT 85%, LB 7%, RF 20%, supply-only, 3M supply cap. Borrow disabled.
@@ -63,13 +63,15 @@ positions and exposes ERC-4626 (deposit) + ERC-7540 (async redeem) on top.
 | | Address |
 |---|---|
 | Underlying | `0x531a654d1696ED52e7275A8cede955E82620f99a` (18 decimals, existing mainnet token) |
-| **aToken (GhoAToken)** | **`0x0000000000000000000000000000000000000000`** — also the **HOLLAR facilitator** (1M bucket capacity) |
-| variableDebtToken | `0x0000000000000000000000000000000000000000` |
-| stableDebtToken | `0x0000000000000000000000000000000000000000` (unused) |
-| rateStrategy | `0x0000000000000000000000000000000000000000` (10% fixed APY) |
+| **aToken (GhoAToken)** ‡ | **`0xEf313C2baf19cE58eEB6Df9c82aE41C7387AFE3E`** — also the **HOLLAR facilitator** (1M bucket capacity) |
+| variableDebtToken ‡ | `0xFa8793b777F86Df01A71f898D9C65A339aee54bF` |
+| stableDebtToken | unused |
+| rateStrategy | `0x023308954EB3895a69493693d035FF85e0c4bC85` (GhoInterestRateStrategy, 10% fixed APY) |
 | oracle source | `0x6096C9D71F7c06024578a62F4B608a1Bb06834F8` (GhoOracle, $1 fixed) |
 
 **Risk:** no collateral value, borrow-only. 1M HOLLAR facilitator bucket on HOLLAR token.
+
+> ‡ Reserve aTokens / debt tokens are created **when the launch proposal enacts** — the addresses above are the deterministic predictions (verified on a mainnet fork). They do not exist on-chain until the governance proposal executes.
 
 ## Implementation contracts
 
