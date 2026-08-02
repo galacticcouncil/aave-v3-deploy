@@ -159,28 +159,27 @@ contract RealDecentralPoolTest is Test {
             ,
             uint256 settledBefore,
             ,
-            bool activeBefore
-        ) = vault.getRedemptionRequest(reqId);
+            bool activeBefore,) = vault.getRedemptionRequest(reqId);
         assertEq(settledBefore, 0, "nothing settled yet");
         assertTrue(activeBefore, "request active");
 
         // pokeQueue with no idle HOLLAR is a no-op — confirm settled stays 0.
         vault.pokeQueue();
-        (, , uint256 settledAfterPoke, , ) = vault.getRedemptionRequest(reqId);
+        (, , uint256 settledAfterPoke, ,,) = vault.getRedemptionRequest(reqId);
         assertEq(settledAfterPoke, 0, "still nothing settled");
 
         // ─── Warp past the 60-day minimum investment period ──────────────
         vm.warp(block.timestamp + 60 days + 1);
 
         // Get the NFT's tokenId. The vault opened the position at index 0.
-        (uint256 tokenId, , , , , uint8 stateBefore) = vault.getPosition(0);
+        (uint256 tokenId, , , , , uint8 stateBefore,,,) = vault.getPosition(0);
         assertEq(stateBefore, 0, "position is Active before maturity poke");
 
         // ─── First poke: Active → YieldWithdrawalRequested ───────────────
         vm.prank(KEEPER);
         vault.pokeDecentral(0);
 
-        (, , , , , uint8 stateAfterFirstPoke) = vault.getPosition(0);
+        (, , , , , uint8 stateAfterFirstPoke,,,) = vault.getPosition(0);
         assertEq(
             stateAfterFirstPoke,
             1,
@@ -202,7 +201,7 @@ contract RealDecentralPoolTest is Test {
         vm.prank(KEEPER);
         vault.pokeDecentral(0);
 
-        (, , , , , uint8 stateAfterSecondPoke) = vault.getPosition(0);
+        (, , , , , uint8 stateAfterSecondPoke,,,) = vault.getPosition(0);
         assertEq(
             stateAfterSecondPoke,
             3,
@@ -210,7 +209,7 @@ contract RealDecentralPoolTest is Test {
         );
 
         // Vault should now hold some HOLLAR (the yield) — it's "idle".
-        uint256 idleAfterYield = vault.getIdleHollar();
+        uint256 idleAfterYield = vault.idleHollar();
         assertGt(idleAfterYield, 0, "vault has idle HOLLAR after yield exec");
 
         // ─── Decentral admin approves principal ─────────────────────────
@@ -226,11 +225,11 @@ contract RealDecentralPoolTest is Test {
         vm.prank(KEEPER);
         vault.pokeDecentral(0);
 
-        (, , , , , uint8 stateAfterPrincipal) = vault.getPosition(0);
+        (, , , , , uint8 stateAfterPrincipal,,,) = vault.getPosition(0);
         assertEq(stateAfterPrincipal, 4, "position is Redeemed");
 
         // Queue should now show our request as fully settled.
-        (, uint256 reqAmount, uint256 settled, uint256 hollarOwed, ) = vault
+        (, uint256 reqAmount, uint256 settled, uint256 hollarOwed, ,) = vault
             .getRedemptionRequest(reqId);
         assertEq(
             settled,
@@ -282,7 +281,7 @@ contract RealDecentralPoolTest is Test {
             "all hDCL returned after cancel"
         );
 
-        (, , , , bool active) = vault.getRedemptionRequest(reqId);
+        (, , , , bool active,) = vault.getRedemptionRequest(reqId);
         assertFalse(active, "request marked inactive after cancel");
     }
 
@@ -296,7 +295,7 @@ contract RealDecentralPoolTest is Test {
         vault.deposit(DEPOSIT, USER);
         vm.stopPrank();
 
-        (uint256 tokenId, , , , , ) = vault.getPosition(0);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(0);
 
         // Mature + drive state machine to Redeemed (same steps as the happy
         // path but without a queued redemption).
@@ -320,7 +319,7 @@ contract RealDecentralPoolTest is Test {
         // only fires inside `pokeQueue`'s no-progress branch — `pokeDecentral`
         // doesn't trigger it directly.
         assertGt(
-            vault.getIdleHollar(),
+            vault.idleHollar(),
             vault.minReinvestAmount(),
             "idle HOLLAR > min reinvest threshold"
         );
@@ -330,7 +329,7 @@ contract RealDecentralPoolTest is Test {
         // Position 0 closed; reinvestment should have opened position 1.
         assertEq(vault.getPositionCount(), 2, "reinvested into a new position");
 
-        (, , , , , uint8 newState) = vault.getPosition(1);
+        (, , , , , uint8 newState,,,) = vault.getPosition(1);
         assertEq(newState, 0, "new position is Active");
     }
 }

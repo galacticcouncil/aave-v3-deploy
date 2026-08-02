@@ -168,19 +168,19 @@ contract MultiPoolTest is BaseTest {
 
         // Process position 0 (pool 1) all the way to Redeemed
         _processPositionFull(0);
-        (, , , , , uint8 state0) = vault.getPosition(0);
+        (, , , , , uint8 state0,,,) = vault.getPosition(0);
         assertEq(state0, 4, "position 0 redeemed");
 
         // Process position 1 (pool 2) — it should route through pool2, not the
         // original pool. If routing were stuck on pool 1, pool 1 wouldn't have
         // a yield request for token id 1.
         vault.pokeDecentral(1);
-        (uint256 tokenId1, , , , , uint8 state1) = vault.getPosition(1);
+        (uint256 tokenId1, , , , , uint8 state1,,,) = vault.getPosition(1);
         assertEq(state1, 1, "position 1 advanced to YWR via its own pool");
 
         pool2.approveYieldWithdrawal(tokenId1);
         vault.pokeDecentral(1);
-        (, , , , , uint8 state1b) = vault.getPosition(1);
+        (, , , , , uint8 state1b,,,) = vault.getPosition(1);
         assertEq(state1b, 3, "position 1 advanced to PWR via pool2");
     }
 

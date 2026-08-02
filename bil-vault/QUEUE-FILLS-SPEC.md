@@ -5,6 +5,46 @@ Variant B of `QUEUE-FILLS-PLAN.md` — strict-FIFO early settlement with
 partial fills. The plan holds the rationale; this holds what to type.
 All line references are to current `feat/bil`.
 
+## As built (feat/queue-fills) — deltas from this spec
+
+Implemented 2026-07-21. The core mechanics (walk semantics, pricing,
+partial fills, invariants) landed exactly as specced; the *packaging*
+changed because the vault had only **313 bytes** of EIP-170 headroom and
+the spec's surface cost ~2.4KB. Deviations:
+
+- **Everything heavy lives in QueueLib**: `setAsk` (listing validation +
+  events), `cancel` (the whole `cancelRedeem` body except the hDCL
+  refund), and `executeFill` (walk + payment legs + all events,
+  including the `QueueFilled` batch summary). Delegatecall preserves
+  `msg.sender`, so auth checks in the library are sound, and lib events
+  surface from the vault address as usual.
+- **`clearFillAsk` is gone** — `setFillAsk(id, QueueLib.CLEAR_ASK)`
+  (`type(uint32).max`) delists, idempotently.
+- **`fillQueue(maxHollarIn, minAskBps)` has no `minBilOut`** —
+  `minAskBps` already bounds the worst per-share price and
+  `maxHollarIn` bounds total spend; NAV drift between quote and tx is
+  noise. `NothingFilled` reverts from the library.
+- **No on-chain `previewFillQueue` / `getFillAsk`** — the ask is exposed
+  as a sixth output on `getRedemptionRequest` (`askPlusOne`, 0 = not
+  listed); quoting is off-chain (walk `getRedemptionRequest` over
+  `queueHead..queueTail` — or a periphery lens contract later, zero
+  vault bytecode either way).
+- **Paid-for headroom** (existing surface offloaded/deduped):
+  `cancelRedeem` body → lib; `redemptionQueue` and `positions`
+  internalized (their raw auto-getters were redundant with
+  `getRedemptionRequest`/`getPosition` — which gained the missing
+  fields: `askPlusOne`, resp. `yieldCapped`/`pendingYield`/
+  `yieldStartTime`, appended so old static-decode consumers keep
+  working); dropped `getTotalQueuedBil`/`getIdleHollar`/
+  `getRedemptionQueueLength`/`getQueueHead` (the public vars are the
+  getters; keeper migrated to `queueTail`).
+- Result: vault 24,443 bytes (**133 spare**), QueueLib 8,967 (libraries
+  are exempt from meaningful pressure). Feature's net vault cost after
+  offsets: ~180 bytes.
+- Tests: `test/unit/QueueFills.t.sol` (18 cases covering the §8 matrix
+  incl. accounting-neutrality snapshots) + `setFillAsk`/`fillQueue`
+  actions in the invariant fuzz suite. 391 tests green.
+
 ## 0. Summary of the mechanism
 
 Exiters opt in by setting an **ask** (discount in bps) on their queued

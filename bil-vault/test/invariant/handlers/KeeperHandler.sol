@@ -44,7 +44,7 @@ contract KeeperHandler is Test {
         uint256 idx = positionSeed % count;
 
         // Skip if already redeemed
-        (, , , , , uint8 state) = vault.getPosition(idx);
+        (, , , , , uint8 state,,,) = vault.getPosition(idx);
         if (state == 4) return;
 
         vault.pokeDecentral(idx);
@@ -59,12 +59,12 @@ contract KeeperHandler is Test {
         if (count == 0) return;
 
         uint256 idx = positionSeed % count;
-        (, , , , , uint8 state) = vault.getPosition(idx);
+        (, , , , , uint8 state,,,) = vault.getPosition(idx);
 
         // Only approve if in YieldWithdrawalRequested
         if (state != 1) return;
 
-        (uint256 tokenId, , , , , ) = vault.getPosition(idx);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(idx);
         pool.approveYieldWithdrawal(tokenId);
     }
 
@@ -75,12 +75,12 @@ contract KeeperHandler is Test {
         if (count == 0) return;
 
         uint256 idx = positionSeed % count;
-        (, , , , , uint8 state) = vault.getPosition(idx);
+        (, , , , , uint8 state,,,) = vault.getPosition(idx);
 
         // Only approve if in PrincipalWithdrawalRequested
         if (state != 3) return;
 
-        (uint256 tokenId, , , , , ) = vault.getPosition(idx);
+        (uint256 tokenId, , , , ,,,,) = vault.getPosition(idx);
         pool.approvePrincipalWithdrawal(tokenId);
     }
 
@@ -112,7 +112,7 @@ contract KeeperHandler is Test {
         if (count == 0) return;
 
         uint256 idx = positionSeed % count;
-        (uint256 tokenId, uint256 principal, , , , uint8 state) = vault.getPosition(idx);
+        (uint256 tokenId, uint256 principal, , , , uint8 state,,,) = vault.getPosition(idx);
 
         // Only meaningful while the position can still pass through
         // executePrincipalWithdrawal (state != Redeemed).

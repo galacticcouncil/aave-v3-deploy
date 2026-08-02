@@ -121,7 +121,9 @@ const VAULT_ABI = [
   },
   // ─── ERC-7540 redemption queue ───────────────────────────────────────
   {
-    name: 'getRedemptionQueueLength',
+    // renamed: the explicit getter was dropped for EIP-170 budget; the
+    // public storage var's auto-getter is the canonical read now.
+    name: 'queueTail',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
@@ -276,7 +278,7 @@ export class BILKeeper {
   /// Receiver is forced to the controller — `CLAIM_OPERATOR_ROLE` only
   /// authorizes timing, not redirection.
   private async autoClaimSettled(): Promise<void> {
-    const queueLen = (await this.readContract('getRedemptionQueueLength')) as bigint;
+    const queueLen = (await this.readContract('queueTail')) as bigint;
     if (queueLen === 0n) return;
 
     // Sum settled shares per controller across all live requests.

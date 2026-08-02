@@ -76,9 +76,9 @@ contract BaseTest is Test, Constants, Events {
     ///      entries can live below queueHead.
     function _claimAll(address user) internal returns (uint256 assets) {
         uint256 totalSettled;
-        uint256 tail = vault.getRedemptionQueueLength();
+        uint256 tail = vault.queueTail();
         for (uint256 i = 0; i < tail; i++) {
-            (address u,, uint256 bilSettled,,) = vault.getRedemptionRequest(i);
+            (address u,, uint256 bilSettled,,,) = vault.getRedemptionRequest(i);
             if (u == user) totalSettled += bilSettled;
         }
         if (totalSettled == 0) return 0;
@@ -91,7 +91,7 @@ contract BaseTest is Test, Constants, Events {
         vault.pokeDecentral(positionIndex);
 
         // Step 2: Approve yield on mock, then execute yield withdrawal
-        (uint256 tokenId,,,,, ) = vault.getPosition(positionIndex);
+        (uint256 tokenId,,,,,,,,) = vault.getPosition(positionIndex);
         pool.approveYieldWithdrawal(tokenId);
         vault.pokeDecentral(positionIndex);
 

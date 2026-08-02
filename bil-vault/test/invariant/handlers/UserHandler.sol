@@ -90,7 +90,7 @@ contract UserHandler is Test {
         address owner = requestOwner[requestId];
 
         // Check if still active
-        (address user, , , , bool active) = vault.getRedemptionRequest(requestId);
+        (address user, , , , bool active,) = vault.getRedemptionRequest(requestId);
         if (!active || user == address(0)) {
             _removeRequestAt(idx);
             return;
@@ -100,6 +100,54 @@ contract UserHandler is Test {
         vault.cancelRedeem(requestId);
         _removeRequestAt(idx);
     }
+
+    // ── Queue fills ────────────────────────────────────────────────────────
+
+    address internal constant FILLER = address(0xF111e5);
+
+    /// @notice Random controller lists (or re-prices / delists) a random
+    ///         active request.
+    function setFillAsk(uint256 seed, uint32 askBps) external {
+        if (activeRequestIds.length == 0) return;
+        uint256 requestId = activeRequestIds[seed % activeRequestIds.length];
+        address owner = requestOwner[requestId];
+        (address user, , , , bool active,) = vault.getRedemptionRequest(requestId);
+        if (!active || user == address(0)) return;
+
+        // Mostly valid asks, occasionally the delist sentinel.
+        askBps = askBps % 100 == 0 ? type(uint32).max : askBps % 2_001;
+
+        vm.prank(owner);
+        try vault.setFillAsk(requestId, askBps) {
+            ghost_askSets++;
+        } catch {
+            // NothingPending on fully-settled entries etc. — fine.
+        }
+    }
+
+    /// @notice A dedicated filler buys listed queue entries head-first.
+    function fillQueue(uint256 budget, uint32 minAskBps) external {
+        budget = bound(budget, 1e18, 500_000e18);
+        minAskBps = minAskBps % 2_001;
+
+        hollar.mint(FILLER, budget);
+        vm.prank(FILLER);
+        hollar.approve(address(vault), budget);
+
+        vm.prank(FILLER);
+        try vault.fillQueue(budget, minAskBps) returns (uint256 spent, uint256 got) {
+            ghost_hollarFilled += spent;
+            ghost_bilFilled += got;
+            ghost_fillCount++;
+        } catch {
+            // NothingFilled / paused / backlog — fine under fuzz.
+        }
+    }
+
+    uint256 public ghost_askSets;
+    uint256 public ghost_fillCount;
+    uint256 public ghost_hollarFilled;
+    uint256 public ghost_bilFilled;
 
     function _removeRequestAt(uint256 idx) internal {
         activeRequestIds[idx] = activeRequestIds[activeRequestIds.length - 1];
@@ -120,9 +168,9 @@ contract UserHandler is Test {
 
         // Sum the actor's claimable across all open requests.
         uint256 totalClaimable;
-        uint256 tail = vault.getRedemptionQueueLength();
+        uint256 tail = vault.queueTail();
         for (uint256 i = 0; i < tail; i++) {
-            (address u,, uint256 settled,,) = vault.getRedemptionRequest(i);
+            (address u,, uint256 settled,,,) = vault.getRedemptionRequest(i);
             if (u == actor) totalClaimable += settled;
         }
         if (totalClaimable == 0) return;

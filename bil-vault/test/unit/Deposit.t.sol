@@ -252,8 +252,7 @@ contract DepositTest is BaseTest {
             uint256 apyWad,
             uint256 depositTime,
             uint256 maturityTime,
-            uint8 state
-        ) = vault.getPosition(0);
+            uint8 state,,,) = vault.getPosition(0);
 
         assertGt(tokenId, 0, "Token ID > 0");
         assertEq(principal, TEN_THOUSAND_HOLLAR, "Principal matches deposit amount");
@@ -267,7 +266,7 @@ contract DepositTest is BaseTest {
     function test_deposit_vaultOwnsNFT() public {
         _deposit(alice, TEN_THOUSAND_HOLLAR);
 
-        (uint256 tokenId,,,,, ) = vault.getPosition(0);
+        (uint256 tokenId,,,,,,,,) = vault.getPosition(0);
         assertEq(nft.ownerOf(tokenId), address(vault), "Vault owns the Decentral NFT");
     }
 

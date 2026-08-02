@@ -33,7 +33,7 @@ contract SettledShareDilutionTest is BaseTest {
         _processPositionFull(1);                        // clear backlog: pos 1 -> idle
         vault.pokeQueue();                              // settle attacker at rate_settle
 
-        (, , uint256 settled, uint256 owed, ) = vault.getRedemptionRequest(reqId);
+        (, , uint256 settled, uint256 owed,,) = vault.getRedemptionRequest(reqId);
         assertGt(settled, 0, "attacker settled");
         emit log_named_decimal_uint("settled shares    ", settled, 18);
         emit log_named_decimal_uint("hollarOwed (fixed)", owed, 18);
@@ -85,7 +85,7 @@ contract SettledShareExtractionTest is BaseTest {
         _processPositionFull(0);
         _processPositionFull(1);
         vault.pokeQueue();
-        (, , uint256 settled, uint256 owed, ) = vault.getRedemptionRequest(reqId);
+        (, , uint256 settled, uint256 owed,,) = vault.getRedemptionRequest(reqId);
 
         // bob: honest active holder, fresh position still accruing
         _deposit(bob, TEN_THOUSAND_HOLLAR);

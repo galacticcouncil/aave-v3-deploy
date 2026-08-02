@@ -85,9 +85,9 @@ const VAULT_ABI = parseAbi([
   'function getPositionHead() external view returns (uint256)',
   'function getPosition(uint256 positionIndex) external view returns (uint256 tokenId, uint256 principal, uint256 apyWad, uint256 depositTime, uint256 maturityTime, uint8 state)',
   'function getRedemptionRequest(uint256 requestId) external view returns (address user, uint256 bilAmount, uint256 bilSettled, uint256 hollarOwed, bool active)',
-  'function getRedemptionQueueLength() external view returns (uint256)',
-  'function getTotalQueuedBil() external view returns (uint256)',
-  'function getIdleHollar() external view returns (uint256)',
+  'function queueTail() external view returns (uint256)',
+  'function totalQueuedBil() external view returns (uint256)',
+  'function idleHollar() external view returns (uint256)',
   'function autoClaimEnabled(address) external view returns (bool)',
   'function balanceOf(address) external view returns (uint256)',
   'function totalSupply() external view returns (uint256)',
@@ -419,7 +419,7 @@ async function testRequestRedeem(bilBal: bigint): Promise<bigint> {
   // against a pristine vault — re-runs against the same deployed contract
   // will keep working as queueTail grows.
   const requestId = (await publicClient.readContract({
-    address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'getRedemptionQueueLength',
+    address: VAULT_ADDRESS, abi: VAULT_ABI, functionName: 'queueTail',
   })) as bigint;
 
   const hash = await writeContract({

@@ -142,8 +142,6 @@ interface IBILVault {
         );
     function getPositionCount() external view returns (uint256);
     function getPositionHead() external view returns (uint256);
-    function getTotalQueuedBil() external view returns (uint256);
-    function getIdleHollar() external view returns (uint256);
     function getPoolCount() external view returns (uint256);
     function getOraclePrice() external view returns (uint256);
 

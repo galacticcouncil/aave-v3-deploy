@@ -57,7 +57,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
         uint256 reqId = vault.requestRedeem(aliceBil / 4, alice, alice);
 
         // Alice's hDCL was escrowed, request is alice's
-        (address controller, , , ,) = vault.getRedemptionRequest(reqId);
+        (address controller, , , ,,) = vault.getRedemptionRequest(reqId);
         assertEq(controller, alice);
     }
 
@@ -109,7 +109,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
 
     function test_withdraw_byOperator_works() public {
         _settleAlice();
-        (,,, uint256 owed,) = vault.getRedemptionRequest(0);
+        (,,, uint256 owed,,) = vault.getRedemptionRequest(0);
 
         vm.prank(alice);
         vault.setOperator(bob, true);
@@ -206,7 +206,7 @@ contract OperatorAndAutoClaimTest is BaseTest {
         _grantClaimOperator();
 
         // Claim once (succeeds)
-        (,, uint256 settled1,,) = vault.getRedemptionRequest(0);
+        (,, uint256 settled1,,,) = vault.getRedemptionRequest(0);
         vm.prank(keeperBot);
         vault.redeem(settled1, alice, alice);
 
@@ -220,8 +220,8 @@ contract OperatorAndAutoClaimTest is BaseTest {
         vault.setAutoClaim(false);
 
         // Keeper can no longer claim
-        uint256 reqId = vault.getRedemptionQueueLength() - 1;
-        (,, uint256 settled2,,) = vault.getRedemptionRequest(reqId);
+        uint256 reqId = vault.queueTail() - 1;
+        (,, uint256 settled2,,,) = vault.getRedemptionRequest(reqId);
         if (settled2 > 0) {
             vm.prank(keeperBot);
             vm.expectRevert(BILVault.NotAuthorized.selector);
