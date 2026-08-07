@@ -115,7 +115,7 @@ contract MultiVaultFlowTest is Test {
                         (
                             n, s, coll, address(pool), address(loop), address(swapper),
                             address(hollar), address(synth), aTok, address(hollarDebt),
-                            9800, 1_000e18, address(this)
+                            1_000e18, address(this)
                         )
                     )
                 )

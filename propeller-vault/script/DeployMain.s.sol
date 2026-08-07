@@ -17,8 +17,10 @@ import {Harvester} from "../src/Harvester.sol";
 ///         and lark-4 (or mainnet) just supplies a `.env`. Required: PRIVATE_KEY,
 ///         SYNTH (address of the SyntheticToken from DeploySynth). Optional
 ///         overrides (else lark-2 default): POOL, HOLLAR, HOLLAR_VDEBT, ETH, AETH,
-///         PRIME, APRIME, GOV, SWAPPER, TARGET_HF, DELEVER_TRIGGER, SYNTH_LT_BPS,
-///         TVL_CAP.
+///         PRIME, APRIME, GOV, SWAPPER, TARGET_HF, DELEVER_TRIGGER, TVL_CAP.
+///
+///         The synthetic's liquidation threshold is NOT a deploy parameter — the
+///         vault reads it live off the Aave reserve config, so it cannot drift.
 ///
 ///         forge script script/DeployMain.s.sol:DeployMain \
 ///           --rpc-url $RPC --broadcast \
@@ -53,7 +55,6 @@ contract DeployMain is Script {
 
         uint256 targetHf = vm.envOr("TARGET_HF", uint256(1.05e18));
         uint256 deLeverTrigger = vm.envOr("DELEVER_TRIGGER", uint256(1.10e18));
-        uint16 synthLtBps = uint16(vm.envOr("SYNTH_LT_BPS", uint256(9800)));
         uint256 tvlCap = vm.envOr("TVL_CAP", uint256(1_000_000e18));
 
         vm.startBroadcast(deployerKey);
@@ -78,7 +79,6 @@ contract DeployMain is Script {
                 synth,
                 aEth,
                 hollarVDebt,
-                synthLtBps,
                 tvlCap,
                 gov
             )

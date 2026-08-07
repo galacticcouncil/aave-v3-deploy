@@ -120,6 +120,24 @@ library DcaDispatch {
         uint128 minAmountOut,
         Hop[] memory route
     ) internal {
+        bytes memory call = encodeRouterSell(assetIn, assetOut, amountIn, minAmountOut, route);
+        (bool ok, ) = DISPATCH.call(call);
+        if (!ok) revert DispatchFailed();
+    }
+
+    /// @notice SCALE encoding of `pallet_route::sell`, split out from the dispatch so
+    ///         it can be asserted byte-for-byte against runtime metadata.
+    /// @dev    This is the LIVE path — `_fundDeploy` and `pokeRepay` both route
+    ///         through it. `encodeScheduleSell` above is the retired pallet-DCA path
+    ///         and has no caller in `src/`; do not mistake its parity test for
+    ///         coverage of this one. See `test/DcaDispatch.t.sol`.
+    function encodeRouterSell(
+        uint32 assetIn,
+        uint32 assetOut,
+        uint128 amountIn,
+        uint128 minAmountOut,
+        Hop[] memory route
+    ) internal pure returns (bytes memory) {
         bytes memory head = abi.encodePacked(
             ROUTER_PALLET, SELL_CALL,
             _le32(assetIn), _le32(assetOut), _le128(amountIn), _le128(minAmountOut)
@@ -128,8 +146,7 @@ library DcaDispatch {
         for (uint256 i = 0; i < route.length; i++) {
             r = abi.encodePacked(r, _encodeTrade(route[i]));
         }
-        (bool ok, ) = DISPATCH.call(abi.encodePacked(head, r));
-        if (!ok) revert DispatchFailed();
+        return abi.encodePacked(head, r);
     }
 
     /// @notice EVM-derived Substrate AccountId32 for an address:

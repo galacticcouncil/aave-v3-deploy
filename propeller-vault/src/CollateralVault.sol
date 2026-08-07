@@ -46,9 +46,6 @@ contract CollateralVault is
     uint256 internal constant BPS = 1e4;
     uint256 internal constant VARIABLE_RATE = 2;
     uint256 private constant DEAD_SHARES = 1000;
-    /// @dev Absolute HOLLAR dust the unwind spiral can leave un-freeable (a
-    ///      valuation-vs-realized remainder); below this, a source counts drained.
-    uint256 private constant MIGRATION_DUST = 1e18;
     address private constant DEAD_ADDRESS = address(0xdead);
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
@@ -77,7 +74,14 @@ contract CollateralVault is
     ///      (only a collateral price drop can push LTV past the max).
     uint16 internal constant LTV_BAND_LOW_GAP_BPS = 500;
     uint16 internal constant LTV_BAND_HIGH_GAP_BPS = 300;
-    uint16 public synthLtBps; // synthetic reserve's liquidation threshold (e.g. 9800)
+    // The synthetic reserve's liquidation threshold is NOT stored either, for the
+    // same reason as the collateral's max LTV: it is a governance-controlled Aave
+    // parameter, and a copy taken at `initialize` silently drifts when governance
+    // retunes the reserve. That drift is not cosmetic — INV-1 (the un-liquidatable
+    // principal guard) is checked as `syntheticSupplied · synthLtBps ≥ mainDebt`
+    // against vault storage, so a stale-high copy would let the guard pass while
+    // the real Aave floor no longer covers the debt. Read live off bits 16-31 of
+    // the reserve configuration bitmap instead; see `_synthLtBps`.
     /// @notice Max slippage (bps) permissionless `compound` tolerates vs the
     ///         oracle-fair output. Default 0 ⇒ fails closed until set.
     uint16 public compoundSlippageBps;
@@ -116,16 +120,11 @@ contract CollateralVault is
     uint256 public queueTail; // next request id
     uint256 public totalQueuedShares;
 
-    /// @notice Snapshot of the HOLLAR the source owed this vault at the last
-    ///         `adminUnwind` — the reference `setYieldSource` uses to tell a
-    ///         completed drain (only dust left) from an in-flight one (still owed).
-    ///         Appended after all prior storage (layout-stable) — see `__gap`.
-    uint256 public migrationDrainRef;
     /// @notice Σ of active queued redemptions' still-owed Main debt (debtShare −
-    ///         repaid). Lets `adminUnwind` target only the NON-queued debt, so it
-    ///         never double-counts a queued redeemer (BUG-2) — and so it needs no
-    ///         empty-queue precondition (which a never-fully-settling request could
-    ///         otherwise block forever).
+    ///         repaid). Lets `rebalance`'s de-lever branch target only the NON-queued
+    ///         debt, so it never repays a queued redeemer's own slice out from under
+    ///         them (which would leave `repaid` short of `debtShare` forever and pin
+    ///         the FIFO head).
     uint256 public totalQueuedDebt;
 
     event Deposited(address indexed user, uint256 assets, uint256 shares);
@@ -147,6 +146,8 @@ contract CollateralVault is
     error NothingToClaim();
     error PrincipalNotFloored(); // INV-1: synth*LT must cover Main debt
     error SourceNotEmpty(); // setYieldSource before the old source is drained
+    error NoLoopEquity(); // requestRedeem while the source has nothing to unwind
+    error SynthReserveNotListed(); // synthetic has no Aave liquidation threshold yet
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -164,7 +165,6 @@ contract CollateralVault is
         address _synthetic,
         address _collateralAToken,
         address _hollarDebtToken,
-        uint16 _synthLtBps,
         uint256 _tvlCap,
         address _admin
     ) external initializer {
@@ -185,7 +185,6 @@ contract CollateralVault is
         collateralAToken = IERC20(_collateralAToken);
         hollarDebtToken = IERC20(_hollarDebtToken);
 
-        synthLtBps = _synthLtBps;
         tvlCap = _tvlCap;
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
@@ -294,7 +293,8 @@ contract CollateralVault is
         //    strictly ABOVE 1 from the synthetic *alone*, so the principal is
         //    un-liquidatable at any collateral price (the +0.5% buffer keeps it
         //    clear of the boundary through rounding/8dp-base truncation).
-        uint256 synthAmt = (borrowHollar * BPS + synthLtBps - 1) / synthLtBps;
+        uint256 lt = synthLtBps(); // live off the reserve, never a stored copy
+        uint256 synthAmt = (borrowHollar * BPS + lt - 1) / lt;
         synthAmt += synthAmt / 200; // +0.5% buffer
         _supplySynth(synthAmt);
 
@@ -305,7 +305,7 @@ contract CollateralVault is
 
         // INV-1 (on-chain guard): the synthetic alone must cover the Main debt,
         // so the principal is un-liquidatable at any collateral price.
-        if (syntheticSupplied * synthLtBps / BPS < hollarDebtToken.balanceOf(address(this))) {
+        if (syntheticSupplied * lt / BPS < hollarDebtToken.balanceOf(address(this))) {
             revert PrincipalNotFloored();
         }
         emit Deposited(receiver, assets, shares);
@@ -324,6 +324,22 @@ contract CollateralVault is
     {
         if (shares == 0) revert ZeroAmount();
         if (msg.sender != owner) _spendAllowance(owner, msg.sender, shares);
+
+        // A redemption is only ever settleable if the source has equity to unwind
+        // against: `requestUnwind` derives its release target from LIVE equity, so
+        // asking a zero-equity source records a ZERO target — the shares are
+        // escrowed and a real `debtShare` is enqueued, but nothing will ever be
+        // freed for it. The request can then only settle by accident, out of some
+        // other unwind's freed HOLLAR. Observed on lark-4 (2026-07-31): a redeem
+        // raised before the loop was ramped (aPRIME held but never flagged as Aave
+        // collateral, so totalEquity() == 0) left an orphaned request #0.
+        //
+        // Fail closed instead. `pokeBorrow` is permissionless, so a caller who hits
+        // this can ramp the loop themselves and retry in the same block. The guard
+        // is deliberately here and not in `SubLoop.requestUnwind`: the loop's job is
+        // to burn shares and record a target, and only the vault knows there is a
+        // user behind the request who would be stranded by a zero one.
+        if (yieldSource.equityOf(address(this)) == 0) revert NoLoopEquity();
 
         uint256 supply = totalSupply();
 
@@ -428,6 +444,46 @@ contract CollateralVault is
             else break; // wait for more freed equity
         }
         queueHead = head;
+        _retireExhaustedHead();
+    }
+
+    /// @dev Retire the FIFO head when the source is exhausted but the head is still
+    ///      a hair short of its snapshot.
+    ///
+    ///      `debtShare` is an ORACLE-MARKED snapshot taken at `requestRedeem`;
+    ///      settlement is funded by the HOLLAR actually REALIZED by the unwind
+    ///      spiral. The two never agree to the wei — 8dp/6dp truncation in
+    ///      `pokeRepay` alone leaves a tail at zero slippage (measured: the spiral
+    ///      hard-stalls once its HF-capped sliver floors to 0 in 6dp aPRIME), and
+    ///      real slippage or negative carry widens it. Without this, `r.repaid`
+    ///      never reaches `r.debtShare`: `queueHead` never advances, every request
+    ///      behind the head is blocked forever, the redeemer's last sliver of
+    ///      collateral is never released, and the residual pins `totalQueuedDebt`
+    ///      (which also blocks `setYieldSource` forever).
+    ///
+    ///      Snap the snapshot down to what was realized. The redeemer bears the
+    ///      shortfall — correct economics, they own their own slice's loop P&L — and
+    ///      since collateral is released strictly proportionally to
+    ///      `repaid/debtShare`, bearing it just means receiving proportionally less.
+    ///
+    ///      Only fires once the source owes this vault NOTHING (`pendingUnwindOf`
+    ///      and `freedOf` both zero — `SubLoop` writes its own unrealizable
+    ///      remainder off when the spiral stalls) and no HOLLAR is left unapplied,
+    ///      so it can never pre-empt an unwind that is still in flight. Gated on
+    ///      `repaid > 0` so a request that made no progress at all is never zeroed.
+    ///      One head per call: bounded work, and the keeper calls this every cycle.
+    function _retireExhaustedHead() internal {
+        uint256 head = queueHead;
+        if (head >= queueTail || availableHollar != 0) return;
+        Redemption storage r = redemptions[head];
+        if (!r.active || r.repaid == 0 || r.repaid >= r.debtShare) return;
+        if (yieldSource.pendingUnwindOf(address(this)) != 0) return;
+        if (yieldSource.freedOf(address(this)) != 0) return;
+
+        totalQueuedDebt -= (r.debtShare - r.repaid);
+        r.debtShare = r.repaid;
+        queueHead = head + 1;
+        emit RedeemSettled(head, 0);
     }
 
     /// @notice Claim collateral settled so far for a request. Partial-claim
@@ -559,7 +615,8 @@ contract CollateralVault is
             }
             pool.borrow(address(hollar), addHollar, VARIABLE_RATE, 0, address(this));
 
-            uint256 addSynth = (addHollar * BPS + synthLtBps - 1) / synthLtBps;
+            uint256 lt = synthLtBps();
+            uint256 addSynth = (addHollar * BPS + lt - 1) / lt;
             addSynth += addSynth / 200;
             _supplySynth(addSynth);
 
@@ -574,7 +631,33 @@ contract CollateralVault is
             // restores the real-collateral backing ratio (and trims yield-side risk).
             uint256 targetDebt8 = (ethValue8 * maxLtv) / BPS;
             uint256 repay8 = effDebt8 - targetDebt8;
+
+            // CAP 1 — never eat into debt a QUEUED redeemer's snapshot will repay
+            // itself. Sizing off the raw live debt (which includes every queued
+            // `debtShare`) makes pokeSettle repay the redeemer's own
+            // slice ahead of them — out of the same commingled freed bucket — so
+            // `r.repaid` can never reach `r.debtShare`, `queueHead` never advances,
+            // and their collateral is never fully released. The same over-sizing
+            // over-burns the synthetic: the de-lever arm burns
+            // `syntheticSupplied·r/debtNow` off the WHOLE book while each queued
+            // request still holds a pre-burn `synthShare` snapshot, so once
+            // `deleverTarget/debt + queuedFraction > 1` the queue arm's
+            // `syntheticSupplied -= synthRel` underflows and bricks every redemption.
+            // Round the queued amount UP into 8dp base units: flooring it would
+            // leave the cap one base unit (1e-8 HOLLAR) too generous, and the whole
+            // point of this cap is to be conservative in the queue's favour.
+            uint256 queued8 = (totalQueuedDebt + 1e10 - 1) / 1e10;
+            uint256 nonQueued8 = debtBase8 > queued8 ? debtBase8 - queued8 : 0;
+            uint256 headroom8 = nonQueued8 > pendingRepay8 ? nonQueued8 - pendingRepay8 : 0;
+            if (repay8 > headroom8) repay8 = headroom8;
+
+            // CAP 2 — never queue more than the loop slice can actually free. The
+            // slice is capped at `loopShares`, so an uncapped `repay8` above the
+            // vault's whole loop equity leaves a permanently unfundable target that
+            // pokeSettle keeps consuming ahead of the FIFO queue.
             uint256 loopEq8 = yieldSource.equityOf(address(this));
+            if (repay8 > loopEq8) repay8 = loopEq8;
+
             uint256 sliceShares = loopEq8 == 0 ? 0 : (loopShares * repay8) / loopEq8;
             if (sliceShares > loopShares) sliceShares = loopShares;
             if (sliceShares > 0) {
@@ -592,7 +675,8 @@ contract CollateralVault is
     ///         re-tops the synthetic so the principal stays un-liquidatable.
     function maintainPeg() external nonReentrant {
         uint256 debt = hollarDebtToken.balanceOf(address(this));
-        uint256 required = (debt * BPS + synthLtBps - 1) / synthLtBps;
+        uint256 lt = synthLtBps();
+        uint256 required = (debt * BPS + lt - 1) / lt;
         required += required / 200; // +0.5% buffer (matches deposit)
         if (syntheticSupplied >= required) {
             emit SyntheticPegMaintained(0);
@@ -627,6 +711,18 @@ contract CollateralVault is
         return pool.getConfiguration(address(collateral)) & 0xFFFF;
     }
 
+    /// @notice The synthetic reserve's liquidation threshold (bps) — bits 16-31 of
+    ///         the Aave reserve configuration bitmap, read live.
+    /// @dev    Every synthetic sizing (`deposit`, `rebalance`, `maintainPeg`) and
+    ///         the INV-1 floor guard divide by this, so a zero would panic. It IS
+    ///         zero before the governance proposal lists the synthetic reserve —
+    ///         reverting there is correct (the floor cannot be established yet), but
+    ///         it should say so rather than panic.
+    function synthLtBps() public view returns (uint256 lt) {
+        lt = (pool.getConfiguration(address(synthetic)) >> 16) & 0xFFFF;
+        if (lt == 0) revert SynthReserveNotListed();
+    }
+
     // ══════════════════════════════════════════════════════════════════════
     //                         INTERNAL / ADMIN
     // ══════════════════════════════════════════════════════════════════════
@@ -645,86 +741,62 @@ contract CollateralVault is
         tvlCap = newCap;
     }
 
-    /// @notice Admin emergency wind-down: unwind the vault's ENTIRE remaining loop
-    ///         position out of the current yield source and route the freed HOLLAR
-    ///         to repay Main debt — de-risking every position to bare collateral
-    ///         (no leverage, no venue exposure). Reuses the deleverTarget →
-    ///         pokeSettle path; keepers run `pokeRepay` + `pokeSettle` to complete
-    ///         it. Deliberately MANUAL: whether to unwind now or hold through a
-    ///         dip is a market judgment left to the admin, never automated off the
-    ///         `negativeCarryBps` signal.
+    /// @notice Repoint the vault to a new yield source. Allowed only when the
+    ///         current source owes this vault NOTHING — no live shares, nothing
+    ///         freed-but-unpulled, no in-flight unwind — so no funds can be
+    ///         stranded in the abandoned source.
     ///
-    /// @dev    ⚠️ DISCLAIMER / KNOWN LIMITATIONS — read before relying on this in
-    ///         production:
-    ///         - **Wind-down locks users (Option B).** `_pause()` freezes deposits,
-    ///           new redemptions, and `rebalance()`. Holders CANNOT exit until
-    ///           governance plugs a new source and re-levers, then `unpause`s. Only
-    ///           `pokeSettle`/`claim` stay live (drain completes, already-settled
-    ///           requests remain claimable). There is intentionally NO bare-
-    ///           collateral withdrawal path in this version.
-    ///         - **Restore is a manual sequence:** drain → `setYieldSource(new)` →
-    ///           `unpause` → `rebalance()` re-levers the bare collateral into the
-    ///           new source. Existing positions sit idle (no yield) until then;
-    ///           auto re-levering into a new venue is a FOLLOW-UP, not built here.
-    ///         - **Accrual drift:** deleverTarget = liveDebt − `totalQueuedDebt`
-    ///           (snapshot). HOLLAR interest that accrued on queued debt makes this
-    ///           slightly over the true non-queued debt, so a queued redeemer may
-    ///           settle marginally slower — bounded, and they stay active (partial
-    ///           settle), never orphaned.
-    ///         - **TODO:** this path (and the `setYieldSource` drain guard's
-    ///           sub-1-HOLLAR dust floor) has NOT yet had a final independent audit
-    ///           pass. Treat as governance-only, low-frequency, and validate on a
-    ///           fork before mainnet. Remove this TODO once reviewed.
-    function adminUnwind() external onlyRole(ADMIN_ROLE) {
-        uint256 slice = loopShares;
-        if (slice == 0) revert ZeroAmount();
-        loopShares = 0;
-        yieldSource.requestUnwind(slice);
-        // Repay only the NON-queued Main debt via deleverTarget. Queued
-        // redemptions keep their own settlement path (their debt is `totalQueuedDebt`
-        // and settles through the queue), so this never double-counts / orphans a
-        // queued redeemer — and, unlike an empty-queue precondition, it can't be
-        // blocked forever by a redemption that never fully settles under negative
-        // carry. `loopShares` is already net of queued slices, so its unwind frees
-        // exactly the non-queued equity that backs this target.
-        uint256 debt = hollarDebtToken.balanceOf(address(this));
-        deleverTarget = debt > totalQueuedDebt ? debt - totalQueuedDebt : 0;
-        // reference for setYieldSource's drain-completeness check: how much the
-        // source now owes us. A completed drain reduces this to dust.
-        migrationDrainRef = yieldSource.pendingUnwindOf(address(this));
-        // Enter wind-down (Option B): freeze deposits, new redemptions, and — the
-        // point — the permissionless `rebalance()`, so no keeper re-levers the bare
-        // collateral back into the loop being abandoned. `pokeSettle`/`claim` stay
-        // callable (not whenNotPaused) so the drain completes and settled requests
-        // remain claimable. Governance lifts it via `unpause` after plugging a new
-        // source and re-levering.
-        _pause();
-    }
-
-    /// @notice Repoint the vault to a new yield source (e.g. after winding the old
-    ///         one down on prolonged negative carry). Allowed only when the
-    ///         current source is fully drained for this vault — no live shares and
-    ///         nothing freed-but-unpulled — so no funds are stranded. New deposits
-    ///         then fund the new source.
+    /// @dev    This is a DEPLOY-TIME WIRING LEVER, not a migration path. It is
+    ///         satisfiable only before any deposit has routed HOLLAR into a source
+    ///         — e.g. to correct a vault deployed against a placeholder address.
+    ///
+    ///         It is NOT reachable again once the vault has been funded, and that is
+    ///         deliberate: `DEAD_SHARES` are permanently locked in `totalSupply`, so
+    ///         every `requestRedeem` sizes its loop slice as `loopShares · shares /
+    ///         supply` and always leaves the dead shares' proportional slice behind.
+    ///         `loopShares` therefore never returns to exactly 0 on a funded vault.
+    ///
+    ///         Deliberately strict — `pending == 0` exactly, no dust tolerance. A
+    ///         relative tolerance existed alongside an `adminUnwind()` force-unwind
+    ///         path; both were removed. The tolerance scaled with position size
+    ///         rather than being true dust (0.1% of notional), so it could abandon
+    ///         real HOLLAR that `SubLoop` has no sweep to recover, and the
+    ///         force-unwind paused the vault with no bare-collateral exit, locking
+    ///         non-redeeming holders behind a guard that realized slippage could
+    ///         make unsatisfiable.
+    ///
+    ///         To change the yield source of a LIVE vault, deploy a new vault
+    ///         pointed at the new source and let holders migrate through the normal
+    ///         redemption queue. There is no in-place migration.
     function setYieldSource(address newSource) external onlyRole(ADMIN_ROLE) {
         if (newSource == address(0)) revert ZeroAddress();
         // Sweep any last freed HOLLAR out of the old source before abandoning it.
         availableHollar += yieldSource.pullFreed();
-        // The old source must owe this vault essentially NOTHING: no live shares,
-        // and the in-flight unwind drained down to un-freeable dust. `pending` is
-        // the full owed amount right after adminUnwind and only dust once the
-        // spiral has run — so requiring it below an absolute floor OR ≤0.1% of the
-        // adminUnwind reference blocks a premature swap (which would strand the
-        // still-owed HOLLAR) while tolerating the spiral's valuation dust. Fresh
-        // vaults (no unwind) pass trivially: pending == 0.
-        uint256 pending = yieldSource.pendingUnwindOf(address(this));
-        bool drained =
-            pending <= MIGRATION_DUST || (migrationDrainRef != 0 && pending * 1000 <= migrationDrainRef);
-        if (loopShares != 0 || yieldSource.sharesOf(address(this)) != 0 || !drained) {
+        if (
+            loopShares != 0 || yieldSource.sharesOf(address(this)) != 0
+                || yieldSource.pendingUnwindOf(address(this)) != 0
+        ) {
             revert SourceNotEmpty();
         }
         yieldSource = IYieldSource(newSource);
-        migrationDrainRef = 0; // reset for the new source
+    }
+
+    /// @notice Repoint the swap venue used by `compound` to convert harvested carry
+    ///         into this vault's collateral.
+    /// @dev    REQ-SWAP (HydraAugustus) is an external dependency in a separate repo
+    ///         and is not deployed on Hydration mainnet, so the deploy scripts pass
+    ///         the governance precompile as a placeholder. Without this setter the
+    ///         only way to point at the real swapper — or to move off a broken or
+    ///         superseded one — would be a UUPS upgrade of every CollateralVault.
+    ///
+    ///         Safe to rotate at any time: the swapper never custodies vault funds
+    ///         across calls (`compound` approves, swaps, and re-checks the output
+    ///         against an oracle-fair floor within one `nonReentrant` call), so a
+    ///         repoint cannot strand anything. A hostile swapper can at worst fail
+    ///         the `out < floor` check and revert.
+    function setSwapper(address newSwapper) external onlyRole(ADMIN_ROLE) {
+        if (newSwapper == address(0)) revert ZeroAddress();
+        swapper = ISwapper(newSwapper);
     }
 
     /// @notice Max slippage (bps) tolerated by permissionless `compound` vs the
@@ -752,5 +824,5 @@ contract CollateralVault is
 
     function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
 
-    uint256[38] private __gap;
+    uint256[39] private __gap;
 }

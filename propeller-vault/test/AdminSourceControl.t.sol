@@ -12,15 +12,22 @@ import {MockYieldSource} from "./mocks/MockYieldSource.sol";
 import {DcaDispatch} from "../src/lib/DcaDispatch.sol";
 import {MockDispatch} from "./mocks/MockDispatch.sol";
 
-/// @notice Phase C: admin controls to wind down and swap the yield source.
-///   - `adminUnwind()` (ADMIN_ROLE): winds the vault's whole loop position out of
-///     the current source and routes the freed HOLLAR to repay Main debt — i.e.
-///     de-risks users to bare collateral (Option 1), reusing the existing
-///     deleverTarget → pokeSettle machinery. The human decides WHEN; the contract
-///     never auto-triggers this.
-///   - `setYieldSource(new)` (ADMIN_ROLE): repoints the vault to a new source,
-///     allowed only once the current source is fully drained (no shares, nothing
-///     freed-but-unpulled) so no funds are stranded.
+/// @notice Admin control over which yield source the vault routes into.
+///
+///   `setYieldSource(new)` (ADMIN_ROLE) repoints the vault, and is allowed ONLY
+///   when the current source owes this vault nothing at all: no live shares,
+///   nothing freed-but-unpulled, no in-flight unwind. That makes it a wiring
+///   lever (fresh vault, or after every holder has exited through the normal
+///   redemption queue) rather than an emergency one.
+///
+///   There is deliberately NO admin path that force-unwinds a live position out
+///   of its source. An earlier `adminUnwind()` did exactly that — pausing the
+///   vault, de-risking everyone to bare collateral, and relying on a relative
+///   drain tolerance to decide when the old source counted as empty. It was
+///   removed: it locked non-redeeming holders behind a guard that realized
+///   slippage could make unsatisfiable, and its tolerance scaled with position
+///   size rather than being true dust. To abandon a funded source now: `pause()`
+///   to stop new flow, let holders redeem, then repoint.
 contract AdminSourceControlTest is Test {
     MockERC20 eth;
     MockERC20 aEth;
@@ -90,7 +97,6 @@ contract AdminSourceControlTest is Test {
                             address(synth),
                             address(aEth),
                             address(hollarDebt),
-                            9800,
                             1_000e18,
                             address(this)
                         )
@@ -126,149 +132,78 @@ contract AdminSourceControlTest is Test {
         vault.pokeSettle();
     }
 
-    function test_adminUnwindDeRisksToBareCollateral() public {
-        _depositAndRamp();
-        assertGt(hollarDebt.balanceOf(address(vault)), 0, "has Main debt before");
-        assertGt(vault.syntheticSupplied(), 0, "has synth before");
 
-        vault.adminUnwind();
-        assertTrue(vault.paused(), "adminUnwind enters wind-down (paused): no re-lever, users locked");
-        _drain(); // pokeRepay + pokeSettle still run while paused
-
-        // Main debt repaid and synth burned to dust (the unwind spiral leaves the
-        // same benign sub-HOLLAR remainder the integration test allows for) — but
-        // the ETH collateral is untouched: users are left holding bare collateral,
-        // no leverage, no venue exposure. (Started at ~2250 HOLLAR of debt.)
-        assertLt(hollarDebt.balanceOf(address(vault)), 1e18, "Main debt repaid (2250 to <1)");
-        assertLt(vault.syntheticSupplied(), 1e18, "synth burned");
-        assertApproxEqRel(aEth.balanceOf(address(vault)), 1e18, 0.01e18, "collateral intact");
-        assertEq(loop.equityOf(address(vault)), 0, "no equity left in the source");
+    /// A fresh vault has never routed HOLLAR into a source, so repointing is
+    /// trivially safe — this is the wiring use of `setYieldSource`.
+    function test_setYieldSourceOnFreshVault() public {
+        MockYieldSource next = new MockYieldSource(address(hollar));
+        vault.setYieldSource(address(next));
+        assertEq(address(vault.yieldSource()), address(next), "source repointed");
     }
 
+    /// Once a deposit has funded the source, repointing must refuse: the old
+    /// source holds this vault's shares and abandoning it would strand them.
     function test_setYieldSourceRevertsWhileFunded() public {
         _depositAndRamp();
         MockYieldSource next = new MockYieldSource(address(hollar));
-        vm.expectRevert(); // SourceNotEmpty — funds still in the old source
+        vm.expectRevert(CollateralVault.SourceNotEmpty.selector);
         vault.setYieldSource(address(next));
     }
 
-    function test_setYieldSourceSucceedsOnceDrained() public {
-        _depositAndRamp();
-        vault.adminUnwind();
-        _drain();
-
-        MockYieldSource next = new MockYieldSource(address(hollar));
-        vault.setYieldSource(address(next)); // callable while paused (admin-only)
-        assertEq(address(vault.yieldSource()), address(next), "source repointed");
-
-        // governance lifts the wind-down, then new deposits route into the new source
-        vault.unpause();
-        eth.mint(address(this), 1e18);
-        eth.approve(address(vault), 1e18);
-        vault.deposit(1e18, address(this));
-        assertGt(next.sharesOf(address(vault)), 0, "new deposits fund the new source");
-    }
-
-    /// adminUnwind must FREEZE the vault (Option B: users locked until governance
-    /// plugs a new source) — otherwise a permissionless rebalance() would re-lever
-    /// the bare collateral straight back into the loop, undoing the de-risk.
-    function test_adminUnwindFreezesRebalance() public {
-        _depositAndRamp();
-        vault.adminUnwind();
-        _drain();
-        assertTrue(vault.paused(), "vault is paused after adminUnwind");
-        assertEq(loop.equityOf(address(vault)), 0, "bare collateral");
-
-        // a keeper cannot re-lever it back
-        vm.expectRevert();
-        vault.rebalance();
-        assertEq(loop.equityOf(address(vault)), 0, "still bare - rebalance did not re-lever");
-    }
-
-    /// adminUnwind with a queued redemption must NOT double-count it: the queued
-    /// redeemer settles through the queue (their debt is excluded from
-    /// deleverTarget) and the non-queued remainder de-risks. Both complete.
-    function test_adminUnwindWithQueuedRedemptionSettlesBoth() public {
-        _depositAndRamp();
-        uint256 shares = vault.balanceOf(address(this));
-        uint256 reqId = vault.requestRedeem(shares / 2, address(this)); // queue half
-        assertGt(vault.queueTail(), vault.queueHead(), "a redemption is queued");
-
-        vault.adminUnwind(); // targets only the non-queued debt
-        _drain();
-
-        // the queued redeemer can claim real collateral (not orphaned) ...
-        uint256 got = vault.claim(reqId, address(this));
-        assertGt(got, 0, "queued redeemer settled, not orphaned");
-        // ... and the whole position is de-risked to bare collateral
-        assertLt(hollarDebt.balanceOf(address(vault)), 1e18, "all Main debt repaid");
-    }
-
-    /// The DoS the empty-queue guard would have caused: a redemption whose loop
-    /// slice frees LESS than its snapshotted debt (negative carry) never fully
-    /// settles, so queueHead never advances. adminUnwind must still run — it must
-    /// not be gated on an empty queue.
-    function test_adminUnwindNotBlockedByUnderSettledQueue() public {
-        _depositAndRamp();
-        // PRIME collapses AFTER deposit: the loop equity backing a redemption now
-        // frees less HOLLAR than the snapshotted Main debt → the request can never
-        // fully settle → queueHead sticks.
-        pool.setPrice(address(prime), 0.5e18);
-        uint256 shares = vault.balanceOf(address(this));
-        vault.requestRedeem(shares / 2, address(this));
-        for (uint256 i = 0; i < 400; i++) {
-            if (loop.unwindTargetEquity() == 0) break;
-            loop.pokeRepay();
-        }
-        vault.pokeSettle();
-        assertGt(vault.queueTail(), vault.queueHead(), "redemption stuck (under-settled)");
-
-        // must NOT revert despite the stuck queue
-        vault.adminUnwind();
-        assertTrue(vault.paused(), "adminUnwind ran despite the stuck queue");
-    }
-
-    /// The full Option B lifecycle: wind PRIME down → swap to a new source →
-    /// governance re-levers the bare collateral into it via rebalance.
-    function test_windDownThenRestoreIntoNewSource() public {
-        _depositAndRamp();
-        vault.adminUnwind();
-        _drain();
-
-        MockYieldSource next = new MockYieldSource(address(hollar));
-        vault.setYieldSource(address(next));
-        vault.unpause();
-
-        // re-lever the bare ETH into the NEW source
-        vault.rebalance();
-        assertGt(next.sharesOf(address(vault)), 0, "bare collateral re-levered into the new source");
-        assertGt(hollarDebt.balanceOf(address(vault)), 0, "position re-established");
-    }
-
-    /// After adminUnwind requests the unwind but BEFORE the spiral has freed and
-    /// the vault has pulled it, the old source still owes the vault its in-flight
-    /// equity. Swapping now would strand that HOLLAR in the abandoned source, so
-    /// setYieldSource must refuse until the drain is actually complete.
+    /// With an unwind in flight the old source still owes the vault equity it has
+    /// not yet freed. Swapping now would strand that HOLLAR, so the guard must
+    /// refuse until `pendingUnwindOf` is exactly zero.
     function test_setYieldSourceGuardsInFlightUnwind() public {
         _depositAndRamp();
-        vault.adminUnwind(); // requests unwind of everything — but no pokeRepay/pokeSettle yet
-        assertGt(loop.unwindRequested(address(vault)), 0, "source still owes the vault in-flight");
+        vault.requestRedeem(vault.balanceOf(address(this)), address(this));
+        assertGt(loop.pendingUnwindOf(address(vault)), 0, "source still owes the vault in-flight");
 
         MockYieldSource next = new MockYieldSource(address(hollar));
-        vm.expectRevert(); // SourceNotEmpty — must not swap while the old source still owes us
+        vm.expectRevert(CollateralVault.SourceNotEmpty.selector);
+        vault.setYieldSource(address(next));
+    }
+
+    /// A funded vault can NEVER be repointed, even after every holder has exited.
+    /// `DEAD_SHARES` stay locked in `totalSupply`, so each `requestRedeem` unwinds
+    /// only `loopShares · shares / supply` and always leaves the dead shares'
+    /// proportional slice behind — `loopShares` never returns to exactly 0.
+    ///
+    /// This is the documented boundary of the lever, asserted so it cannot drift
+    /// into looking like a migration path: to change a live vault's yield source,
+    /// deploy a new vault and let holders migrate through the redemption queue.
+    function test_setYieldSourceUnreachableOnceFunded() public {
+        _depositAndRamp();
+        uint256 id = vault.requestRedeem(vault.balanceOf(address(this)), address(this));
+        for (uint256 i = 0; i < 2_000; i++) {
+            if (loop.unwindTargetEquity() == 0) break;
+            loop.pokeRepay();
+            vault.pokeSettle();
+        }
+        vault.pokeSettle();
+        vault.claim(id, address(this));
+
+        assertEq(vault.balanceOf(address(this)), 0, "holder fully exited");
+        assertEq(loop.pendingUnwindOf(address(vault)), 0, "source owes nothing in flight");
+        assertGt(vault.loopShares(), 0, "but the DEAD_SHARES slice remains, forever");
+
+        MockYieldSource next = new MockYieldSource(address(hollar));
+        vm.expectRevert(CollateralVault.SourceNotEmpty.selector);
         vault.setYieldSource(address(next));
     }
 
     function test_onlyAdminControls() public {
-        _depositAndRamp();
         MockYieldSource next = new MockYieldSource(address(hollar));
 
         vm.prank(stranger);
         vm.expectRevert();
-        vault.adminUnwind();
+        vault.setYieldSource(address(next));
 
         vm.prank(stranger);
         vm.expectRevert();
-        vault.setYieldSource(address(next));
+        vault.setTvlCap(1);
+
+        vm.prank(stranger);
+        vm.expectRevert();
+        vault.setCompoundSlippageBps(100);
     }
 }

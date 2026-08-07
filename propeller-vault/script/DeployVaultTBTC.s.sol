@@ -17,7 +17,7 @@ import {CollateralVault} from "../src/CollateralVault.sol";
 ///         deployment — so lark-2 needs no env; lark-4 supplies a `.env`.
 ///         Required: PRIVATE_KEY. Optional overrides (else lark-2 default): IMPL,
 ///         POOL, SUBLOOP, SYNTH, HOLLAR, HOLLAR_VDEBT, SWAPPER, GOV, TBTC, ATBTC,
-///         SYNTH_LT_BPS, TVL_CAP.
+///         TVL_CAP. (The synthetic's LT is read live off the Aave reserve.)
 ///
 ///         forge script script/DeployVaultTBTC.s.sol:DeployVaultTBTC \
 ///           --rpc-url $RPC --broadcast \
@@ -48,7 +48,6 @@ contract DeployVaultTBTC is Script {
         address gov = vm.envOr("GOV", D_GOV);
         address tbtc = vm.envOr("TBTC", D_TBTC);
         address aTbtc = vm.envOr("ATBTC", D_ATBTC);
-        uint16 synthLtBps = uint16(vm.envOr("SYNTH_LT_BPS", uint256(9800)));
         uint256 tvlCap = vm.envOr("TVL_CAP", uint256(50e18)); // aligns with tBTC supply cap
 
         bytes memory init = abi.encodeCall(
@@ -64,7 +63,6 @@ contract DeployVaultTBTC is Script {
                 synth,
                 aTbtc,
                 hollarVDebt,
-                synthLtBps,
                 tvlCap,
                 gov
             )

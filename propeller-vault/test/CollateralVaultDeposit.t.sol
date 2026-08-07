@@ -101,7 +101,6 @@ contract CollateralVaultDepositTest is Test {
                             address(synth),
                             address(aEth),
                             address(hollarDebt),
-                            SYNTH_LT,
                             1_000e18,
                             address(this)
                         )

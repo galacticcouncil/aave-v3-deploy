@@ -27,6 +27,16 @@ contract MockPool is IAavePool {
 
     mapping(address => Reserve) public reserves;
     address[] public assets;
+    /// @notice asset => reserve is in isolation mode. Aave's
+    ///         `validateAutomaticUseAsCollateral` refuses to auto-enable a
+    ///         supplied asset as collateral when isolation mode is involved, so
+    ///         an isolated reserve's aToken stays OUT of totalCollateralBase
+    ///         until someone calls `setUserUseReserveAsCollateral` explicitly.
+    ///         PRIME is listed in isolation mode on the live market — this is
+    ///         exactly why `SubLoop.pokeBorrow` opens with an explicit enable,
+    ///         and why an un-ramped loop reports zero equity on-chain but not in
+    ///         a mock that auto-enables.
+    mapping(address => bool) public isolationMode;
     /// @notice user => asset => counts as collateral. Models Aave's
     ///         use-as-collateral flag: auto-set only on the FIRST supply and
     ///         only when the reserve LTV > 0 (ValidationLogic LTV==0 gate) —
@@ -56,6 +66,12 @@ contract MockPool is IAavePool {
         reserves[asset].priceWad = priceWad;
     }
 
+    /// @notice Test helper: list a reserve in isolation mode (suppresses the
+    ///         auto-enable-as-collateral on first supply, matching Aave).
+    function setIsolationMode(address asset, bool on) external {
+        isolationMode[asset] = on;
+    }
+
     /// @notice Test helper: governance changing a reserve's max LTV (does NOT
     ///         retro-enable existing suppliers — matches Aave).
     function setLtv(address asset, uint16 ltvBps) external {
@@ -82,9 +98,13 @@ contract MockPool is IAavePool {
         Reserve storage r = reserves[asset];
         bool firstSupply = r.aToken.balanceOf(onBehalfOf) == 0;
         r.aToken.mint(onBehalfOf, amount);
-        // Aave SupplyLogic.executeSupply: auto-enable only on first supply,
-        // and validateAutomaticUseAsCollateral rejects LTV-0 reserves.
-        if (firstSupply && r.ltvBps > 0) usingAsCollateral[onBehalfOf][asset] = true;
+        // Aave SupplyLogic.executeSupply: auto-enable only on first supply, and
+        // validateAutomaticUseAsCollateral rejects LTV-0 reserves AND anything
+        // touching isolation mode. An isolated reserve therefore needs an
+        // explicit setUserUseReserveAsCollateral to ever count.
+        if (firstSupply && r.ltvBps > 0 && !isolationMode[asset]) {
+            usingAsCollateral[onBehalfOf][asset] = true;
+        }
     }
 
     function withdraw(address asset, uint256 amount, address to) external override returns (uint256) {

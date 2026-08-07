@@ -43,6 +43,67 @@ contract DcaDispatchTest is Test {
         assertEq(got, REFERENCE, "SCALE encoding must match runtime metadata");
     }
 
+    // ── pallet_route::sell — the LIVE path ───────────────────────────────────
+    //
+    // `encodeScheduleSell` above pins the retired pallet-DCA path (pallet 66),
+    // which has had no caller in `src/` since c0f9404 dropped it for router.sell.
+    // These two pin the path SubLoop actually uses: `_fundDeploy` (deploy leg) and
+    // `pokeRepay` (unwind leg) both dispatch `encodeRouterSell` at pallet 67.
+    //
+    // References generated against LIVE runtime metadata (hydradx v430, lark-4):
+    //   api.tx.router.sell(assetIn, assetOut, amountIn, minAmountOut, route)
+    //     .method.toHex()
+    // Router pallet index 67 (0x43), call 0 — matches DcaDispatch.ROUTER_PALLET.
+    // Re-run the generator after any runtime upgrade: a reordered pallet set
+    // silently changes these bytes, and the constants are baked into SubLoop's
+    // bytecode so a mismatch can only be fixed by a UUPS upgrade.
+
+    /// aPRIME(1043) →[Aave]→ PRIME(43) →[Stableswap 143]→ HOLLAR(222)
+    bytes constant UNWIND_REFERENCE =
+        hex"430013040000de00000000e1f5050000000000000000000000000000acbb79a7e65d05000000000000000804130400002b000000028f0000002b000000de000000";
+
+    /// HOLLAR(222) →[Stableswap 143]→ PRIME(43) →[Aave]→ aPRIME(1043)
+    bytes constant DEPLOY_REFERENCE =
+        hex"4300de00000013040000000010632d5ec76b0500000000000000c09ee60500000000000000000000000008028f000000de0000002b000000042b00000013040000";
+
+    function test_routerSellUnwindLegMatchesRuntimeMetadata() public pure {
+        DcaDispatch.Hop[] memory route = new DcaDispatch.Hop[](2);
+        route[0] = DcaDispatch.Hop({poolTag: 4, hasArg: false, poolArg: 0, assetIn: 1043, assetOut: 43});
+        route[1] = DcaDispatch.Hop({poolTag: 2, hasArg: true, poolArg: 143, assetIn: 43, assetOut: 222});
+
+        bytes memory got = DcaDispatch.encodeRouterSell(
+            1043, // assetIn  aPRIME
+            222, // assetOut HOLLAR
+            100_000000, // 100 aPRIME (6dp)
+            99e18, // 99 HOLLAR (18dp)
+            route
+        );
+        assertEq(got, UNWIND_REFERENCE, "unwind leg must match pallet_route::sell metadata");
+    }
+
+    function test_routerSellDeployLegMatchesRuntimeMetadata() public pure {
+        DcaDispatch.Hop[] memory route = new DcaDispatch.Hop[](2);
+        route[0] = DcaDispatch.Hop({poolTag: 2, hasArg: true, poolArg: 143, assetIn: 222, assetOut: 43});
+        route[1] = DcaDispatch.Hop({poolTag: 4, hasArg: false, poolArg: 0, assetIn: 43, assetOut: 1043});
+
+        bytes memory got = DcaDispatch.encodeRouterSell(
+            222, // assetIn  HOLLAR
+            1043, // assetOut aPRIME
+            100e18, // 100 HOLLAR (18dp)
+            99_000000, // 99 aPRIME (6dp)
+            route
+        );
+        assertEq(got, DEPLOY_REFERENCE, "deploy leg must match pallet_route::sell metadata");
+    }
+
+    /// The pallet index is the single byte that a runtime reorder would change.
+    function test_routerPalletIndexIsPinned() public pure {
+        assertEq(uint8(UNWIND_REFERENCE[0]), 67, "Router pallet index");
+        assertEq(uint8(UNWIND_REFERENCE[1]), 0, "sell call index");
+        assertEq(uint8(DEPLOY_REFERENCE[0]), 67, "Router pallet index");
+        assertEq(uint8(DEPLOY_REFERENCE[1]), 0, "sell call index");
+    }
+
     function test_ownerDerivation() public pure {
         // [b"ETH\0"][20-byte addr][8x00] — pallet-evm-accounts truncated_account_id
         assertEq(

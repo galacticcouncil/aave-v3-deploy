@@ -92,7 +92,6 @@ contract NegativeCarryViewTest is Test {
                             address(synth),
                             address(aEth),
                             address(hollarDebt),
-                            9800,
                             1_000e18,
                             address(this)
                         )

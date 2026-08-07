@@ -196,10 +196,16 @@ your ETH's borrowing power ─► HOLLAR ─────┘
 
 ## Status: core flows implemented, tested, and formally specified
 
-`forge test`: **36 tests passing across 13 suites** (incl. a 6-property fuzzed invariant
-suite over `Handler.sol`), all green against Aave-faithful mocks (`MockPool` models 8dp USD
-base + bps thresholds + WAD HF; `MockDispatch` etches the real SCALE-encoded router-sell
-precompile so route semantics match mainnet, not a stub).
+`forge test`: **72 tests across 22 suites** (71 pass, 1 skip — incl. a 6-property fuzzed
+invariant suite over `Handler.sol`), all green against Aave-faithful mocks (`MockPool` models
+8dp USD base + bps thresholds + WAD HF + isolation mode; `MockDispatch` etches the real
+SCALE-encoded router-sell precompile so route semantics match mainnet, not a stub — and the
+live `pallet_route::sell` encoding is pinned byte-for-byte against runtime metadata).
+
+**Mainnet readiness** — see `AUDIT.md` (living finding ledger), `DEPLOYMENT.md` (runbook),
+`deployments/` (address registry), `x-ray/` (pre-audit report) and
+`../PROPELLER-MAINNET-HANDOVER.md` (what has already gone wrong). The two blockers are an
+independent human audit and a fork-test suite; everything else is tracked in the ledger.
 
 - **deposit** → Main leg (supply collateral → borrow HOLLAR → mint+supply synthetic → seed
   the shared loop)
@@ -234,14 +240,26 @@ precompile so route semantics match mainnet, not a stub).
   `aave-v3-deploy/tasks/proposals/propeller.ts` batch (mirrors `prime.ts` / `hdcl.ts`).
 
 ### Open — not yet shipped
-- **Fresh lark-2 redeploy** — decided 2026-06-10 (fresh deploy over upgrading the live
-  proxies); deploy + wiring scripts exist (`scripts/propeller-*-lark.mjs`) but the redeploy
-  itself hasn't run yet.
+- **Independent human audit** — the in-repo review is AI-assisted and says so. Launch blocker.
+- **Fork tests** — zero. Aave, the AaveOracle, the 0x0401 router precompile and HydraAugustus
+  are all exercised only against mocks. Launch blocker.
 - **REQ-DISCOUNT (redemption discount mechanism)** — unimplemented. The real net carry from
   the loop alone is ~8.6% (`maxLtv · loopLeverage · spread`); any higher headline number
   assumes a redemption-discount mechanism that doesn't exist in the code yet.
 - **PRIME mirror oracle** still owned by the looper hot key (fine for testnet; needs
   governance ownership + an updater role before mainnet).
+
+### Deliberately not built
+- **No admin emergency wind-down.** An earlier `adminUnwind()` force-unwound a live position
+  out of its yield source, paused the vault, and de-risked everyone to bare collateral. It was
+  removed: it locked non-redeeming holders behind a drain guard that realized slippage could
+  make unsatisfiable, and that guard's tolerance scaled with position size rather than being
+  true dust. To stop flow into a source now: `pause()` (guardian), then let holders redeem
+  through the normal queue.
+- **No in-place yield-source migration.** `setYieldSource` is a deploy-time wiring lever only —
+  `DEAD_SHARES` keep `loopShares` permanently non-zero once a vault is funded, so the guard is
+  unsatisfiable afterwards by construction. Changing a live vault's source means deploying a
+  new vault.
 
 Full backlog, dismissed false positives, and per-bug detail: `FUTURE_IMPROVEMENTS.md`.
 

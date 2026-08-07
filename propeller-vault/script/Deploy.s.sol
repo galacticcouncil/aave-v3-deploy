@@ -23,7 +23,6 @@ contract Deploy is Script {
 
     uint256 constant TARGET_HF = 1.05e18;
     uint256 constant DELEVER_TRIGGER = 1.10e18;
-    uint16 constant SYNTH_LT_BPS = 9800; // synthetic reserve liquidation threshold
     uint256 constant ETH_TVL_CAP = 1_000e18;
 
     function run() external {
@@ -70,7 +69,6 @@ contract Deploy is Script {
                 address(synth),
                 ethAToken, // aETH, from getReserveData
                 hollarDebtToken, // HOLLAR varDebt, from getReserveData
-                SYNTH_LT_BPS,
                 ETH_TVL_CAP,
                 admin
             )

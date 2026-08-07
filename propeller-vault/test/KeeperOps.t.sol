@@ -41,7 +41,7 @@ contract KeeperOpsTest is Test {
         loop = SubLoop(address(new ERC1967Proxy(address(new SubLoop()), abi.encodeCall(SubLoop.initialize,
             (address(pool),address(hollar),address(prime),address(aPrime),1.05e18,1.10e18,address(this))))));
         vault = CollateralVault(address(new ERC1967Proxy(address(new CollateralVault()), abi.encodeCall(CollateralVault.initialize,
-            ("Propeller ETH","pETH",address(eth),address(pool),address(loop),address(0),address(hollar),address(synth),address(aEth),address(hollarDebt),SYNTH_LT,1_000e18,address(this))))));
+            ("Propeller ETH","pETH",address(eth),address(pool),address(loop),address(0),address(hollar),address(synth),address(aEth),address(hollarDebt),1_000e18,address(this))))));
 
         vm.etch(DcaDispatch.DISPATCH, address(new MockDispatch()).code);
         MockDispatch(payable(DcaDispatch.DISPATCH)).configure(
