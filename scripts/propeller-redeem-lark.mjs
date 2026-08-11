@@ -32,7 +32,12 @@ const KEEPER = ethers.utils.id("KEEPER_ROLE");
 const vI = new ethers.utils.Interface([
   "function requestRedeem(uint256,address) returns (uint256)", "function pokeSettle()",
   "function claim(uint256,address) returns (uint256)", "function queueTail() view returns (uint256)",
-  "function redemptions(uint256) view returns (address owner,uint256 shares,uint256 collateralOwed,uint256 debtShare,uint256 synthShare,uint256 repaid,uint256 collateralSettled,bool active)",
+  // MUST match Redemption in CollateralVault.sol field-for-field. `sharesBurned`
+  // was added between collateralSettled and active; omitting it silently decoded
+  // sharesBurned AS `active` — which reads false before the first partial claim,
+  // so the spiral broke out on iteration 0 and the script reported a completed
+  // redemption after settling ~20% of it.
+  "function redemptions(uint256) view returns (address owner,uint256 shares,uint256 collateralOwed,uint256 debtShare,uint256 synthShare,uint256 repaid,uint256 collateralSettled,uint256 sharesBurned,bool active)",
   "function balanceOf(address) view returns (uint256)", "function grantRole(bytes32,address)", "function hasRole(bytes32,address) view returns (bool)",
 ]);
 const slI = new ethers.utils.Interface(["function pokeRepay()", "function healthFactor() view returns (uint256)", "function totalEquity() view returns (uint256)"]);
@@ -61,9 +66,12 @@ async function main() {
   const ethFree = async () => (await api.query.tokens.accounts(ALICE_SS58, ETH_ASSET)).free.toBigInt();
   const pethBal = async () => num(await ethCall(VAULT, vI.encodeFunctionData("balanceOf", [ALICE_EVM])));
   const hasVaultKeeper = async () => num(await ethCall(VAULT, vI.encodeFunctionData("hasRole", [KEEPER, ALICE_EVM]))) === 1n;
-  const red = async (id) => { const d = vI.decodeFunctionResult("redemptions", await ethCall(VAULT, vI.encodeFunctionData("redemptions", [id]))); return { owner: d.owner, shares: BigInt(d.shares.toString()), collateralOwed: BigInt(d.collateralOwed.toString()), debtShare: BigInt(d.debtShare.toString()), collateralSettled: BigInt(d.collateralSettled.toString()), active: d.active }; };
+  const red = async (id) => { const d = vI.decodeFunctionResult("redemptions", await ethCall(VAULT, vI.encodeFunctionData("redemptions", [id]))); return { owner: d.owner, shares: BigInt(d.shares.toString()), collateralOwed: BigInt(d.collateralOwed.toString()), debtShare: BigInt(d.debtShare.toString()), repaid: BigInt(d.repaid.toString()), collateralSettled: BigInt(d.collateralSettled.toString()), sharesBurned: BigInt(d.sharesBurned.toString()), active: d.active }; };
+  // BigInt `/` truncates, so `x / 10n**18n` prints 0.5 ETH as "0" and a 0.0196
+  // ETH return as "+0". Format properly or every readout lies about small amounts.
+  const fmt = (v, dec = 18, places = 6) => (Number(v) / 10 ** dec).toFixed(places);
 
-  console.log(`pETH balance: ${(await pethBal()) / 10n ** 18n} | redeeming ${REDEEM / 10n ** 18n} | ETH free: ${(await ethFree()) / 10n ** 18n} | vaultKeeper(alice): ${await hasVaultKeeper()}`);
+  console.log(`pETH balance: ${fmt(await pethBal())} | redeeming ${fmt(REDEEM)} | ETH free: ${fmt(await ethFree())} | vaultKeeper(alice): ${await hasVaultKeeper()}`);
   if (!LIVE) { console.log("DRY-RUN"); await api.disconnect(); return; }
 
   // 1. grant KEEPER on the vault to Alice (Root referendum) if missing
@@ -97,7 +105,7 @@ async function main() {
     console.log(`\nresuming existing requestId ${requestId}`);
   }
   let r = await red(requestId);
-  console.log(`  queued: shares=${r.shares / 10n ** 18n} collateralOwed=${r.collateralOwed / 10n ** 18n} debtShare=${r.debtShare} active=${r.active}`);
+  console.log(`  queued: shares=${fmt(r.shares)} collateralOwed=${fmt(r.collateralOwed)} debtShare=${fmt(r.debtShare)} active=${r.active}`);
 
   // 3. deleveraging spiral: advance blocks for the unwind DCA, then pokeRepay + pokeSettle
   for (let i = 0; i < 12; i++) {
@@ -107,20 +115,20 @@ async function main() {
     const ps = await sign(evmCall(VAULT, vI.encodeFunctionData("pokeSettle", []), "12000000"), alice, api, `pokeSettle${i}`);
     r = await red(requestId);
     const hf = num(await ethCall(SUBLOOP, slI.encodeFunctionData("healthFactor", [])));
-    console.log(`  spiral${i}: settled=${r.collateralSettled / 10n ** 18n} ETH, active=${r.active}, subloopHF=${hf === 0n ? "·" : (Number(hf) / 1e18).toFixed(4)}${pr.failed ? " repayFAIL" : ""}${ps.failed ? " settleFAIL" : ""}`);
-    if (!r.active && r.collateralSettled > 0n) break; // fully settled, claimable
-    if (r.collateralSettled > 0n && i >= 2) break; // enough settled to demo claim
+    console.log(`  spiral${i}: settled=${fmt(r.collateralSettled)} ETH, repaid=${fmt(r.repaid)}/${fmt(r.debtShare)}, active=${r.active}, subloopHF=${hf === 0n ? "·" : (Number(hf) / 1e18).toFixed(4)}${pr.failed ? " repayFAIL" : ""}${ps.failed ? " settleFAIL" : ""}`);
+    if (!r.active) break; // request closed out — nothing left to settle
+    if (r.repaid >= r.debtShare) break; // debt fully repaid; remaining collateral is claimable
   }
 
   // 4. claim
   const ethBefore = await ethFree();
   r = await red(requestId);
   if (r.collateralSettled === 0n) { console.log("\nnothing settled yet — unwind still in progress; re-run to continue the spiral"); await api.disconnect(); return; }
-  console.log(`\nclaim(requestId ${requestId}) — settled ${r.collateralSettled / 10n ** 18n} ETH`);
+  console.log(`\nclaim(requestId ${requestId}) — settled ${fmt(r.collateralSettled)} ETH`);
   const cl = await sign(evmCall(VAULT, vI.encodeFunctionData("claim", [requestId.toString(), ALICE_EVM]), "4000000"), alice, api, "claim");
   if (cl.failed) { console.log("  claim FAILED:", cl.failed); await api.disconnect(); return; }
   const ethAfter = await ethFree();
-  console.log(`  ETH free: ${ethBefore / 10n ** 18n} → ${ethAfter / 10n ** 18n} (+${(ethAfter - ethBefore) / 10n ** 18n} ETH returned)`);
+  console.log(`  ETH free: ${fmt(ethBefore)} → ${fmt(ethAfter)} (+${fmt(ethAfter - ethBefore)} ETH returned)`);
   console.log("REDEEM→CLAIM ✓");
   await api.disconnect();
 }

@@ -41,6 +41,7 @@ const GHO_ORACLE_ADDRESS = "0x6096C9D71F7c06024578a62F4B608a1Bb06834F8";
 //     it. MUST be registered BEFORE initReserves (HDCL lesson: the precompile
 //     reads decimals from the registry, so initReserves reverts otherwise).
 const SYNTH_ASSET_ID = Number(process.env.PROPELLER_SYNTH_ASSET_ID || 5550);
+const SYNTH_ASSET_NAME = process.env.PROPELLER_SYNTH_NAME || "Propeller Synthetic HOLLAR";
 const SYNTH_LT = "9800"; // 98% — read live by the vault
 const SYNTH_LTV = "100"; // 1% — must be > 0 (see above), still ~zero borrow power
 const SYNTH_BONUS = "10100"; // 1%
@@ -66,6 +67,46 @@ const UNWIND_TRANCHE = process.env.PROPELLER_UNWIND_TRANCHE || "5000";
 // Max slippage `compound` tolerates vs the oracle-fair output. Default 0 means
 // the floor equals the exact oracle price, so EVERY compound reverts until set.
 const COMPOUND_SLIPPAGE_BPS = Number(process.env.PROPELLER_COMPOUND_SLIPPAGE_BPS || 100);
+
+// ── Router routes for the compound leg (PRIME → each collateral) ───────────
+// `Harvester.harvest` calls `vault.compound(prime, cut, minOut, "")` with an
+// EMPTY route, so HydraAugustus builds `router.sell(…, [])` and the SUBSTRATE
+// router resolves the path from its own `router.routes` storage. When no route
+// is stored it falls back to Omnipool — and PRIME (43) is NOT an Omnipool asset,
+// it only lives in stableswap pool 143. So without these, every harvest reverts
+// and loop carry can never be converted into collateral.
+//
+// Each hop below is the exact reverse of a route already live on-chain
+// (`34 → 222` and `110 → 1000765`), so every leg is known-executable:
+//   PRIME →[ss143]→ HOLLAR →[omnipool]→ 420 →[aave]→ 4200 →[ss4200]→ aETH →[aave]→ ETH
+//   PRIME →[ss143]→ HOLLAR →[omnipool]→ tBTC
+// Pool 4200's SHARE asset is 4200 and its underlyings are [1007, 1000809] — the
+// `4200 → 1007` hop is a share→underlying withdrawal, not a same-pool swap.
+//
+// Override wholesale with PROPELLER_COMPOUND_ROUTES as JSON:
+//   [{"assetOut":34,"route":[{"pool":{"Stableswap":143},"assetIn":43,"assetOut":222}, …]}]
+const COMPOUND_ROUTES: { assetOut: number; route: any[] }[] = process.env
+  .PROPELLER_COMPOUND_ROUTES
+  ? JSON.parse(process.env.PROPELLER_COMPOUND_ROUTES)
+  : [
+      {
+        assetOut: 34, // ETH
+        route: [
+          { pool: { Stableswap: ROUTE_POOL }, assetIn: ROUTE_PRIME, assetOut: ROUTE_HOLLAR },
+          { pool: { Omnipool: null }, assetIn: ROUTE_HOLLAR, assetOut: 420 },
+          { pool: { Aave: null }, assetIn: 420, assetOut: 4200 },
+          { pool: { Stableswap: 4200 }, assetIn: 4200, assetOut: 1007 },
+          { pool: { Aave: null }, assetIn: 1007, assetOut: 34 },
+        ],
+      },
+      {
+        assetOut: 1000765, // tBTC
+        route: [
+          { pool: { Stableswap: ROUTE_POOL }, assetIn: ROUTE_PRIME, assetOut: ROUTE_HOLLAR },
+          { pool: { Omnipool: null }, assetIn: ROUTE_HOLLAR, assetOut: 1000765 },
+        ],
+      },
+    ];
 
 const ROLE = {
   MINTER: "MINTER_ROLE",
@@ -143,6 +184,32 @@ task(
     addTransaction({ to, data, gasLimit });
 
   // ═════════════════════════════════════════════════════════════════════════
+  // BATCH 0 — router routes for the compound leg (PRIME → each collateral)
+  // ═════════════════════════════════════════════════════════════════════════
+  // Pure substrate (no aave-manager wrapper) — forceInsertRoute is a Root call.
+  // Independent of the contracts, so this can enact before they even exist.
+  const batch0: any[] = [];
+  for (const { assetOut, route } of COMPOUND_ROUTES) {
+    const assetPair = { assetIn: ROUTE_PRIME, assetOut };
+    // The router CANONICALISES the pair: it stores under (min, max) and reverses
+    // the hops on the way in, then un-reverses on lookup. So a route inserted as
+    // 43 → 34 lives under key 34 → 43. Querying the un-ordered direction always
+    // returns None (verified on lark-4: all 265 stored routes have in < out), and
+    // checking it would make this "skip" branch dead for half the pairs.
+    const existing: any = await api.query.router.routes(
+      ROUTE_PRIME < assetOut ? assetPair : { assetIn: assetOut, assetOut: ROUTE_PRIME }
+    );
+    if (existing?.isSome) {
+      console.log(`[0] route ${ROUTE_PRIME} ↔ ${assetOut} already stored — skipping`);
+      continue;
+    }
+    console.log(
+      `[0] router.forceInsertRoute(${ROUTE_PRIME} → ${assetOut}, ${route.length} hops)`
+    );
+    batch0.push(hydrationTx.router.forceInsertRoute(assetPair, route));
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
   // BATCH 1 — list the synthetic reserve
   // ═════════════════════════════════════════════════════════════════════════
   // Kept separate from the rest: initReserves alone is ~58e9 refTime, and one
@@ -156,7 +223,12 @@ task(
       hydrationTx.assetRegistry.register(
         ...Object.values({
           id: SYNTH_ASSET_ID,
-          name: "Propeller Synthetic HOLLAR",
+          // `assetRegistry.assetIds` is a unique index keyed on NAME (symbol is
+          // NOT indexed), so re-deploying onto a chain that still carries an
+          // earlier Propeller synth fails the whole batch with
+          // assetRegistry.AssetAlreadyRegistered even when the asset ID is free.
+          // Mainnet keeps the canonical name; a lark redeploy overrides it.
+          name: SYNTH_ASSET_NAME,
           assetType: "Erc20",
           existentialDeposit: "10000000000000000", // 0.01
           symbol: "psHOLLAR",
@@ -358,6 +430,7 @@ task(
     decoder.printTree(decoder.transformCall(batchAll.toHuman()));
   };
 
+  await emit("BATCH 0 — compound routes", batch0);
   await emit("BATCH 1 — list-reserve", batch1);
   await emit("BATCH 2 — configure", batch2);
   await emit("BATCH 3 — wire", batch3);
@@ -366,6 +439,11 @@ task(
 Submit each batch as its own Root referendum, IN ORDER. They are split because
 initReserves alone is ~58e9 refTime and a combined batchAll trips
 scheduler.PermanentlyOverweight (observed on lark-2).
+
+BATCH 0 stores the PRIME → collateral router routes. Without them the substrate
+router falls back to Omnipool, which cannot service PRIME, and EVERY harvest
+reverts — Harvester.harvest calls compound(…, "") with an empty route, so the
+path is resolved on-chain, not by the caller.
 
 After enactment, run scripts/propeller/verify-readiness.ts before announcing —
 dispatcher.dispatchAsAaveManager reports EVM reverts as ExecutedFailed EVENTS,

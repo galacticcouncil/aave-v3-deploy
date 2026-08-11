@@ -90,7 +90,7 @@ export class PropellerLooper {
   private walletClient: WalletClient;
   private account: ReturnType<typeof privateKeyToAccount>;
   private subLoop: Address;
-  private vault: Address;
+  private vaults: Address[];
   private harvester: Address;
   private pool: Address;
   private cycle = 0;
@@ -98,7 +98,7 @@ export class PropellerLooper {
   constructor() {
     this.account = privateKeyToAccount(CONFIG.PRIVATE_KEY);
     this.subLoop = CONFIG.SUBLOOP_ADDRESS;
-    this.vault = CONFIG.VAULT_ADDRESS;
+    this.vaults = CONFIG.VAULT_ADDRESSES;
     this.harvester = CONFIG.HARVESTER_ADDRESS;
     this.pool = CONFIG.POOL_ADDRESS;
 
@@ -139,22 +139,32 @@ export class PropellerLooper {
     }
     void trigger; // reserved for future deLever gating once implemented
 
-    // ── fast: service withdrawals (only when the redeem queue is non-empty) ──
-    if (this.vault) {
+    // ── fast: service withdrawals (only when a redeem queue is non-empty) ──
+    // pokeRepay is on the SHARED SubLoop, so it fires at most once per cycle no
+    // matter how many vaults have pending requests; pokeSettle is per-vault.
+    const pending: Address[] = [];
+    for (const vault of this.vaults) {
       const [head, tail] = (await Promise.all([
-        this.read(VAULT_ABI, this.vault, 'queueHead'),
-        this.read(VAULT_ABI, this.vault, 'queueTail'),
+        this.read(VAULT_ABI, vault, 'queueHead'),
+        this.read(VAULT_ABI, vault, 'queueTail'),
       ])) as [bigint, bigint];
-      if (tail > head) {
-        await this.poke(SUBLOOP_ABI, this.subLoop, 'pokeRepay', 'pokeRepay (free unwind equity)');
-        await this.poke(VAULT_ABI, this.vault, 'pokeSettle', 'pokeSettle (settle redeem queue)');
+      if (tail > head) pending.push(vault);
+    }
+    if (pending.length) {
+      await this.poke(SUBLOOP_ABI, this.subLoop, 'pokeRepay', 'pokeRepay (free unwind equity)');
+      for (const vault of pending) {
+        await this.poke(VAULT_ABI, vault, 'pokeSettle', `pokeSettle ${short(vault)}`);
       }
     }
 
     // ── slow: peg / rebalance / harvest (self-gating no-ops) ────────────
-    if (this.vault && this.cycle % CONFIG.SLOW_EVERY === 0) {
-      await this.poke(VAULT_ABI, this.vault, 'maintainPeg', 'maintainPeg');
-      await this.poke(VAULT_ABI, this.vault, 'rebalance', 'rebalance');
+    if (this.cycle % CONFIG.SLOW_EVERY === 0) {
+      for (const vault of this.vaults) {
+        await this.poke(VAULT_ABI, vault, 'maintainPeg', `maintainPeg ${short(vault)}`);
+        await this.poke(VAULT_ABI, vault, 'rebalance', `rebalance ${short(vault)}`);
+      }
+      // harvest walks the Harvester's OWN vault registry and distributes to all
+      // of them in one call — so it is once per cycle, not once per vault.
       if (this.harvester) {
         await this.poke(HARVESTER_ABI, this.harvester, 'harvest', 'harvest (skim+distribute)', [[]]);
       }
@@ -226,6 +236,10 @@ export class PropellerLooper {
 function fmtHf(hf: bigint): string {
   if (hf > 1000n * WAD) return '∞';
   return (Number(hf) / 1e18).toFixed(3);
+}
+
+function short(addr: Address): string {
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
 function shortErr(err: unknown): string {

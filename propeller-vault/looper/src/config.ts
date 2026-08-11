@@ -5,8 +5,16 @@ export const CONFIG = {
   // signer only pays gas — pokeBorrow is permissionless, no role required.
   PRIVATE_KEY: process.env.LOOPER_PRIVATE_KEY as `0x${string}`,
   SUBLOOP_ADDRESS: process.env.SUBLOOP_ADDRESS as `0x${string}`,
-  // CollateralVault proxy — drives pokeSettle/rebalance/maintainPeg + queue gating.
-  VAULT_ADDRESS: process.env.VAULT_ADDRESS as `0x${string}`,
+  // CollateralVault proxies — drive pokeSettle/rebalance/maintainPeg + queue gating.
+  // One SubLoop can back several vaults (pETH, ptBTC…), and each needs its own
+  // queue serviced, so this is a comma-separated LIST. `VAULT_ADDRESS` is kept as
+  // a singular alias: the deployed lark-2 stack set `VAULT_ADDRESSES` while the
+  // code read `VAULT_ADDRESS`, which silently left the vault undefined and
+  // skipped pokeSettle/rebalance/maintainPeg/harvest entirely.
+  VAULT_ADDRESSES: (process.env.VAULT_ADDRESSES || process.env.VAULT_ADDRESS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean) as `0x${string}`[],
   // Harvester — skim+distribute carry (optional; harvest skipped if unset).
   HARVESTER_ADDRESS: (process.env.HARVESTER_ADDRESS || '') as `0x${string}`,
   // aave main-market pool, for leverage logging (defaults to lark-2 main market).

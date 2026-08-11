@@ -77,8 +77,14 @@ PROPELLER_VAULTS=0xETH,0xTBTC PROPELLER_SWAPPER=0x… PROPELLER_GUARDIAN=0x… \
 npx hardhat propeller --network hydration
 ```
 
-This prints **three** preimages. Submit each as its own Root referendum, **in order**:
+This prints **four** preimages. Submit each as its own Root referendum, **in order**:
 
+0. **`compound routes`** — `router.forceInsertRoute` for PRIME → each collateral.
+   `Harvester.harvest` calls `compound(prime, cut, minOut, "")` with an **empty**
+   route, so the substrate router resolves the path from its own storage and falls back
+   to Omnipool when nothing is stored. PRIME is not an Omnipool asset, so without this
+   **every harvest reverts** and loop carry can never reach the vaults. Pure substrate —
+   no contracts needed, so it can enact before anything else.
 1. **`list-reserve`** — registers the synthetic as an `Erc20` substrate asset, then
    `initReserves`. The substrate registration MUST come first: the EVM ERC20 precompile reads
    decimals from the registry, so `initReserves` reverts otherwise.
@@ -159,7 +165,8 @@ docker stack deploy -c propeller-vault/looper/docker-stack.yml propeller-looper
 | Batch 3 partially reverts | Most likely cause. `verify-readiness` names the exact missing call — re-submit just that one as its own referendum |
 | Deposits revert `SynthReserveNotListed` | Batch 2's `configureReserveAsCollateral` did not land. Check LT with `pool.getConfiguration(synth) >> 16 & 0xFFFF` |
 | Deposits revert `DcaDispatch.DispatchFailed` | Route ids wrong, `dcaSlippagePpm` too tight for pool depth, or the router pallet moved. Run `gen-router-reference.mjs` first, then widen slippage |
-| `compound` always reverts | `compoundSlippageBps` is 0, or `swapper` is still the placeholder |
+| `compound` always reverts | `compoundSlippageBps` is 0, `swapper` is still the placeholder, or batch 0's PRIME → collateral route is missing (the empty-route path resolves on-chain) |
+| `harvest` reverts on the swap leg | Batch 0 did not land. Check `router.routes({assetIn: PRIME, assetOut: collateral})` is `Some` |
 | `harvest` reverts `HarvesterUnset` | `setHarvester` did not land |
 | `harvest` reverts "vault set incomplete" | A share-holding vault is missing from `Harvester.addVault`, or one is registered twice |
 | Wrong yield source wired | `setYieldSource` works **only before the first deposit** — `DEAD_SHARES` keep `loopShares` permanently non-zero afterwards. After that, redeploy the vault |
