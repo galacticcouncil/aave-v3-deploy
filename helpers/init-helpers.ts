@@ -1,5 +1,6 @@
 import {
   eContractid,
+  eNetwork,
   IAaveConfiguration,
   iMultiPoolsAssets,
   IReserveParams,
@@ -37,7 +38,8 @@ import {
   isL2PoolSupported,
   loadPoolConfig,
 } from "./market-config-helpers";
-import { ZERO_ADDRESS } from "./constants";
+import { POOL_ADMIN, ZERO_ADDRESS } from "./constants";
+import { addTransaction } from "./transaction-batch";
 
 declare var hre: HardhatRuntimeEnvironment;
 
@@ -50,7 +52,8 @@ export const initReservesByHelper = async (
   symbolPrefix: string,
   admin: tEthereumAddress,
   treasuryAddress: tEthereumAddress,
-  incentivesController: tEthereumAddress
+  incentivesController: tEthereumAddress,
+  batch: boolean = false
 ) => {
   const poolConfig = (await loadPoolConfig(
     MARKET_NAME as ConfigNames
@@ -74,7 +77,7 @@ export const initReservesByHelper = async (
   )) as any as Pool;
 
   // CHUNK CONFIGURATION
-  const initChunks = 3;
+  const initChunks = 1;
 
   // Initialize variables for future reserves initialization
   let reserveTokens: string[] = [];
@@ -104,9 +107,10 @@ export const initReservesByHelper = async (
   let strategyAddressPerAsset: Record<string, string> = {};
   let aTokenType: Record<string, string> = {};
   let delegationAwareATokenImplementationAddress = "";
-  let aTokenImplementationAddress = "";
-  let stableDebtTokenImplementationAddress = "";
-  let variableDebtTokenImplementationAddress = "";
+  let lockableATokenImplementationAddress = "";
+  let aTokenImplementationAddress: string;
+  let stableDebtTokenImplementationAddress: string;
+  let variableDebtTokenImplementationAddress: string;
 
   stableDebtTokenImplementationAddress = (
     await hre.deployments.get(STABLE_DEBT_TOKEN_IMPL_ID)
@@ -128,10 +132,21 @@ export const initReservesByHelper = async (
     ).address;
   }
 
+  const lockableATokenReserves = Object.entries(reservesParams).filter(
+    ([_, { aTokenImpl }]) => aTokenImpl === eContractid.LockableAToken
+  ) as [string, IReserveParams][];
+
+  if (lockableATokenReserves.length > 0) {
+    lockableATokenImplementationAddress = (
+      await hre.deployments.get(`LockableAToken-${MARKET_NAME}`)
+    ).address;
+  }
+
   const reserves = Object.entries(reservesParams).filter(
     ([_, { aTokenImpl }]) =>
       aTokenImpl === eContractid.DelegationAwareAToken ||
-      aTokenImpl === eContractid.AToken
+      aTokenImpl === eContractid.AToken ||
+      aTokenImpl === eContractid.LockableAToken
   ) as [string, IReserveParams][];
 
   for (let [symbol, params] of reserves) {
@@ -164,6 +179,8 @@ export const initReservesByHelper = async (
       aTokenType[symbol] = "generic";
     } else if (aTokenImpl === eContractid.DelegationAwareAToken) {
       aTokenType[symbol] = "delegation aware";
+    } else if (aTokenImpl === eContractid.LockableAToken) {
+      aTokenType[symbol] = "lockable";
     }
 
     reserveInitDecimals.push(reserveDecimals);
@@ -175,6 +192,8 @@ export const initReservesByHelper = async (
     let aTokenToUse: string;
     if (aTokenType[reserveSymbols[i]] === "generic") {
       aTokenToUse = aTokenImplementationAddress;
+    } else if (aTokenType[reserveSymbols[i]] === "lockable") {
+      aTokenToUse = lockableATokenImplementationAddress;
     } else {
       aTokenToUse = delegationAwareATokenImplementationAddress;
     }
@@ -222,14 +241,24 @@ export const initReservesByHelper = async (
     chunkIndex < chunkedInitInputParams.length;
     chunkIndex++
   ) {
-    const tx = await waitForTx(
-      await configurator.initReserves(chunkedInitInputParams[chunkIndex])
-    );
+    if (batch) {
+      const tx = await configurator.populateTransaction.initReserves(
+        chunkedInitInputParams[chunkIndex],
+        { gasLimit: 3000000 }
+      );
+      addTransaction(tx);
+    } else {
+      const tx = await waitForTx(
+        await configurator.initReserves(chunkedInitInputParams[chunkIndex], {
+          gasLimit: 10000000,
+        })
+      );
 
-    console.log(
-      `  - Reserve ready for: ${chunkedSymbols[chunkIndex].join(", ")}`,
-      `\n    - Tx hash: ${tx.transactionHash}`
-    );
+      console.log(
+        `  - Reserve ready for: ${chunkedSymbols[chunkIndex].join(", ")}`,
+        `\n    - Tx hash: ${tx.transactionHash}`
+      );
+    }
   }
 };
 
@@ -241,19 +270,23 @@ export const getPairsTokenAggregator = (
 ): [string[], string[]] => {
   const { ETH, USD, ...assetsAddressesWithoutEth } = allAssetsAddresses;
 
-  const pairs = Object.entries(assetsAddressesWithoutEth).map(
-    ([tokenSymbol, tokenAddress]) => {
-      const aggregatorAddressIndex = Object.keys(
-        aggregatorsAddresses
-      ).findIndex((value) => value === tokenSymbol);
-      const [, aggregatorAddress] = (
-        Object.entries(aggregatorsAddresses) as [string, tEthereumAddress][]
-      )[aggregatorAddressIndex];
-      if (!aggregatorAddress) throw `Missing aggregator for ${tokenSymbol}`;
+  const pairs = Object.entries(assetsAddressesWithoutEth)
+    .map(([tokenSymbol, tokenAddress]) => {
+      const aggregatorAddress = aggregatorsAddresses[tokenSymbol];
+      // No aggregator configured for this asset: skip it here rather than
+      // crash/throw. Its oracle source is wired later (e.g. init-reserve prefers
+      // a deployed ${SYMBOL}-USDOracleAdapter), so the AaveOracle is deployed
+      // without an initial source for it and gets one via setAssetSources.
+      if (!aggregatorAddress) {
+        console.log(
+          `[getPairsTokenAggregator] no aggregator for ${tokenSymbol} — skipping (wired later via setAssetSources)`
+        );
+        return null;
+      }
       if (!tokenAddress) throw `Missing token address for ${tokenSymbol}`;
       return [tokenAddress, aggregatorAddress];
-    }
-  ) as [string, string][];
+    })
+    .filter((p): p is [string, string] => p !== null);
 
   const mappedPairs = pairs.map(([asset]) => asset);
   const mappedAggregators = pairs.map(([, source]) => source);
@@ -263,7 +296,8 @@ export const getPairsTokenAggregator = (
 
 export const configureReservesByHelper = async (
   reservesParams: iMultiPoolsAssets<IReserveParams>,
-  tokenAddresses: { [symbol: string]: tEthereumAddress }
+  tokenAddresses: { [symbol: string]: tEthereumAddress },
+  batch: boolean = false
 ) => {
   const { deployer } = await hre.getNamedAccounts();
   const addressProviderArtifact = await hre.deployments.get(
@@ -370,45 +404,81 @@ export const configureReservesByHelper = async (
     symbols.push(assetSymbol);
   }
   if (tokens.length) {
-    // Set aTokenAndRatesDeployer as temporal admin
     const aclAdmin = await hre.ethers.getSigner(
       await addressProvider.getACLAdmin()
     );
-    await waitForTx(
-      await aclManager
-        .connect(aclAdmin)
-        .addRiskAdmin(reservesSetupHelper.address)
-    );
+    {
+      const reservesSetupHelperOwner = await reservesSetupHelper.owner();
+      if (reservesSetupHelperOwner !== aclAdmin.address) {
+        console.log(
+          "Transferring ownership of ReservesSetupHelper to ACL admin"
+        );
+        await waitForTx(
+          await reservesSetupHelper
+            .connect(await hre.ethers.getSigner(deployer))
+            .transferOwnership(aclAdmin.address)
+        );
+      }
+    }
+    const reservesSetupHelperOwner = await reservesSetupHelper.owner();
+    const network = (process.env.FORK || hre.network.name) as eNetwork;
+    console.log("ReservesSetupHelper owner: ", reservesSetupHelperOwner);
+    if (
+      !(await aclManager.isRiskAdmin(reservesSetupHelper.address)) &&
+      POOL_ADMIN[network].toLowerCase() ===
+        reservesSetupHelperOwner.toLowerCase()
+    ) {
+      console.log("Adding ReservesSetupHelper to risk admins");
+      if (batch) {
+        const tx = await aclManager.populateTransaction.addRiskAdmin(
+          reservesSetupHelper.address
+        );
+        addTransaction(tx);
+      } else {
+        await waitForTx(
+          await aclManager
+            .connect(aclAdmin)
+            .addRiskAdmin(reservesSetupHelper.address)
+        );
+      }
+    }
 
     // Deploy init per chunks
-    const enableChunks = 20;
+    const enableChunks = 1;
     const chunkedSymbols = chunk(symbols, enableChunks);
     const chunkedInputParams = chunk(inputParams, enableChunks);
     const poolConfiguratorAddress = await addressProvider.getPoolConfigurator();
 
-    console.log(`- Configure reserves in ${chunkedInputParams.length} txs`);
+    console.log(
+      `- Configure reserves in ${chunkedInputParams.length} txs ${chunkedSymbols}`
+    );
     for (
       let chunkIndex = 0;
       chunkIndex < chunkedInputParams.length;
       chunkIndex++
     ) {
-      const tx = await waitForTx(
-        await reservesSetupHelper.configureReserves(
-          poolConfiguratorAddress,
-          chunkedInputParams[chunkIndex]
-        )
-      );
-      console.log(
-        `  - Init for: ${chunkedSymbols[chunkIndex].join(", ")}`,
-        `\n    - Tx hash: ${tx.transactionHash}`
-      );
+      if (batch) {
+        const tx =
+          await reservesSetupHelper.populateTransaction.configureReserves(
+            poolConfiguratorAddress,
+            chunkedInputParams[chunkIndex],
+            { gasLimit: 3000000 }
+          );
+        addTransaction(tx);
+      } else {
+        const tx = await waitForTx(
+          await reservesSetupHelper.configureReserves(
+            poolConfiguratorAddress,
+            chunkedInputParams[chunkIndex],
+            { gasLimit: 3000000 }
+          )
+        );
+        console.log(
+          `  - Init for: ${chunkedSymbols[chunkIndex].join(", ")}`,
+          `\n    - Tx hash: ${tx.transactionHash}`
+        );
+      }
     }
-    // Remove ReservesSetupHelper from risk admins
-    await waitForTx(
-      await aclManager
-        .connect(aclAdmin)
-        .removeRiskAdmin(reservesSetupHelper.address)
-    );
   }
 };
 
@@ -432,9 +502,36 @@ export const addMarketToRegistry = async (
     );
   }
 
-  const signer = await hre.ethers.getSigner(providerRegistryOwner);
+  // 1. Set the provider at the Registry (idempotent — skip if already registered)
+  const existingId = await providerRegistryInstance.getAddressesProviderIdByAddress(
+    addressesProvider
+  );
+  if (existingId.gt(0)) {
+    console.log(
+      `LendingPoolAddressesProvider ${addressesProvider} already registered (id=${existingId.toString()}) in registry ${providerRegistry.address}`
+    );
+    return;
+  }
 
-  // 1. Set the provider at the Registry
+  // When reusing a shared, governance-owned registry (e.g. the main Hydration
+  // money-market registry, owned by the aave-manager precompile), the deployer
+  // can't sign as the owner. Detect that — if the registry owner isn't one of
+  // our controllable signers — and defer the registration to the governance
+  // proposal (which executes registerAddressesProvider as the aave-manager).
+  const signers = await hre.ethers.getSigners();
+  const controllable = signers.some(
+    (s) => s.address.toLowerCase() === providerRegistryOwner.toLowerCase()
+  );
+  if (!controllable) {
+    console.log(
+      `[add-market-to-registry] Registry ${providerRegistry.address} is owned by ${providerRegistryOwner}, ` +
+        `which is not a local signer. Skipping registration of provider ${addressesProvider} ` +
+        `(providerId ${providerId}) — defer to governance proposal.`
+    );
+    return;
+  }
+
+  const signer = await hre.ethers.getSigner(providerRegistryOwner);
   await waitForTx(
     await providerRegistryInstance
       .connect(signer)

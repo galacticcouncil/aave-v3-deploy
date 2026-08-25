@@ -1,0 +1,352 @@
+{
+  "address": "0xAaFd758688ceFd0A7b7770a825f1aAd551E16185",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_srcAssetToXOracle",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "_destAssetToXOracle",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "int256",
+          "name": "current",
+          "type": "int256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "updatedAt",
+          "type": "uint256"
+        }
+      ],
+      "name": "AnswerUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "startedBy",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "startedAt",
+          "type": "uint256"
+        }
+      ],
+      "name": "NewRound",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "decimals",
+      "outputs": [
+        {
+          "internalType": "uint8",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "description",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "destAssetToXOracle",
+      "outputs": [
+        {
+          "internalType": "contract AggregatorInterface",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getAnswer",
+      "outputs": [
+        {
+          "internalType": "int256",
+          "name": "",
+          "type": "int256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint80",
+          "name": "_roundId",
+          "type": "uint80"
+        }
+      ],
+      "name": "getRoundData",
+      "outputs": [
+        {
+          "internalType": "uint80",
+          "name": "roundId",
+          "type": "uint80"
+        },
+        {
+          "internalType": "int256",
+          "name": "answer",
+          "type": "int256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "startedAt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "updatedAt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint80",
+          "name": "answeredInRound",
+          "type": "uint80"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roundId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestAnswer",
+      "outputs": [
+        {
+          "internalType": "int256",
+          "name": "",
+          "type": "int256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestRound",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestRoundData",
+      "outputs": [
+        {
+          "internalType": "uint80",
+          "name": "roundId",
+          "type": "uint80"
+        },
+        {
+          "internalType": "int256",
+          "name": "answer",
+          "type": "int256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "startedAt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "updatedAt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint80",
+          "name": "answeredInRound",
+          "type": "uint80"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestTimestamp",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "srcAssetToXOracle",
+      "outputs": [
+        {
+          "internalType": "contract AggregatorV3Interface",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "version",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "transactionHash": "0xa0faf1fcf224375d72ed018adfc84bab8fd0f898abf764cdcdedb875f95fcb17",
+  "receipt": {
+    "to": null,
+    "from": "0x71FeB8b2849101a6E62e3369eaAfDc6154CD0Bc0",
+    "contractAddress": "0xAaFd758688ceFd0A7b7770a825f1aAd551E16185",
+    "transactionIndex": 0,
+    "gasUsed": "901458",
+    "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "blockHash": "0x31b7032d9baeeb8da5374955a4164f36d1bf6381a3a6cdfebbcc3526d4890419",
+    "transactionHash": "0xa0faf1fcf224375d72ed018adfc84bab8fd0f898abf764cdcdedb875f95fcb17",
+    "logs": [],
+    "blockNumber": 10575179,
+    "cumulativeGasUsed": "901458",
+    "status": 1,
+    "byzantium": true
+  },
+  "args": [
+    "0xCfAB6a4031C70Da0F0cf6F31A252c16119DB3611",
+    "0x00000100626966726f73746f000000050000000f"
+  ],
+  "numDeployments": 1,
+  "solcInputHash": "0e7a90df2ecfa89b7fe53088164cad16",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.10+commit.fc410830\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_srcAssetToXOracle\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_destAssetToXOracle\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"int256\",\"name\":\"current\",\"type\":\"int256\"},{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"updatedAt\",\"type\":\"uint256\"}],\"name\":\"AnswerUpdated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"startedBy\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"startedAt\",\"type\":\"uint256\"}],\"name\":\"NewRound\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"decimals\",\"outputs\":[{\"internalType\":\"uint8\",\"name\":\"\",\"type\":\"uint8\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"description\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"destAssetToXOracle\",\"outputs\":[{\"internalType\":\"contract AggregatorInterface\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"}],\"name\":\"getAnswer\",\"outputs\":[{\"internalType\":\"int256\",\"name\":\"\",\"type\":\"int256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint80\",\"name\":\"_roundId\",\"type\":\"uint80\"}],\"name\":\"getRoundData\",\"outputs\":[{\"internalType\":\"uint80\",\"name\":\"roundId\",\"type\":\"uint80\"},{\"internalType\":\"int256\",\"name\":\"answer\",\"type\":\"int256\"},{\"internalType\":\"uint256\",\"name\":\"startedAt\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"updatedAt\",\"type\":\"uint256\"},{\"internalType\":\"uint80\",\"name\":\"answeredInRound\",\"type\":\"uint80\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"roundId\",\"type\":\"uint256\"}],\"name\":\"getTimestamp\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestAnswer\",\"outputs\":[{\"internalType\":\"int256\",\"name\":\"\",\"type\":\"int256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestRound\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestRoundData\",\"outputs\":[{\"internalType\":\"uint80\",\"name\":\"roundId\",\"type\":\"uint80\"},{\"internalType\":\"int256\",\"name\":\"answer\",\"type\":\"int256\"},{\"internalType\":\"uint256\",\"name\":\"startedAt\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"updatedAt\",\"type\":\"uint256\"},{\"internalType\":\"uint80\",\"name\":\"answeredInRound\",\"type\":\"uint80\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestTimestamp\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"srcAssetToXOracle\",\"outputs\":[{\"internalType\":\"contract AggregatorV3Interface\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"version\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"contracts/HybridOracleAggregator.sol\":\"HybridOracleAggregator\"},\"evmVersion\":\"berlin\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":100000},\"remappings\":[]},\"sources\":{\"@aave/core-v3/contracts/dependencies/chainlink/AggregatorInterface.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// Chainlink Contracts v0.8\\npragma solidity ^0.8.0;\\n\\ninterface AggregatorInterface {\\n  function latestAnswer() external view returns (int256);\\n\\n  function latestTimestamp() external view returns (uint256);\\n\\n  function latestRound() external view returns (uint256);\\n\\n  function getAnswer(uint256 roundId) external view returns (int256);\\n\\n  function getTimestamp(uint256 roundId) external view returns (uint256);\\n\\n  event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 updatedAt);\\n\\n  event NewRound(uint256 indexed roundId, address indexed startedBy, uint256 startedAt);\\n}\\n\",\"keccak256\":\"0x07df0744d1a393c574d7ee11b75a1690a82f3136a79c76b933724872298bf718\",\"license\":\"MIT\"},\"contracts/HybridOracleAggregator.sol\":{\"content\":\"// SPDX-License-Identifier: AGPL-3.0\\npragma solidity ^0.8.10;\\n\\nimport \\\"@aave/core-v3/contracts/dependencies/chainlink/AggregatorInterface.sol\\\";\\nimport {AggregatorV3Interface} from \\\"./dependencies/chainlink/AggregatorV3Interface.sol\\\";\\n\\ncontract HybridOracleAggregator is AggregatorV3Interface, AggregatorInterface {\\n\\n    uint8 public constant decimals = 8;\\n\\n    AggregatorV3Interface public srcAssetToXOracle;\\n    AggregatorInterface public destAssetToXOracle;\\n\\n    constructor(address _srcAssetToXOracle, address _destAssetToXOracle) {\\n        srcAssetToXOracle = AggregatorV3Interface(_srcAssetToXOracle);\\n        destAssetToXOracle = AggregatorInterface(_destAssetToXOracle);\\n    }\\n\\n    function latestRoundData()\\n    external\\n    view\\n    returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) {\\n        (uint80 rountId, int256 srcToX, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) = srcAssetToXOracle.latestRoundData();\\n        int256 xToDest = destAssetToXOracle.latestAnswer();\\n\\n        answer = int256((uint256(srcToX) * uint256(xToDest)) / uint256(10) ** decimals);\\n\\n        return (roundId, answer, startedAt, updatedAt, answeredInRound);\\n    }\\n\\n    function description() external view returns (string memory) {\\n        return \\\"\\\";\\n    }\\n\\n    function version() external view returns (uint256) {\\n        return 0;\\n    }\\n\\n    function getRoundData(\\n        uint80 _roundId\\n    ) external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) {\\n        return this.latestRoundData();\\n    }\\n\\n    function latestAnswer() external view returns (int256) {\\n        (, int256 answer, , , ) = this.latestRoundData();\\n        return answer;\\n    }\\n\\n    function latestTimestamp() external view returns (uint256) {\\n        return block.timestamp;\\n    }\\n\\n    function latestRound() external view returns (uint256) {\\n        return 0;\\n    }\\n\\n    function getAnswer(uint256 roundId) external view returns (int256) {\\n        return this.latestAnswer();\\n    }\\n\\n    function getTimestamp(uint256 roundId) external view returns (uint256) {\\n        return 0;\\n    }\\n}\\n\",\"keccak256\":\"0x0c7933d1ea25dfdef7c12f450c0a5de89bce97e59da62c78eb82d3e6d00cd883\",\"license\":\"AGPL-3.0\"},\"contracts/dependencies/chainlink/AggregatorV3Interface.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\n// Chainlink Contracts v0.8\\npragma solidity ^0.8.0;\\n\\n// solhint-disable-next-line interface-starts-with-i\\ninterface AggregatorV3Interface {\\n  function decimals() external view returns (uint8);\\n\\n  function description() external view returns (string memory);\\n\\n  function version() external view returns (uint256);\\n\\n  function getRoundData(\\n    uint80 _roundId\\n  ) external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);\\n\\n  function latestRoundData()\\n    external\\n    view\\n    returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);\\n}\\n\",\"keccak256\":\"0xe86ddb6edb733d5d448cb965065f07c0c7d5369d636258a882019157fc1d8a06\",\"license\":\"MIT\"}},\"version\":1}",
+  "bytecode": "0x608060405234801561001057600080fd5b5060405161090538038061090583398101604081905261002f9161007c565b600080546001600160a01b039384166001600160a01b031991821617909155600180549290931691161790556100af565b80516001600160a01b038116811461007757600080fd5b919050565b6000806040838503121561008f57600080fd5b61009883610060565b91506100a660208401610060565b90509250929050565b610847806100be6000396000f3fe608060405234801561001057600080fd5b50600436106100d45760003560e01c80639a6fc8f511610081578063b633620c1161005b578063b633620c146101d7578063bf7ff2c8146101eb578063feaf968c1461020b57600080fd5b80639a6fc8f5146101355780639fc65b101461017f578063b5ab58dc146101c457600080fd5b8063668a0f02116100b2578063668a0f021461010e5780637284e416146101155780638205bf6a1461012f57600080fd5b8063313ce567146100d957806350d25bcd146100f857806354fd4d501461010e575b600080fd5b6100e1600881565b60405160ff90911681526020015b60405180910390f35b610100610213565b6040519081526020016100ef565b6000610100565b604080516020810182526000815290516100ef91906104ff565b42610100565b61014861014336600461058d565b610290565b6040805169ffffffffffffffffffff968716815260208101959095528401929092526060830152909116608082015260a0016100ef565b60005461019f9073ffffffffffffffffffffffffffffffffffffffff1681565b60405173ffffffffffffffffffffffffffffffffffffffff90911681526020016100ef565b6101006101d23660046105b1565b610319565b6101006101e53660046105b1565b50600090565b60015461019f9073ffffffffffffffffffffffffffffffffffffffff1681565b610148610390565b6000803073ffffffffffffffffffffffffffffffffffffffff1663feaf968c6040518163ffffffff1660e01b815260040160a060405180830381865afa158015610261573d6000803e3d6000fd5b505050506040513d601f19601f8201168201806040525081019061028591906105ca565b509195945050505050565b60008060008060003073ffffffffffffffffffffffffffffffffffffffff1663feaf968c6040518163ffffffff1660e01b815260040160a060405180830381865afa1580156102e3573d6000803e3d6000fd5b505050506040513d601f19601f8201168201806040525081019061030791906105ca565b939a9299509097509550909350915050565b60003073ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa158015610366573d6000803e3d6000fd5b505050506040513d601f19601f8201168201806040525081019061038a9190610622565b92915050565b60008060008060008060008060008060008054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1663feaf968c6040518163ffffffff1660e01b815260040160a060405180830381865afa15801561040a573d6000803e3d6000fd5b505050506040513d601f19601f8201168201806040525081019061042e91906105ca565b945094509450945094506000600160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa1580156104a7573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906104cb9190610622565b90506104d96008600a61078a565b6104e38287610799565b6104ed91906107d6565b9a9b9399509197509550909350505050565b600060208083528351808285015260005b8181101561052c57858101830151858201604001528201610510565b8181111561053e576000604083870101525b50601f017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe016929092016040019392505050565b69ffffffffffffffffffff8116811461058a57600080fd5b50565b60006020828403121561059f57600080fd5b81356105aa81610572565b9392505050565b6000602082840312156105c357600080fd5b5035919050565b600080600080600060a086880312156105e257600080fd5b85516105ed81610572565b80955050602086015193506040860151925060608601519150608086015161061481610572565b809150509295509295909350565b60006020828403121561063457600080fd5b5051919050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b600181815b808511156106c357817fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff048211156106a9576106a961063b565b808516156106b657918102915b93841c939080029061066f565b509250929050565b6000826106da5750600161038a565b816106e75750600061038a565b81600181146106fd576002811461070757610723565b600191505061038a565b60ff8411156107185761071861063b565b50506001821b61038a565b5060208310610133831016604e8410600b8410161715610746575081810a61038a565b610750838361066a565b807fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff048211156107825761078261063b565b029392505050565b60006105aa60ff8416836106cb565b6000817fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff04831182151516156107d1576107d161063b565b500290565b60008261080c577f4e487b7100000000000000000000000000000000000000000000000000000000600052601260045260246000fd5b50049056fea264697066735822122089f1263537c1136373865e74ab4fd00d48806f50fd2839a4dcabc934450f2cbf64736f6c634300080a0033",
+  "deployedBytecode": "0x608060405234801561001057600080fd5b50600436106100d45760003560e01c80639a6fc8f511610081578063b633620c1161005b578063b633620c146101d7578063bf7ff2c8146101eb578063feaf968c1461020b57600080fd5b80639a6fc8f5146101355780639fc65b101461017f578063b5ab58dc146101c457600080fd5b8063668a0f02116100b2578063668a0f021461010e5780637284e416146101155780638205bf6a1461012f57600080fd5b8063313ce567146100d957806350d25bcd146100f857806354fd4d501461010e575b600080fd5b6100e1600881565b60405160ff90911681526020015b60405180910390f35b610100610213565b6040519081526020016100ef565b6000610100565b604080516020810182526000815290516100ef91906104ff565b42610100565b61014861014336600461058d565b610290565b6040805169ffffffffffffffffffff968716815260208101959095528401929092526060830152909116608082015260a0016100ef565b60005461019f9073ffffffffffffffffffffffffffffffffffffffff1681565b60405173ffffffffffffffffffffffffffffffffffffffff90911681526020016100ef565b6101006101d23660046105b1565b610319565b6101006101e53660046105b1565b50600090565b60015461019f9073ffffffffffffffffffffffffffffffffffffffff1681565b610148610390565b6000803073ffffffffffffffffffffffffffffffffffffffff1663feaf968c6040518163ffffffff1660e01b815260040160a060405180830381865afa158015610261573d6000803e3d6000fd5b505050506040513d601f19601f8201168201806040525081019061028591906105ca565b509195945050505050565b60008060008060003073ffffffffffffffffffffffffffffffffffffffff1663feaf968c6040518163ffffffff1660e01b815260040160a060405180830381865afa1580156102e3573d6000803e3d6000fd5b505050506040513d601f19601f8201168201806040525081019061030791906105ca565b939a9299509097509550909350915050565b60003073ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa158015610366573d6000803e3d6000fd5b505050506040513d601f19601f8201168201806040525081019061038a9190610622565b92915050565b60008060008060008060008060008060008054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1663feaf968c6040518163ffffffff1660e01b815260040160a060405180830381865afa15801561040a573d6000803e3d6000fd5b505050506040513d601f19601f8201168201806040525081019061042e91906105ca565b945094509450945094506000600160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff166350d25bcd6040518163ffffffff1660e01b8152600401602060405180830381865afa1580156104a7573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906104cb9190610622565b90506104d96008600a61078a565b6104e38287610799565b6104ed91906107d6565b9a9b9399509197509550909350505050565b600060208083528351808285015260005b8181101561052c57858101830151858201604001528201610510565b8181111561053e576000604083870101525b50601f017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe016929092016040019392505050565b69ffffffffffffffffffff8116811461058a57600080fd5b50565b60006020828403121561059f57600080fd5b81356105aa81610572565b9392505050565b6000602082840312156105c357600080fd5b5035919050565b600080600080600060a086880312156105e257600080fd5b85516105ed81610572565b80955050602086015193506040860151925060608601519150608086015161061481610572565b809150509295509295909350565b60006020828403121561063457600080fd5b5051919050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b600181815b808511156106c357817fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff048211156106a9576106a961063b565b808516156106b657918102915b93841c939080029061066f565b509250929050565b6000826106da5750600161038a565b816106e75750600061038a565b81600181146106fd576002811461070757610723565b600191505061038a565b60ff8411156107185761071861063b565b50506001821b61038a565b5060208310610133831016604e8410600b8410161715610746575081810a61038a565b610750838361066a565b807fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff048211156107825761078261063b565b029392505050565b60006105aa60ff8416836106cb565b6000817fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff04831182151516156107d1576107d161063b565b500290565b60008261080c577f4e487b7100000000000000000000000000000000000000000000000000000000600052601260045260246000fd5b50049056fea264697066735822122089f1263537c1136373865e74ab4fd00d48806f50fd2839a4dcabc934450f2cbf64736f6c634300080a0033",
+  "devdoc": {
+    "kind": "dev",
+    "methods": {},
+    "version": 1
+  },
+  "userdoc": {
+    "kind": "user",
+    "methods": {},
+    "version": 1
+  },
+  "storageLayout": {
+    "storage": [
+      {
+        "astId": 62,
+        "contract": "contracts/HybridOracleAggregator.sol:HybridOracleAggregator",
+        "label": "srcAssetToXOracle",
+        "offset": 0,
+        "slot": "0",
+        "type": "t_contract(AggregatorV3Interface)285"
+      },
+      {
+        "astId": 65,
+        "contract": "contracts/HybridOracleAggregator.sol:HybridOracleAggregator",
+        "label": "destAssetToXOracle",
+        "offset": 0,
+        "slot": "1",
+        "type": "t_contract(AggregatorInterface)47"
+      }
+    ],
+    "types": {
+      "t_contract(AggregatorInterface)47": {
+        "encoding": "inplace",
+        "label": "contract AggregatorInterface",
+        "numberOfBytes": "20"
+      },
+      "t_contract(AggregatorV3Interface)285": {
+        "encoding": "inplace",
+        "label": "contract AggregatorV3Interface",
+        "numberOfBytes": "20"
+      }
+    }
+  }
+}

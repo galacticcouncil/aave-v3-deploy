@@ -9,12 +9,13 @@ import {
 import {
   eArbitrumNetwork,
   eAvalancheNetwork,
+  eBaseNetwork,
   eEthereumNetwork,
   eFantomNetwork,
   eHarmonyNetwork,
+  eHydrationNetwork,
   eOptimismNetwork,
   ePolygonNetwork,
-  eBaseNetwork,
 } from "./helpers/types";
 import { DEFAULT_NAMED_ACCOUNTS } from "./helpers/constants";
 
@@ -26,7 +27,7 @@ import "@nomicfoundation/hardhat-chai-matchers";
 import "@nomiclabs/hardhat-etherscan";
 
 const SKIP_LOAD = process.env.SKIP_LOAD === "true";
-const TASK_FOLDERS = ["misc", "market-registry"];
+const TASK_FOLDERS = ["misc", "market-registry", "proposals"];
 
 // Prevent to load tasks before compilation and typechain
 if (!SKIP_LOAD) {
@@ -122,6 +123,39 @@ export default {
       eArbitrumNetwork.goerliNitro,
       421613
     ),
+    [eHydrationNetwork.hydration]: getCommonNetworkConfig(
+      eHydrationNetwork.hydration,
+      222222
+    ),
+    [eHydrationNetwork.zombie]: getCommonNetworkConfig(
+      eHydrationNetwork.zombie,
+      // 1287
+      222222
+    ),
+    [eHydrationNetwork.nice]: getCommonNetworkConfig(
+      eHydrationNetwork.nice,
+      222222
+    ),
+    [eHydrationNetwork.lark]: getCommonNetworkConfig(
+      eHydrationNetwork.lark,
+      222222
+    ),
+    [eHydrationNetwork.lark2]: getCommonNetworkConfig(
+      eHydrationNetwork.lark2,
+      222222
+    ),
+    [eHydrationNetwork.chopsticks]: getCommonNetworkConfig(
+      eHydrationNetwork.chopsticks,
+      222222
+    ),
+    [eHydrationNetwork.gigahdx]: getCommonNetworkConfig(
+      eHydrationNetwork.gigahdx,
+      222222
+    ),
+    [eHydrationNetwork.bil]: getCommonNetworkConfig(
+      eHydrationNetwork.bil,
+      222222
+    ),
     [eBaseNetwork.base]: getCommonNetworkConfig(eBaseNetwork.base, 8453),
     [eBaseNetwork.baseGoerli]: getCommonNetworkConfig(
       eBaseNetwork.baseGoerli,
@@ -207,7 +241,10 @@ export default {
     ? DETERMINISTIC_FACTORIES
     : undefined,
   etherscan: {
-    apiKey: ETHERSCAN_KEY,
+    apiKey: ETHERSCAN_KEY || {
+      [eHydrationNetwork.nice]: "nice",
+      [eHydrationNetwork.hydration]: "hydration",
+    },
     customChains: [
       {
         network: eBaseNetwork.base,
@@ -215,6 +252,22 @@ export default {
         urls: {
           apiURL: "https://api.basescan.org/api",
           browserURL: "https://basescan.org/",
+        },
+      },
+      {
+        network: eHydrationNetwork.nice,
+        chainId: 222222,
+        urls: {
+          apiURL: "https://blockscout.nice.hydration.cloud/api",
+          browserURL: "https://blockscout.nice.hydration.cloud",
+        },
+      },
+      {
+        network: eHydrationNetwork.hydration,
+        chainId: 222222,
+        urls: {
+          apiURL: "https://blockscout.evm.hydration.cloud/api",
+          browserURL: "https://blockscout.evm.hydration.cloud",
         },
       },
     ],

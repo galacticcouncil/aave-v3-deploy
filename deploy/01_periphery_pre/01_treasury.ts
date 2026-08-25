@@ -107,7 +107,14 @@ const func: DeployFunction = async function ({
   )) as AaveEcosystemReserveV2;
 
   // Call to initialize at implementation contract to prevent other calls.
-  await waitForTx(await treasuryImpl.initialize(ZERO_ADDRESS));
+  // On lark, eth_estimateGas can return intrinsic-only (~21k) which OOGs this
+  // call before any meaningful execution. Force a generous gas limit; tolerate
+  // a revert (impl may already be self-disabled by its constructor).
+  try {
+    await waitForTx(await treasuryImpl.initialize(ZERO_ADDRESS, { gasLimit: 250000 }));
+  } catch (e: any) {
+    console.log(`  treasuryImpl.initialize skipped: ${(e.message || String(e)).slice(0, 120)}`);
+  }
 
   // Initialize proxy
   const proxy = (await hre.ethers.getContractAt(
@@ -124,7 +131,8 @@ const func: DeployFunction = async function ({
     await proxy["initialize(address,address,bytes)"](
       treasuryImplArtifact.address,
       treasuryOwner,
-      initializePayload
+      initializePayload,
+      { gasLimit: 1000000 }
     )
   );
 

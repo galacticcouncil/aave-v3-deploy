@@ -1,4 +1,11 @@
-import { MARKET_NAME } from "./env";
+// Read MARKET_NAME directly from process.env to avoid the circular-import
+// initialization-order bug that caused these constants to be baked as
+// `-undefined` strings. `helpers/env.ts` imports `ConfigNames` from
+// `market-config-helpers.ts`, which transitively pulls in market configs;
+// if this file is loaded mid-cycle, the imported `MARKET_NAME` is
+// `undefined`, and every template literal below captures that as the
+// literal string "undefined". Reading process.env here skips that chain.
+const MARKET_NAME = process.env.MARKET_NAME || "Hydration";
 
 export const POOL_ADDRESSES_PROVIDER_ID = `PoolAddressesProvider-${MARKET_NAME}`;
 export const ACL_MANAGER_ID = `ACLManager-${MARKET_NAME}`;
@@ -19,6 +26,7 @@ export const INCENTIVES_PROXY_ID = "IncentivesProxy";
 export const EMISSION_MANAGER_ID = "EmissionManager";
 export const INCENTIVES_V2_IMPL_ID = `IncentivesV2-${IMPL_ID}`;
 export const INCENTIVES_PULL_REWARDS_STRATEGY_ID = `PullRewardsTransferStrategy`;
+export const INCENTIVES_POT_REWARDS_STRATEGY_ID = `PotRewardsTransferStrategy`;
 export const INCENTIVES_STAKED_TOKEN_STRATEGY_ID = `StakedTokenTransferStrategy`;
 export const ORACLE_ID = `AaveOracle-${MARKET_NAME}`;
 export const FALLBACK_ORACLE_ID = `FallbackOracle-${MARKET_NAME}`;
@@ -39,3 +47,5 @@ export const STAKE_AAVE_IMPL_V2 = `StakeAave-REV-2-${IMPL_ID}`;
 export const STAKE_AAVE_IMPL_V3 = `StakeAave-REV-3-${IMPL_ID}`;
 export const L2_ENCODER = "L2Encoder";
 export const FAUCET_OWNABLE_ID = `Faucet-${MARKET_NAME}`;
+export const USD_ORACLE_ADAPTER_ID = `USDOracleAdapter`;
+export const ORACLES_AGGREGATOR_ID = `OraclesAggregator`;

@@ -10,6 +10,7 @@ import { FORK } from "../../helpers/hardhat-config-helpers";
 
 interface ATokenConfig {
   revision: string;
+  address: string;
   name: string;
   symbol: string;
   decimals: string;
@@ -43,6 +44,7 @@ task(`review-atokens`)
 
       ATokenConfigs[symbol] = {
         name: await aToken.name(),
+        address: aToken.address,
         symbol: await aToken.symbol(),
         decimals: (await aToken.decimals()).toString(),
         revision: (await aToken.ATOKEN_REVISION()).toString(),

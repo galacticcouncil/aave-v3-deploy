@@ -1,0 +1,11 @@
+{
+  "_comment": "Curated name->address map for the proposal decoder. Covers addresses that are NOT hardhat-deploy artifacts: governance origins and runtime-created money-market proxies (aTokens / GHO facilitator tokens whose addresses are minted on-chain by the PoolConfigurator, never written to a deployment JSON). Asset-id precompiles and substrate pallet accounts are resolved generically by the decoder and do not belong here. Keys starting with '_' are ignored.",
+
+  "BILVault": "0x6a21891Db0940491603f3ccA0a9f4DBA4c6E810C",
+  "AaveManager": "0xaa7e0000000000000000000000000000000aa7e0",
+
+  "GhoAToken-HOLLAR-BIL": "0xEf313C2baf19cE58eEB6Df9c82aE41C7387AFE3E",
+  "GhoVariableDebtToken-HOLLAR-BIL": "0xfa8793b777f86df01a71f898d9c65a339aee54bf",
+  "AToken-BIL-Proxy": "0x8184e2f7c477d165772c21f7a2dbbb61a76e7fc4",
+  "GhoAToken-HOLLAR-Main": "0x8C0f3b9602374198974d2B2679d14a386f5b108e"
+}

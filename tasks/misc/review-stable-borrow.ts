@@ -42,7 +42,7 @@ task(`review-stable-borrow`, ``)
         ? reserves.filter(([reserveSymbol]) =>
             checkOnlyReserves.includes(reserveSymbol)
           )
-        : reserves;
+        : reserves.filter(([reserveSymbol]) => reserveSymbol != "HOLLAR");
 
       const reserveAssets = await dataProvider.getAllReservesTokens();
       const normalizedSymbols = Object.keys(poolConfig.ReservesConfig);
@@ -95,12 +95,22 @@ task(`review-stable-borrow`, ``)
               "[FIX] Updating the Borrow Stable Rate Enabled for",
               normalizedSymbol
             );
-          await waitForTx(
-            await poolConfigurator.setReserveStableRateBorrowing(
-              tokenAddress,
-              expectedStableRateEnabled
-            )
-          );
+          if (process.env.ENCODE_ONLY) {
+            const tx =
+              await poolConfigurator.populateTransaction.setReserveStableRateBorrowing(
+                tokenAddress,
+                expectedStableRateEnabled
+              );
+            console.log(tx);
+          } else {
+            await waitForTx(
+              await poolConfigurator.setReserveStableRateBorrowing(
+                tokenAddress,
+                expectedStableRateEnabled,
+                { gasLimit: 100000 }
+              )
+            );
+          }
           const newOnChainStableRateEnabled = (
             await dataProvider.getReserveConfigurationData(tokenAddress)
           ).stableBorrowRateEnabled;

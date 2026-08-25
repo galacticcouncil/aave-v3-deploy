@@ -35,7 +35,8 @@ task(`setup-e-modes`, `Setups e-modes from config`).setAction(
           eMode.liquidationThreshold,
           eMode.liquidationBonus,
           oracle,
-          eMode.label
+          eMode.label,
+          { gasLimit: 100000 }
         )
       );
 
@@ -51,7 +52,9 @@ task(`setup-e-modes`, `Setups e-modes from config`).setAction(
         const asset = eMode.assets[assetIndex];
         const assetAddress = await getReserveAddress(config, asset);
         await waitForTx(
-          await poolConfigurator.setAssetEModeCategory(assetAddress, eMode.id)
+          await poolConfigurator.setAssetEModeCategory(assetAddress, eMode.id, {
+            gasLimit: 1000000,
+          })
         );
         console.log("  - Added", asset, "asset to E-Mode", eMode.label);
       }

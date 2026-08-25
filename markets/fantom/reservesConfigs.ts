@@ -1,4 +1,7 @@
-import { rateStrategyStableOne, rateStrategyVolatileOne } from "./../aave/rateStrategies";
+import {
+  rateStrategyStableOne,
+  rateStrategyVolatileOne,
+} from "./../aave/rateStrategies";
 import { eContractid, IReserveParams } from "../../helpers/types";
 
 export const strategyWFTM: IReserveParams = {

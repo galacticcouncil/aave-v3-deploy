@@ -15,6 +15,9 @@ export * from "../markets/aave/commons";
 export * from "../markets/aave/rateStrategies";
 export * from "../markets/aave/reservesConfigs";
 export * from "../tasks/market-registry/market-registry-add";
+export * from "../tasks/proposals/vdot-prop";
+export * from "../tasks/proposals/update-caps";
+export * from "../tasks/proposals/reserve-factor-prop";
 export * from "../tasks/misc/deploy-ui-helpers";
 export * from "../tasks/misc/deploy-UiIncentiveDataProvider";
 export * from "../tasks/misc/deploy-UiPoolDataProvider";
@@ -26,6 +29,7 @@ export * from "../tasks/misc/review-e-mode";
 export * from "../tasks/misc/review-rate-strategies";
 export * from "../tasks/misc/review-stable-borrow";
 export * from "../tasks/misc/review-supply-caps";
+export * from "../tasks/misc/review-borrow-caps";
 export * from "../tasks/misc/set-fallback-oracle";
 export * from "../tasks/misc/setup-debt-ceiling";
 export * from "../tasks/misc/setup-e-modes";
@@ -43,7 +47,11 @@ import { loadTasks } from "./hardhat-config-helpers";
 
 /** Hardhat Plugin to export tasks in other projects. */
 
-const TASK_FOLDERS = ["../tasks/misc", "../tasks/market-registry"];
+const TASK_FOLDERS = [
+  "../tasks/misc",
+  "../tasks/market-registry",
+  "../tasks/proposals",
+];
 
 // Load all plugin tasks
 loadTasks(TASK_FOLDERS);

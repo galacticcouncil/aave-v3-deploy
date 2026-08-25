@@ -1,0 +1,27 @@
+[profile.default]
+src = "src"
+out = "out"
+test = "test"
+script = "script"
+libs = ["lib"]
+solc_version = "0.8.22"
+optimizer = true
+# Size-favored optimizer setting. Was 200 (default) pre-Phase 2; lowered to
+# 100 after QueueLib extraction; lowered again to 30 to accommodate the
+# ERC-7540 conformance pass (maxRedeem/maxWithdraw walking _settledByController)
+# and the multi-pool head-sweep bound. Runtime gas impact vs runs=100 is
+# negligible for view-heavy contracts — most savings come from optimizing
+# call-heavy paths, which we don't have at scale here.
+optimizer_runs = 30
+evm_version = "paris"
+via_ir=true
+
+[invariant]
+runs = 256
+depth = 50
+fail_on_revert = false
+shrink_run_limit = 0
+
+[rpc_endpoints]
+hydration = "${RPC_HYDRATION}"
+lark = "https://2.lark.hydration.cloud"
