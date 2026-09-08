@@ -3,8 +3,9 @@
 **Deployed:** 2026-09-07 (supersedes 2026-08-11 and 2026-07-31 — both wiped, see [History](#history))
 **Source:** `ys-propeller-fixes` @ `f70bb21`
 **Network:** Hydration lark-4 (chain id `222222`, runtime **`hydradx v443`**)
-**Status:** Live. `verify-readiness.ts` **78/78 pre-ramp**, **79/80 post-ramp** (the one red row is the
-expected negative-carry one — see [Verification](#verification)). Deposit + full ramp proven; keepers running.
+**Status:** Live. `verify-readiness.ts` **79/80** (the one red row is the expected negative-carry one
+— see [Verification](#verification)). **Full lifecycle proven end to end**: deposit → ramp → redeem →
+keeper-settle → claim → queue drained. Both keepers running.
 
 > **lark-4 was re-forked from mainnet between 2026-08-11 and 2026-09-07.** Every contract from
 > the previous deployment is gone (`eth_getCode` returns `0x` at the old SubLoop, both vaults,
@@ -164,6 +165,66 @@ on 2026-08-11: pool-143 is ~11% skewed now versus 24.9% then, so levering throug
 
 The peg keeper measurably moves the pool — over its first four cycles pool-143 went
 PRIME 409,844 → 422,950 and HOLLAR 639,466 → 625,652.
+
+## Redeem lifecycle smoke test (2026-09-08)
+
+Run from a **UI's point of view**: the script calls only `requestRedeem()` and `claim()` — the two
+buttons a frontend owns — and never pokes. All settling was left to the deployed `propeller-looper`,
+so this doubles as an unattended test of the keeper.
+
+| Step | Outcome |
+|---|---|
+| `requestRedeem(0.1 pETH)` | request **#0**, `debtShare` 184.47, `active=true` |
+| keeper settles, unattended | first `pokeRepay`+`pokeSettle` inside one 30 s cycle → 14% repaid, 0.0145 ETH claimable. **No manual pokes.** |
+| `claim(#0)` × 8 rounds | +0.0145, +0.0141, +0.0136, +0.0132, +0.0128, +0.0124, +0.0121, +0.0048 ETH |
+| final | request `active=false`, repaid **180.07/180.07 (100%)**, queue drained (`head == tail == 1`) |
+
+**Result: 0.1 pETH → 0.097614 ETH returned, a 2.4% unwind cost** (2026-08-11 measured 8.7% on a
+24.9%-skewed pool). `exchangeRate` **1.000002 → 1.005968** — it *rose*, so the redeemer absorbed
+the unwind cost and remaining holders were not diluted. That is the intended behaviour.
+
+`harvest` also executed successfully for the first time on any Propeller lark deployment
+(`0x9e33c90a…`) — prior deploys had no compound routes, so it always reverted. BATCH 0 works.
+
+Note the `debtShare` printed at request time (184.47) is **larger** than the amount finally repaid
+(180.07): it is a live target that shrinks as the loop's equity is unwound. A UI should show
+progress as `repaid / debtShare` re-read each poll, not cache the opening value.
+
+## For the UI
+
+Every read below was exercised against this deployment on 2026-09-08 — **38/38 calls returned**,
+none reverted.
+
+**Reads** — `name`, `symbol`, `decimals`, `asset`, `totalAssets`, `totalSupply`, `exchangeRate`,
+`convertToShares`, `convertToAssets`, `balanceOf`, `tvlCap`, `queueHead`, `queueTail`, `paused`,
+`synthLtBps`, `yieldSource`, `redemptions(id)`. On the SubLoop: `healthFactor`, `totalEquity`,
+`totalShares`, `negativeCarryBps`, `targetHf`, `paused`.
+
+**Writes the UI owns** — `deposit(assets, receiver)`, `requestRedeem(shares, owner)`,
+`claim(requestId, receiver)`. Everything else (`pokeBorrow`, `pokeRepay`, `pokeSettle`, `harvest`,
+`rebalance`, `maintainPeg`, `deLever`) is permissionless keeper work — **the UI must never need to
+call these**, and `KEEPER_ROLE` no longer exists in any of the three contracts.
+
+**Events to index** — `Deposited(user, assets, shares)`, `RedeemRequested(requestId, owner, shares)`,
+`RedeemSettled(requestId, collateral)`, `Claimed(requestId, receiver, collateral)`,
+`Harvested(collateralCompounded)`, `Rebalanced(ltvBefore, ltvAfter)`, `SyntheticPegMaintained(delta)`.
+
+**Integration gotchas:**
+
+- **Both vault shares and both underlyings are 18 dp** (pETH/ETH, ptBTC/tBTC) — verified, no
+  scaling mismatch. Do not assume tBTC is 8 dp here.
+- **`redemptions(id)` has nine fields**; `sharesBurned` sits between `collateralSettled` and
+  `active`. An ABI missing it decodes `sharesBurned` **as** `active` and makes a partial redemption
+  look finished. This bit `propeller-redeem-lark.mjs` before it was fixed.
+- **A redemption settles over several keeper cycles, not one.** `claim()` is callable repeatedly and
+  pays out whatever has settled so far; the request stays `active` until `repaid == debtShare`.
+  Show partial progress rather than a spinner.
+- **`requestRedeem` reverts `NoLoopEquity` when the loop has not been ramped.** Deliberate — see the
+  caveats. On a live vault with a running keeper this will not be hit.
+- A brand-new depositor's EVM address needs `evmAccounts.bindEvmAddress()` or the dispatch
+  precompile reads an empty account.
+- **ptBTC is wired, green and readable but has never held a deposit** — no tBTC was available to
+  test with. Treat its deposit path as unproven.
 
 ---
 
