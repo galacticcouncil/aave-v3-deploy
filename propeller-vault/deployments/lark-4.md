@@ -4,8 +4,8 @@
 **Source:** `ys-propeller-fixes` @ `f70bb21`
 **Network:** Hydration lark-4 (chain id `222222`, runtime **`hydradx v443`**)
 **Status:** Live. `verify-readiness.ts` **79/80** (the one red row is the expected negative-carry one
-— see [Verification](#verification)). **Full lifecycle proven end to end**: deposit → ramp → redeem →
-keeper-settle → claim → queue drained. Both keepers running.
+— see [Verification](#verification)). **Full lifecycle proven end to end on BOTH vaults**: deposit →
+ramp → redeem → keeper-settle → claim → queue drained. Both keepers running.
 
 > **lark-4 was re-forked from mainnet between 2026-08-11 and 2026-09-07.** Every contract from
 > the previous deployment is gone (`eth_getCode` returns `0x` at the old SubLoop, both vaults,
@@ -186,6 +186,30 @@ the unwind cost and remaining holders were not diluted. That is the intended beh
 `harvest` also executed successfully for the first time on any Propeller lark deployment
 (`0x9e33c90a…`) — prior deploys had no compound routes, so it always reverted. BATCH 0 works.
 
+### ptBTC — full lifecycle (2026-09-08)
+
+The second vault was seeded and exercised the same way. tBTC (asset 1000765) is a `Token`-type
+asset, so it is mintable via `currencies.updateBalance` under Root — unlike HOLLAR, which is
+`Erc20`-type and reverts `currencies.NotSupported`.
+
+| Step | Outcome |
+|---|---|
+| mint 0.5 tBTC to `//Alice` | referendum **#409**, enacted |
+| `deposit(0.02 tBTC)` | shares **0.02** (−1000 wei DEAD_SHARES), vault `totalAssets` 0.02, Main HF **2.067** |
+| shared-loop accounting | SubLoop `totalShares` 922.30 → **2060.96**, `totalEquity` $900 → **$1973.70** — one loop, two vaults |
+| keeper re-ramp, unattended | HF 1.368 → 1.254 → … → **1.0598**, back at target with the combined position |
+| `requestRedeem(0.004 ptBTC)` | request #0, `debtShare` 253.64 |
+| keeper settle + 5 × `claim` | request closed, repaid **253.08/253.08 (100%)**, queue drained |
+
+**Result: 0.004 ptBTC → 0.003991 tBTC, a 0.22% unwind cost**; `exchangeRate` 1.000000 → **1.000553**.
+The cost is an order of magnitude below pETH's 2.4% because this position was redeemed minutes
+after it was opened, so it had accrued almost no negative carry — the redeemer absorbs accrued
+carry, and that dominates the unwind cost far more than pool slippage does on a balanced pool.
+
+Both vaults sit behind the **same** `CollateralVault` implementation
+(`0xea8a66d1…`), so the redeem code is byte-identical; what this proves separately is the tBTC
+collateral leg — its aToken, its oracle, and the PRIME→tBTC compound route.
+
 Note the `debtShare` printed at request time (184.47) is **larger** than the amount finally repaid
 (180.07): it is a live target that shrinks as the loop's equity is unwound. A UI should show
 progress as `repaid / debtShare` re-read each poll, not cache the opening value.
@@ -223,8 +247,10 @@ call these**, and `KEEPER_ROLE` no longer exists in any of the three contracts.
   caveats. On a live vault with a running keeper this will not be hit.
 - A brand-new depositor's EVM address needs `evmAccounts.bindEvmAddress()` or the dispatch
   precompile reads an empty account.
-- **ptBTC is wired, green and readable but has never held a deposit** — no tBTC was available to
-  test with. Treat its deposit path as unproven.
+- **A freshly minted or bridged tBTC balance is partly `reserved`.** Minting 0.5 tBTC to Alice left
+  `free` 0.4584 / `reserved` 0.0416 — nothing is lost (free + reserved + deposited == 0.5), but the
+  ERC20 precompile's `balanceOf` reports **free only**. A UI that sizes a "max deposit" off the
+  registry balance will overshoot what `approve`/`deposit` can actually move.
 
 ---
 
