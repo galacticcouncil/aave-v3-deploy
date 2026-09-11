@@ -84,7 +84,7 @@ contract HarvestTest is Test {
                         (
                             "Propeller ETH", "pETH", address(eth), address(pool), address(loop),
                             address(swapper), address(hollar), address(synth), address(aEth),
-                            address(hollarDebt), 9800, 1_000e18, address(this)
+                            address(hollarDebt), 1_000e18, address(this)
                         )
                     )
                 )

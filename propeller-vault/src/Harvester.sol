@@ -24,11 +24,16 @@ contract Harvester is AccessControl {
     ISubLoop public immutable subLoop;
     IERC20 public immutable prime; // the token SubLoop.harvest returns
     address[] public vaults;
+    mapping(address => bool) public isRegistered;
 
     event HarvestRun(uint256 surplusPrime);
     event DeLeverRun();
+    event VaultAdded(address indexed vault);
+    event VaultRemoved(address indexed vault);
 
     error ZeroAddress();
+    error AlreadyRegistered();
+    error NotRegistered();
 
     constructor(address _subLoop, address _prime, address admin) {
         if (_subLoop == address(0) || _prime == address(0) || admin == address(0)) revert ZeroAddress();
@@ -37,9 +42,47 @@ contract Harvester is AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
     }
 
+    /// @notice Register a vault to receive its pro-rata cut of the loop carry.
+    /// @dev    Duplicate registration is REJECTED, not tolerated: `harvest` sums
+    ///         `sharesOf(v)` per entry and hard-requires the total to equal
+    ///         `subLoop.totalShares()`, so a vault listed twice double-counts, fails
+    ///         that check, and reverts every harvest. This contract is not
+    ///         upgradeable, so recovery would mean redeploying it and re-running a
+    ///         governance `SubLoop.setHarvester`.
     function addVault(address vault) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (vault == address(0)) revert ZeroAddress();
+        if (isRegistered[vault]) revert AlreadyRegistered();
+        isRegistered[vault] = true;
         vaults.push(vault);
+        emit VaultAdded(vault);
+    }
+
+    /// @notice Deregister a vault. Needed because the registry-completeness check
+    ///         is strict: a vault that still holds loop shares but must be excluded
+    ///         (retired, or paused for long enough to block the shared harvest)
+    ///         would otherwise wedge harvesting for every healthy vault with no way
+    ///         out short of redeploying this contract.
+    /// @dev    Removing a vault that still holds loop shares will make
+    ///         `registeredShares < totalShares` and revert `harvest` until its
+    ///         shares are unwound — deliberate, so carry is never silently
+    ///         redistributed away from a vault that is still entitled to it.
+    function removeVault(address vault) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (!isRegistered[vault]) revert NotRegistered();
+        isRegistered[vault] = false;
+        uint256 n = vaults.length;
+        for (uint256 i = 0; i < n; i++) {
+            if (vaults[i] == vault) {
+                vaults[i] = vaults[n - 1];
+                vaults.pop();
+                break;
+            }
+        }
+        emit VaultRemoved(vault);
+    }
+
+    /// @notice Number of registered vaults (the array is not otherwise enumerable).
+    function vaultCount() external view returns (uint256) {
+        return vaults.length;
     }
 
     /// @notice Skim loop carry → distribute PRIME pro-rata by loop shares →

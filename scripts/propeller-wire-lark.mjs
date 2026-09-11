@@ -20,11 +20,11 @@ import { ethers } from "ethers";
 const WS = process.env.PROPOSAL_WS || "wss://2.lark.hydration.cloud";
 const LIVE = process.argv.includes("--live");
 
-// deployed on lark2 (forge DeploySynth + DeployMain)
-const SYNTH = "0x23B69fd91a463ECB4B5864e4C2Ec6a20AFEC47b8";
-const SUBLOOP = "0xF23F4baFB4560DFb3234ad7f441Da6260b4218E8";
-const VAULT = "0x305EE427b94187c5abC68fCCc194E77D82F39921";
-const HARVESTER = "0x2f766296aEBa33aCCD2a458bD37c998Ffd42e29a";
+// deployed contracts — env-overridable (defaults = lark2). For lark4 pass SYNTH/SUBLOOP/VAULT/HARVESTER.
+const SYNTH = process.env.SYNTH || "0x23B69fd91a463ECB4B5864e4C2Ec6a20AFEC47b8";
+const SUBLOOP = process.env.SUBLOOP || "0xF23F4baFB4560DFb3234ad7f441Da6260b4218E8";
+const VAULT = process.env.VAULT || "0x305EE427b94187c5abC68fCCc194E77D82F39921";
+const HARVESTER = process.env.HARVESTER || "0x2f766296aEBa33aCCD2a458bD37c998Ffd42e29a";
 
 // lark2 main market (mainnet mirror)
 const GOV = "0xAa7e0000000000000000000000000000000Aa7e0";

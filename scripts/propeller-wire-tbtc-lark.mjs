@@ -8,12 +8,12 @@ import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import { cryptoWaitReady } from "@polkadot/util-crypto";
 import { ethers } from "ethers";
 
-const WS = "wss://2.lark.hydration.cloud";
+const WS = process.env.PROPOSAL_WS || "wss://2.lark.hydration.cloud";
 const LIVE = process.argv.includes("--live");
 const GOV = "0xAa7e0000000000000000000000000000000Aa7e0";
-const SUBLOOP = "0xF23F4baFB4560DFb3234ad7f441Da6260b4218E8";
-const HARVESTER = "0xac19a24ffb72094A830548af6495Da276D2b18be";
-const SYNTH = "0x23B69fd91a463ECB4B5864e4C2Ec6a20AFEC47b8";
+const SUBLOOP = process.env.SUBLOOP || "0xF23F4baFB4560DFb3234ad7f441Da6260b4218E8";
+const HARVESTER = process.env.HARVESTER || "0xac19a24ffb72094A830548af6495Da276D2b18be";
+const SYNTH = process.env.SYNTH || "0x23B69fd91a463ECB4B5864e4C2Ec6a20AFEC47b8";
 const TBTC_VAULT = process.env.VAULT || process.argv.find((a) => a.startsWith("0x"));
 const MINTER_ROLE = ethers.utils.id("MINTER_ROLE");
 const HDX = 10n ** 12n;

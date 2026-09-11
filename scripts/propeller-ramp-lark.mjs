@@ -16,7 +16,7 @@ const LIVE = process.argv.includes("--live");
 const ITERS = Number(process.argv.find((a) => /^\d+$/.test(a)) || 6);
 const ALICE_EVM = "0xd43593c715fdd31c61141abd04a99fd6822c8558";
 const GOV = "0xAa7e0000000000000000000000000000000Aa7e0";
-const SUBLOOP = "0xF23F4baFB4560DFb3234ad7f441Da6260b4218E8";
+const SUBLOOP = process.env.SUBLOOP || "0xF23F4baFB4560DFb3234ad7f441Da6260b4218E8";
 const APRIME = "0x4C892a298A9C6b4cEd988b3D6E9CF93333aADcF7";
 const HOLLAR = "0x531a654d1696ED52e7275A8cede955E82620f99a";
 const HDX = 10n ** 12n;

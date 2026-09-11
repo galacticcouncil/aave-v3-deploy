@@ -10,6 +10,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IAavePool, IPoolAddressesProvider, IAaveOracle} from "./interfaces/IAavePool.sol";
 import {ISubLoop} from "./interfaces/ISubLoop.sol";
+import {IYieldSource, ILeveragedLoop} from "./interfaces/IYieldSource.sol";
 import {DcaDispatch} from "./lib/DcaDispatch.sol";
 
 /// @title SubLoop
@@ -108,10 +109,15 @@ contract SubLoop is
     event Repaid(uint256 amount, uint256 hfAfter);
     event Harvested(uint256 surplus);
     event DeLevered(uint256 hfBefore, uint256 hfAfter);
+    /// @notice The spiral ran the position to zero collateral with unwind targets
+    ///         still open; the unrealizable remainder was written off.
+    event UnwindClosedOut(uint256 unrealizedEquity);
 
     error ZeroAmount();
+    error ZeroAddress();
     error HealthyEnough();
     error InsufficientShares();
+    error HarvesterUnset();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -145,13 +151,17 @@ contract SubLoop is
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(ADMIN_ROLE, _admin);
         _grantRole(UPGRADER_ROLE, _admin);
+        // Grant GUARDIAN_ROLE (the emergency pause) to the admin so the pause is
+        // never wired to a role nobody holds; governance can delegate it to a
+        // faster-path holder (the technical committee) afterwards.
+        _grantRole(GUARDIAN_ROLE, _admin);
     }
 
     // ══════════════════════════════════════════════════════════════════════
     //                         VAULT-FACING
     // ══════════════════════════════════════════════════════════════════════
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function deposit(uint256 hollarAmount)
         external
         override
@@ -182,7 +192,7 @@ contract SubLoop is
         emit LoopDeposited(msg.sender, hollarAmount, shares);
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function requestUnwind(uint256 shares)
         external
         override
@@ -220,7 +230,7 @@ contract SubLoop is
         emit UnwindRequested(msg.sender, shares, equityHollar, unwindId);
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function pullFreed() external override onlyRole(VAULT_ROLE) nonReentrant returns (uint256 hollarSent) {
         hollarSent = freedHollar[msg.sender];
         if (hollarSent == 0) return 0;
@@ -257,7 +267,7 @@ contract SubLoop is
     //                         KEEPER (debt legs only)
     // ══════════════════════════════════════════════════════════════════════
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc ILeveragedLoop
     /// @dev permissionless: the call is fully bounded — borrows only down to
     ///      deployHfFloor, caps the amount at deployTranche, and swaps with an
     ///      oracle-fair minOut. A caller can only advance the ramp (or waste gas
@@ -336,8 +346,14 @@ contract SubLoop is
         r[1] = DcaDispatch.Hop(DcaDispatch.POOL_STABLESWAP, true, primePoolId, primeAssetId, hollarAssetId);
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc ILeveragedLoop
     function pokeRepay() external override nonReentrant {
+        // Did this round have HF headroom to sell into, and did it actually sell?
+        // The two together separate a PERMANENT truncation stall (headroom exists
+        // but the sliver floors to 0 in 6dp aPRIME — it can only ever shrink) from
+        // a TEMPORARY HF block (no headroom; a price move or a repay reopens it).
+        bool budgetExists;
+        bool sold;
         // UNWIND SPIRAL STEP: while an unwind is open, synchronously sell an
         // HF-safe sliver of aPRIME → HOLLAR via the router (no DCA — the router
         // executes through pool reserves with a min-out, so the unpriceable
@@ -351,18 +367,27 @@ contract SubLoop is
                 //   minColl8 = floor * debt8 * 1e4 / (lt_bps * WAD)
                 uint256 minColl8 = (STEP_HF_FLOOR * debt8 * 10000) / (lt * WAD);
                 if (coll8 > minColl8) {
-                    // base8 USD → aPRIME native (6dp), assume ~$1, 90% safety margin.
-                    uint256 sellAmt = ((coll8 - minColl8) * 90) / 100 / 100;
+                    budgetExists = true;
+                    // Size the sell at the ORACLE price, not $1 (mirrors
+                    // _fundDeploy/harvest): the safe USD budget (coll8 - minColl8)
+                    // buys FEWER aPRIME when PRIME > $1, so the in-route withdraw
+                    // never removes more collateral value than the HF floor
+                    // allows. Assuming $1 oversells by the PRIME premium and dips
+                    // HF below the floor (reverting the withdraw once PRIME has
+                    // appreciated enough — a redemption/de-lever outage).
+                    // aPRIME(6dp) = budgetUSD8 · 0.9 · 1e6 / pPrime(8dp).
+                    (uint256 pHollar, uint256 pPrime) = _oracleRate();
+                    uint256 sellAmt = ((coll8 - minColl8) * 90 / 100) * 1e6 / pPrime;
                     if (unwindTranche > 0 && sellAmt > unwindTranche) sellAmt = unwindTranche;
                     uint256 apBal = primeAToken.balanceOf(address(this));
                     if (sellAmt > apBal) sellAmt = apBal;
                     if (sellAmt > 0) {
                         // min-out off the AaveOracle fair rate (aPRIME 1:1 PRIME).
                         // fair HOLLAR (18dp) = sellAmt aPRIME (6dp) · pPrime/pHollar · 1e12.
-                        (uint256 pHollar, uint256 pPrime) = _oracleRate();
                         uint256 fairOut = (sellAmt * pPrime * 1e12) / pHollar;
                         uint128 minOut = uint128((fairOut * (1_000_000 - dcaSlippagePpm)) / 1_000_000);
                         DcaDispatch.routerSell(aPrimeAssetId, hollarAssetId, uint128(sellAmt), minOut, _unwindRoute());
+                        sold = true;
                     }
                 }
             }
@@ -373,6 +398,10 @@ contract SubLoop is
         uint256 bal = hollar.balanceOf(address(this));
         uint256 avail = bal > reservedFreed ? bal - reservedFreed : 0;
         if (avail == 0) {
+            // Nothing sold and nothing in hand, yet HF headroom existed: the sliver
+            // floored to zero in 6dp aPRIME. That budget can only shrink, so the
+            // spiral will never move again and the open unwind is unrealizable.
+            if (budgetExists && !sold) _closeOutUnrealizableUnwinds();
             emit Repaid(0, healthFactor());
             return;
         }
@@ -413,7 +442,44 @@ contract SubLoop is
 
         uint256 freed = avail - repayHollar;
         if (freed > 0) _creditFreed(freed);
+        // Fully drained: no collateral left to sell for anyone, ever.
+        if (primeAToken.balanceOf(address(this)) == 0) _closeOutUnrealizableUnwinds();
         emit Repaid(deleverRepaid + repayHollar, healthFactor());
+    }
+
+    /// @dev The spiral records unwind targets at the ORACLE-MARKED value of the
+    ///      share slice (`requestUnwind`), but funds them with the HOLLAR actually
+    ///      REALIZED by selling aPRIME. The two never agree to the wei: 8dp
+    ///      base-unit truncation in the proportional repay above leaves a tail even
+    ///      at zero slippage, and real swap slippage or negative carry widens it.
+    ///
+    ///      Once the loop holds no aPRIME at all there is nothing left to sell for
+    ///      anyone, so that remainder is unrealizable by construction. Leaving it
+    ///      open is not harmless: `unwindRequested[v]` never decays to zero, so the
+    ///      vault's `pendingUnwindOf` never clears, its redemption queue head never
+    ///      advances, every request behind it is blocked, and `setYieldSource`'s
+    ///      drain guard can never be satisfied. Write it down to what was realized.
+    ///
+    ///      Callers decide WHEN the spiral is finished; both triggers are states the
+    ///      position can never leave. A temporary HF block (no headroom this round)
+    ///      is deliberately NOT a trigger — a price move or a repay reopens it.
+    function _closeOutUnrealizableUnwinds() internal {
+        if (unwindTargetEquity == 0) return;
+
+        for (uint256 i = _unwinders.length; i > 0; ) {
+            unchecked {
+                --i;
+            }
+            address v = _unwinders[i];
+            if (unwindRequested[v] > freedHollar[v]) unwindRequested[v] = freedHollar[v];
+            // Nothing credited and nothing left to credit — drop it from the loop so
+            // `_creditFreed` doesn't keep walking a vault with no outstanding claim
+            // (`pullFreed` would otherwise never run for it and never prune it).
+            if (unwindRequested[v] == 0) _pruneUnwinder(v);
+        }
+
+        emit UnwindClosedOut(unwindTargetEquity);
+        unwindTargetEquity = 0;
     }
 
     /// @dev Credit freed equity HOLLAR to open unwind requests, pro-rata by the
@@ -446,7 +512,7 @@ contract SubLoop is
         // the next pokeRepay's `avail`.
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     /// @dev Returns PRIME (not HOLLAR): the surplus collateral skimmed above the
     ///      cost basis. The Harvester swaps it into each vault's collateral. This
     ///      keeps SubLoop swap-free — withdrawing the surplus leaves HF at target
@@ -477,15 +543,18 @@ contract SubLoop is
             emit Harvested(0);
             return 0;
         }
+        // permissionless: surplus routes to the configured harvester (which splits it
+        // pro-rata), NEVER the caller. An earlier fallback paid `msg.sender` when the
+        // harvester was unset — since `initialize` never assigns one, that made the
+        // whole loop carry claimable by anyone in the deploy→wiring window. Fail
+        // closed instead: no harvester, no harvest.
+        if (harvester == address(0)) revert HarvesterUnset();
         pool.withdraw(address(prime), surplusPrime, address(this)); // HF stays ≥ target
-        // permissionless: surplus always routes to the configured harvester (which
-        // splits it pro-rata), never the caller. fall back to msg.sender only if unset.
-        address to = harvester == address(0) ? msg.sender : harvester;
-        IERC20(address(prime)).safeTransfer(to, surplusPrime);
+        IERC20(address(prime)).safeTransfer(harvester, surplusPrime);
         emit Harvested(surplusPrime);
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc ILeveragedLoop
     /// @dev Sizes the safety de-lever: sell collateral and repay loop debt with
     ///      the FULL proceeds (no payout) until HF is back at targetHf. With
     ///      hf = coll·lt/debt and proceeds x repaying debt 1:1,
@@ -513,37 +582,59 @@ contract SubLoop is
     //                         VIEWS
     // ══════════════════════════════════════════════════════════════════════
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc ILeveragedLoop
     function healthFactor() public view override returns (uint256) {
         (, , , , , uint256 hf) = pool.getUserAccountData(address(this));
         return hf;
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function totalEquity() public view override returns (uint256) {
         (uint256 collBase, uint256 debtBase, , , , ) = pool.getUserAccountData(address(this));
         return collBase > debtBase ? collBase - debtBase : 0;
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
+    /// @dev The exact mirror of `harvest`: there, `reserved18 = principalEquity +
+    ///      unwindTargetEquity` is the non-carry basis and surplus is
+    ///      `equity18 - reserved18` when positive. Here we report the shortfall
+    ///      `reserved18 - equity18` (when equity is below basis) as a fraction of
+    ///      basis, in bps. Pure view — monitoring only, no state change.
+    function negativeCarryBps() external view override returns (uint256) {
+        uint256 reserved18 = principalEquity + unwindTargetEquity;
+        if (reserved18 == 0) return 0;
+        uint256 equity18 = totalEquity() * 1e10;
+        if (equity18 >= reserved18) return 0;
+        return ((reserved18 - equity18) * 1e4) / reserved18;
+    }
+
+    /// @inheritdoc IYieldSource
     function equityOf(address vault) external view override returns (uint256) {
         if (_totalShares == 0) return 0;
         return (totalEquity() * _sharesOf[vault]) / _totalShares;
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function sharesOf(address vault) external view override returns (uint256) {
         return _sharesOf[vault];
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function totalShares() external view override returns (uint256) {
         return _totalShares;
     }
 
-    /// @inheritdoc ISubLoop
+    /// @inheritdoc IYieldSource
     function freedOf(address vault) external view override returns (uint256) {
         return freedHollar[vault];
+    }
+
+    /// @inheritdoc IYieldSource
+    /// @dev `unwindRequested` is decremented on each `pullFreed`, so it is exactly
+    ///      the still-owed in-flight amount (requested minus pulled) and is 0 once
+    ///      the vault has pulled everything it asked to unwind.
+    function pendingUnwindOf(address vault) external view override returns (uint256) {
+        return unwindRequested[vault];
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -586,7 +677,11 @@ contract SubLoop is
         harvestThreshold = _harvestThreshold;
     }
 
+    /// @notice Set the carry recipient. Cannot be zeroed: `harvest()` reverts while
+    ///         unset, so re-zeroing would silently disable carry realisation for
+    ///         every vault. Repoint to a new Harvester instead.
     function setHarvester(address _harvester) external onlyRole(ADMIN_ROLE) {
+        if (_harvester == address(0)) revert ZeroAddress();
         harvester = _harvester;
     }
 

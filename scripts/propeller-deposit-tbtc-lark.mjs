@@ -3,7 +3,12 @@
 //   1. mint tBTC (asset 1000765) to //Alice's substrate acct via one Root ref
 //      (her EVM 0xd435.. maps there, so the 0x..0f453d ERC20 precompile sees it)
 //   2. approve(tbtcVault, amt) + deposit(amt, alice) signed by Alice (evm.call)
-// usage: node scripts/propeller-deposit-tbtc-lark.mjs [--live]
+// usage: VAULT_TBTC=0x… node scripts/propeller-deposit-tbtc-lark.mjs [--live]
+//
+// env: PROPOSAL_WS (ws endpoint), VAULT_TBTC / VAULT (the ptBTC vault — REQUIRED,
+//      there is no safe default: the old hardcoded lark-2 address silently sent a
+//      deposit at whatever contract now occupies it), MINT / AMT (tBTC, decimals
+//      allowed e.g. "0.02").
 import { ApiPromise, WsProvider, Keyring } from "@polkadot/api";
 import { cryptoWaitReady } from "@polkadot/util-crypto";
 import { ethers } from "ethers";
@@ -13,17 +18,29 @@ const LIVE = process.argv.includes("--live");
 const ALICE_EVM = "0xd43593c715fdd31c61141abd04a99fd6822c8558";
 const ALICE_ACCT = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
 const TBTC20 = "0x00000000000000000000000000000001000f453d";
-const VAULT = "0x8E84b6e1eFfdF6C3258854ED2E813b1882b719Bf";
+const VAULT = process.env.VAULT_TBTC || process.env.VAULT;
+if (!VAULT) {
+  console.error("set VAULT_TBTC (or VAULT) to the ptBTC vault proxy — no default: lark forks are\n" +
+                "re-created and CREATE addresses are deterministic in (deployer, nonce), so a stale\n" +
+                "hardcoded address can resolve to an unrelated live contract.");
+  process.exit(1);
+}
 const POOL = "0x1b02E051683b5cfaC5929C25E84adb26ECf87B38";
 const TBTC_ASSET = 1000765;
-const MINT = (process.env.MINT ? BigInt(process.env.MINT) : 2n) * 10n ** 18n;
-const AMT = (process.env.AMT ? BigInt(process.env.AMT) : 1n) * 10n ** 18n;
+// Decimals allowed: BigInt("0.02") throws, so parse via a fixed 1e6 grid then
+// scale to 18dp — same trick the ETH deposit/redeem scripts use.
+const tbtc = (v, dflt) => (v ? BigInt(Math.round(parseFloat(v) * 1e6)) * 10n ** 12n : dflt * 10n ** 18n);
+const MINT = tbtc(process.env.MINT, 2n);
+const AMT = tbtc(process.env.AMT, 1n);
 const HDX = 10n ** 12n;
+// BigInt `/` truncates, so `x / 10n**18n` renders a 0.02 tBTC deposit as "0".
+const fmt = (v, dec = 18, places = 8) => (Number(v) / 10 ** dec).toFixed(places);
 
 const erc = new ethers.utils.Interface(["function approve(address,uint256)","function balanceOf(address) view returns (uint256)"]);
 const vI = new ethers.utils.Interface([
   "function deposit(uint256,address) returns (uint256)","function balanceOf(address) view returns (uint256)",
-  "function totalAssets() view returns (uint256)","function targetLtvBps() view returns (uint256)",
+  "function totalAssets() view returns (uint256)","function synthLtBps() view returns (uint256)",
+  "function tvlCap() view returns (uint256)",
 ]);
 const accI = new ethers.utils.Interface(["function getUserAccountData(address) view returns (uint256 tc,uint256 td,uint256 ab,uint256 lt,uint256 ltv,uint256 hf)"]);
 
@@ -51,9 +68,15 @@ async function main() {
 
   const balBefore = (await api.query.tokens.accounts(ALICE_ACCT, TBTC_ASSET)).free.toBigInt();
   console.log(`ws=${WS} live=${LIVE}`);
-  console.log(`Alice tBTC before: ${balBefore / 10n ** 18n} | mint ${MINT / 10n ** 18n} | deposit ${AMT / 10n ** 18n}`);
-  const tgt = await ethCall(VAULT, vI.encodeFunctionData("targetLtvBps", []));
-  console.log(`vault targetLtvBps: ${BigInt(tgt?.ok?.value ?? "0")}`);
+  console.log(`Alice tBTC before: ${fmt(balBefore)} | mint ${fmt(MINT)} | deposit ${fmt(AMT)}`);
+  // Read a function that EXISTS. `targetLtvBps()` was removed from CollateralVault;
+  // a missing selector returns "0x" here, and BigInt("0x") throws — which aborted
+  // this script before it ever reached the deposit.
+  const num = (r) => { const v = r?.ok?.value; return v && v !== "0x" ? BigInt(v) : null; };
+  const lt = num(await ethCall(VAULT, vI.encodeFunctionData("synthLtBps", [])));
+  const cap = num(await ethCall(VAULT, vI.encodeFunctionData("tvlCap", [])));
+  console.log(`vault synthLtBps: ${lt ?? "<absent>"}  tvlCap: ${cap === null ? "<absent>" : fmt(cap)} tBTC`);
+  if (cap !== null && AMT > cap) throw new Error(`deposit ${fmt(AMT)} exceeds tvlCap ${fmt(cap)}`);
 
   if (!LIVE) { console.log("\nDRY-RUN"); await api.disconnect(); return; }
 
@@ -76,7 +99,7 @@ async function main() {
     }
     await new Promise((r) => setTimeout(r, 18000));
     const balAfter = (await api.query.tokens.accounts(ALICE_ACCT, TBTC_ASSET)).free.toBigInt();
-    console.log(`Alice tBTC after mint: ${balAfter / 10n ** 18n}`);
+    console.log(`Alice tBTC after mint: ${fmt(balAfter)}`);
     if (balAfter < AMT) throw new Error("mint did not land");
   } else console.log("Alice already holds enough tBTC; skipping mint");
 
@@ -94,8 +117,8 @@ async function main() {
   const shares = await ethCall(VAULT, vI.encodeFunctionData("balanceOf", [ALICE_EVM]));
   const ta = await ethCall(VAULT, vI.encodeFunctionData("totalAssets", []));
   const ud = accI.decodeFunctionResult("getUserAccountData", (await ethCall(POOL, accI.encodeFunctionData("getUserAccountData", [VAULT]))).ok.value);
-  console.log(`\nvault shares(alice): ${BigInt(shares?.ok?.value ?? "0").toString()}`);
-  console.log(`vault totalAssets: ${BigInt(ta?.ok?.value ?? "0") / 10n ** 18n} tBTC`);
+  console.log(`\nvault shares(alice): ${BigInt(shares?.ok?.value ?? "0").toString()} (${fmt(BigInt(shares?.ok?.value ?? "0"))})`);
+  console.log(`vault totalAssets: ${fmt(BigInt(ta?.ok?.value ?? "0"))} tBTC`);
   console.log(`vault Main: coll8=${ud.tc.toString()} debt8=${ud.td.toString()} HF=${ud.hf.toString()}`);
   await api.disconnect();
 }

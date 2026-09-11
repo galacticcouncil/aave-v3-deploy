@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1227" height="645" viewBox="0 0 491 258" font-family="Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 8 6" refX="8" refY="3"
+      markerWidth="4" markerHeight="3" orient="auto">
+      <path d="M0.5,0.5 L7,3 L0.5,5.5" fill="none" stroke="#94A3B8"
+        stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>
+    </marker>
+    <filter id="shadow" x="-6%" y="-8%" width="112%" height="128%">
+      <feDropShadow dx="0" dy="0.5" stdDeviation="0.8"
+        flood-color="#000" flood-opacity="0.05"/>
+    </filter>
+  </defs>
+  <rect width="491" height="258" fill="#F8F9FB" rx="3"/>
+  <text x="246" y="11" text-anchor="middle" font-size="6" font-weight="700" fill="#1E293B">Propeller Architecture</text>
+  <rect x="171" y="16" width="150" height="10" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
+  <rect x="176" y="18.5" width="5" height="5" rx="2.5" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
+  <text x="184" y="22.5" font-size="3.5" fill="#1E293B">Actor</text>
+  <rect x="216" y="18.5" width="5" height="5" rx="1.5" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
+  <rect x="217" y="19.5" width="0.8" height="3" rx="0.4" fill="#3B82F6"/>
+  <text x="224" y="22.5" font-size="3.5" fill="#1E293B">Protocol</text>
+  <rect x="264" y="18.5" width="5" height="5" rx="1.5" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
+  <rect x="265" y="19.5" width="0.8" height="3" rx="0.4" fill="#F59E0B"/>
+  <text x="272" y="22.5" font-size="3.5" fill="#1E293B">External</text>
+  <rect x="69.5" y="84.0" width="401.6" height="40.0" rx="5" fill="#EDEEF2"/>
+  <text x="468.1" y="89.0" text-anchor="end" font-size="3.5" fill="#94A3B8" font-weight="500">Propeller Vault Layer</text>
+  <rect x="69.5" y="146.0" width="401.6" height="40.0" rx="5" fill="#EDEEF2"/>
+  <text x="468.1" y="151.0" text-anchor="end" font-size="3.5" fill="#94A3B8" font-weight="500">Yield Source, Floor &amp; Swap Seam</text>
+  <rect x="69.5" y="208.0" width="401.6" height="40.0" rx="5" fill="#EDEEF2"/>
+  <text x="468.1" y="213.0" text-anchor="end" font-size="3.5" fill="#94A3B8" font-weight="500">Hydration Money Market + Runtime</text>
+  <path d="M70.6,46.0 C70.6,70.0 140.6,70.0 140.6,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M291.4,46.0 C291.4,70.0 140.6,70.0 140.6,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M291.4,46.0 C291.4,70.0 253.1,70.0 253.1,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M177.4,46.0 C177.4,70.0 140.6,70.0 140.6,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M217.9,112.0 C208.5,130.0 196.0,130.0 186.6,114.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M253.1,114.0 C253.1,135.0 348.7,135.0 348.7,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M140.6,114.0 C140.6,135.0 348.7,135.0 348.7,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M140.6,114.0 C140.6,135.0 123.1,135.0 123.1,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M140.6,114.0 C140.6,135.0 231.1,135.0 231.1,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M123.1,176.0 C123.1,197.0 190.7,197.0 190.7,218.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M348.7,176.0 C348.7,197.0 190.7,197.0 190.7,218.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M348.7,176.0 C348.7,197.0 308.3,197.0 308.3,218.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M348.7,176.0 C348.7,197.0 418.7,197.0 418.7,218.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M231.1,176.0 C231.1,197.0 308.3,197.0 308.3,218.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <g filter="url(#shadow)">
+    <rect x="30.0" y="32.0" width="81.2" height="14" rx="7" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <text x="70.6" y="40.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Depositor</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="243.6" y="32.0" width="95.6" height="14" rx="7" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <text x="291.4" y="40.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Anyone / Looper</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="133.2" y="32.0" width="88.4" height="14" rx="7" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <text x="177.4" y="40.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Governance</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="94.6" y="94.0" width="92.0" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="97.6" y="97.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="140.6" y="103.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">CollateralVault</text>
+    <text x="140.6" y="108.5" text-anchor="middle" font-size="3.5" fill="#64748B">pETH / ptBTC (UUPS)</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="217.9" y="94.0" width="70.4" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="220.9" y="97.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="253.1" y="103.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Harvester</text>
+    <text x="253.1" y="108.5" text-anchor="middle" font-size="3.5" fill="#64748B">Carry splitter</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="295.5" y="156.0" width="106.4" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="298.5" y="159.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="348.7" y="165.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">SubLoop</text>
+    <text x="348.7" y="170.5" text-anchor="middle" font-size="3.5" fill="#64748B">Shared PRIME loop (UUPS)</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="79.5" y="156.0" width="87.2" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="82.5" y="159.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="123.1" y="165.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">SyntheticToken</text>
+    <text x="123.1" y="170.5" text-anchor="middle" font-size="3.5" fill="#64748B">psHOLLAR HF floor</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="188.7" y="156.0" width="84.8" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="191.7" y="159.0" width="1.4" height="14" rx="0.6" fill="#F59E0B"/>
+    <text x="231.1" y="165.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">HydraAugustus</text>
+    <text x="231.1" y="170.5" text-anchor="middle" font-size="3.5" fill="#64748B">Swapper (REQ-SWAP)</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="141.1" y="218.0" width="99.2" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="144.1" y="221.0" width="1.4" height="14" rx="0.6" fill="#F59E0B"/>
+    <text x="190.7" y="227.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Aave Pool</text>
+    <text x="190.7" y="232.5" text-anchor="middle" font-size="3.5" fill="#64748B">Hydration money market</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="262.3" y="218.0" width="92.0" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="265.3" y="221.0" width="1.4" height="14" rx="0.6" fill="#F59E0B"/>
+    <text x="308.3" y="227.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Dispatch 0x0401</text>
+    <text x="308.3" y="232.5" text-anchor="middle" font-size="3.5" fill="#64748B">pallet_route::sell</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="376.3" y="218.0" width="84.8" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="379.3" y="221.0" width="1.4" height="14" rx="0.6" fill="#F59E0B"/>
+    <text x="418.7" y="227.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">AaveOracle</text>
+    <text x="418.7" y="232.5" text-anchor="middle" font-size="3.5" fill="#64748B">USD 8dp price feed</text>
+  </g>
+  <rect x="85.6" y="65.0" width="40.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="105.6" y="70.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">deposit / claim</text>
+  <rect x="188.8" y="65.0" width="54.4" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="216.0" y="70.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">rebalance, pokeSettle</text>
+  <rect x="251.1" y="65.0" width="42.4" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="272.3" y="70.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">harvest, deLever</text>
+  <rect x="141.4" y="65.0" width="35.2" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="159.0" y="70.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">admin + pause</text>
+  <rect x="185.8" y="129.0" width="32.8" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="202.2" y="134.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">compound cut</text>
+  <rect x="286.9" y="130.0" width="28.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="300.9" y="135.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">skim carry</text>
+  <rect x="228.2" y="130.0" width="32.8" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="244.6" y="135.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">route HOLLAR</text>
+  <rect x="117.8" y="130.0" width="28.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="131.8" y="135.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">mint floor</text>
+  <rect x="161.0" y="122.0" width="49.6" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="185.8" y="127.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">PRIME to collateral</text>
+  <rect x="138.1" y="192.0" width="37.6" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="156.9" y="197.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">supplied LT 98</text>
+  <rect x="249.7" y="192.0" width="40.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="269.7" y="197.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">borrow / supply</text>
+  <rect x="310.9" y="192.0" width="35.2" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="328.5" y="197.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">HOLLAR aPRIME</text>
+  <rect x="367.3" y="192.0" width="32.8" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="383.7" y="197.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">fair min-out</text>
+  <rect x="255.7" y="184.0" width="28.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="269.7" y="189.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">route swap</text>
+</svg>

@@ -1,0 +1,21 @@
+TOP 5 KEEPER FEATURES TO IMPORT INTO HYDRATION-NODE
+
+1. HF band ramp/delever (pokeBorrow, deLever) - looper.ts
+   -> OCW + unsigned extrinsic, cloned from pallets/hsm/src/lib.rs:376/:406/:857.
+
+2. Redeem queue servicing (pokeRepay + pokeSettle) - looper.ts
+   -> Same pallet/pattern, gated on queueTail > queueHead.
+
+3. Slow maintenance (maintainPeg, rebalance, harvest) - looper.ts
+   -> on_initialize with a block modulus. Self-gating on-chain, so no OCW needed.
+
+4. HDCL position maturity walk (pokeDecentral) - keeper.ts
+   -> on_initialize with a DCA-style index keyed by maturity block
+      (pallets/dca/src/lib.rs:141). Can't walk the whole queue every block.
+
+5. HDCL pokeQueue + auto-claim redeem - keeper.ts
+   -> OCW + unsigned. Only redeem needs CLAIM_OPERATOR_ROLE granted to the pallet acct;
+      everything else in 1-5 is already permissionless.
+
+Not importing: propeller-rebalancer (pool-143 peg) - pallet-hsm is already the HOLLAR peg
+keeper, check if adding PRIME/pool-143 to its collateral set covers it before writing code.
